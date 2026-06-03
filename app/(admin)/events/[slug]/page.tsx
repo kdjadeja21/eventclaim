@@ -25,6 +25,7 @@ import { formatDate } from "@/lib/utils";
 import { Event } from "@/lib/types";
 import EventStatusButton from "./event-status-button";
 import NotionGuideEditor from "./notion-guide-editor";
+import DeleteEventButton from "./delete-event-button";
 
 const statusVariant: Record<
   Event["status"],
@@ -157,6 +158,22 @@ export default async function EventDetailPage({ params }: Props) {
         eventId={event.id}
         notionGuideUrl={event.notionGuideUrl}
       />
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base text-destructive">
+            Danger Zone
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Permanently delete this event and all its data. This cannot be
+            undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteEventButton eventId={event.id} eventName={event.name} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

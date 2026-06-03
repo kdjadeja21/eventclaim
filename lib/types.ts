@@ -9,6 +9,7 @@ export type EmailStatus = "pending" | "sent" | "failed";
 export type AuditAction =
   | "event_created"
   | "event_updated"
+  | "event_deleted"
   | "attendee_imported"
   | "coupon_imported"
   | "coupon_assigned"

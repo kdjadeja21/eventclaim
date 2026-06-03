@@ -1,6 +1,7 @@
 "use server";
 
 import { adminDb } from "@/lib/firebase/admin";
+import type FirebaseFirestore from "@google-cloud/firestore";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { slugify } from "@/lib/utils";
@@ -151,4 +152,69 @@ export async function getEventById(id: string): Promise<Event | null> {
   const doc = await adminDb.collection("events").doc(id).get();
   if (!doc.exists) return null;
   return doc.data() as Event;
+}
+
+async function deleteQueryInBatches(
+  query: FirebaseFirestore.Query
+): Promise<number> {
+  let totalDeleted = 0;
+  // Keep fetching and deleting until the collection is empty
+  for (;;) {
+    const snapshot = await query.limit(500).get();
+    if (snapshot.empty) break;
+    const batch = adminDb.batch();
+    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    totalDeleted += snapshot.size;
+    if (snapshot.size < 500) break;
+  }
+  return totalDeleted;
+}
+
+export async function deleteEvent(
+  eventId: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  try {
+    const eventDoc = await adminDb.collection("events").doc(eventId).get();
+    if (!eventDoc.exists) {
+      return { success: false, error: "Event not found." };
+    }
+    const event = eventDoc.data() as Event;
+
+    // Delete top-level collections that reference this event
+    const deletedEmailLogs = await deleteQueryInBatches(
+      adminDb.collection("emailLogs").where("eventId", "==", eventId)
+    );
+    const deletedClaimTokens = await deleteQueryInBatches(
+      adminDb.collection("claimTokens").where("eventId", "==", eventId)
+    );
+
+    // Recursively delete the event doc + all subcollections (attendees, coupons)
+    await adminDb.recursiveDelete(adminDb.collection("events").doc(eventId));
+
+    // Write audit log with null eventId since the event no longer exists;
+    // original details are captured in metadata for traceability
+    await writeAuditLog({
+      eventId: null,
+      action: "event_deleted",
+      metadata: {
+        deletedEventId: eventId,
+        name: event.name,
+        slug: event.slug,
+        deletedEmailLogs,
+        deletedClaimTokens,
+      },
+      userId: session.uid,
+    });
+
+    revalidatePath("/events");
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Delete failed.",
+    };
+  }
 }

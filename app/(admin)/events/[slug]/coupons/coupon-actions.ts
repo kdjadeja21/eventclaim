@@ -154,7 +154,19 @@ export async function unassignCoupon(
 
       unassignedAttendeeId = coupon.assignedTo;
 
-      // Revert coupon
+      // Read attendee BEFORE any writes (Firestore requires all reads before writes)
+      let attendeeRef: FirebaseFirestore.DocumentReference | null = null;
+      let attendeeSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+      if (coupon.assignedTo) {
+        attendeeRef = adminDb
+          .collection("events")
+          .doc(eventId)
+          .collection("attendees")
+          .doc(coupon.assignedTo);
+        attendeeSnap = await txn.get(attendeeRef);
+      }
+
+      // All writes follow
       txn.update(couponRef, {
         assignedTo: null,
         status: "available",
@@ -162,35 +174,24 @@ export async function unassignCoupon(
         claimedAt: null,
       });
 
-      // Revert attendee if linked
-      if (coupon.assignedTo) {
-        const attendeeRef = adminDb
-          .collection("events")
-          .doc(eventId)
-          .collection("attendees")
-          .doc(coupon.assignedTo);
+      if (attendeeRef && attendeeSnap?.exists) {
+        const attendee = attendeeSnap.data() as Attendee;
 
-        const attendeeSnap = await txn.get(attendeeRef);
-        if (attendeeSnap.exists) {
-          const attendee = attendeeSnap.data() as Attendee;
-
-          // Delete the claim token if it exists
-          if (attendee.claimToken) {
-            const tokenRef = adminDb
-              .collection("claimTokens")
-              .doc(attendee.claimToken);
-            txn.delete(tokenRef);
-          }
-
-          txn.update(attendeeRef, {
-            couponId: null,
-            couponLink: null,
-            claimToken: null,
-            emailStatus: "pending",
-            claimed: false,
-            claimedAt: null,
-          });
+        if (attendee.claimToken) {
+          const tokenRef = adminDb
+            .collection("claimTokens")
+            .doc(attendee.claimToken);
+          txn.delete(tokenRef);
         }
+
+        txn.update(attendeeRef, {
+          couponId: null,
+          couponLink: null,
+          claimToken: null,
+          emailStatus: "pending",
+          claimed: false,
+          claimedAt: null,
+        });
       }
     });
 
