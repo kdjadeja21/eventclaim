@@ -1,36 +1,140 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# EventClaim
 
-## Getting Started
+**Cursor Community — Event Coupon Distribution Platform**
 
-First, run the development server:
+Web app for distributing Cursor credit coupons to event attendees: import attendees and coupon links, auto-assign coupons, send claim emails, track claims, and audit admin activity.
+
+## Features
+
+- **Events** — Create events (name, slug, date, Notion guide URL) with `draft`, `active`, or `completed` status.
+- **CSV import** — Import checked-in attendees from a [Luma](https://lu.ma) export; import coupon URLs (one per line or single-column CSV).
+- **Coupon assignment** — Automatically pairs available coupons with attendees on import (Firestore transactions).
+- **Email delivery** — Sends HTML claim emails via [EmailJS](https://www.emailjs.com/) with unique `/claim/[token]` links.
+- **Attendee management** — Search, filter, resend failed emails, and view per-event stats.
+- **Public claim flow** — `GET /claim/[token]` marks the coupon claimed and redirects to the coupon URL (idempotent).
+- **Status lookup** — `/check-status` lets attendees look up email/claim status by registered email.
+- **Audit logs** — Admin actions (imports, assignments, emails, claims) are recorded in Firestore.
+
+## Tech stack
+
+- [Next.js](https://nextjs.org) 16 (App Router), React 19, TypeScript
+- [Tailwind CSS](https://tailwindcss.com) 4, [Radix UI](https://www.radix-ui.com/) + shadcn-style components
+- [Firebase](https://firebase.google.com/) — Firestore, Firebase Auth (Google sign-in), Firebase Admin (session cookies)
+- [EmailJS](https://www.emailjs.com/) — transactional email API
+- [Papa Parse](https://www.papaparse.com/) + [Zod](https://zod.dev/) — CSV parsing and validation
+
+## Prerequisites
+
+- Node.js 20+
+- A Firebase project with **Firestore**, **Authentication** (Google provider enabled), and a **service account** key for Admin SDK / session cookies
+- An EmailJS account with a service, template, and API keys configured for HTML email (`message_html` template param)
+
+Restrict who can sign in via Firebase Authentication (e.g. authorized Google accounts). The app does not implement an in-code admin email allowlist beyond a valid Firebase session.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The home page redirects to `/dashboard`; unauthenticated users are sent to `/login`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a `.env.local` in the project root:
 
-## Learn More
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes | Firebase web app config |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes | Firebase web app config |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
+| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Yes | Firebase web app config |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase web app config |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | Firebase web app config |
+| `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification. Without it, sign-in succeeds in the client but server sessions fail. |
+| `EMAILJS_SERVICE_ID` | Yes | EmailJS service ID |
+| `EMAILJS_TEMPLATE_ID` | Yes | EmailJS template ID |
+| `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
+| `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
+| `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
 
-To learn more about Next.js, take a look at the following resources:
+## Scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start the development server |
+| `npm run build` | Production build |
+| `npm run start` | Run the production server (after `build`) |
+| `npm run lint` | Run ESLint |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Routes
 
-## Deploy on Vercel
+### Public
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+| Path | Description |
+|------|-------------|
+| `/login` | Google sign-in; creates an HTTP-only session via `POST /api/auth/session` |
+| `/check-status` | Attendee self-service status lookup by email |
+| `/claim/[token]` | Claim link from email; marks claimed and redirects to coupon URL |
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Admin (requires session cookie)
+
+| Path | Description |
+|------|-------------|
+| `/dashboard` | Overview stats and recent activity |
+| `/events` | List events |
+| `/events/new` | Create an event |
+| `/events/[slug]` | Event detail, stats, and quick links |
+| `/events/[slug]/import` | Import Luma attendees and/or coupon CSV |
+| `/events/[slug]/attendees` | Manage attendees and email actions |
+| `/events/[slug]/preview` | Preview and bulk-send pending emails |
+| `/audit` | Audit log viewer |
+
+### API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/session` | Exchange Firebase `idToken` for session cookie |
+| `POST` | `/api/auth/logout` | Clear session cookie |
+
+## Data model (Firestore)
+
+Top-level collections:
+
+- `events` — event metadata
+- `events/{eventId}/attendees` — attendee records, claim tokens, email/claim status
+- `events/{eventId}/coupons` — coupon URLs and assignment/claim status
+- `claimTokens` — maps token → `eventId` + `attendeeId`
+- `emailLogs` — send/resend history
+- `auditLogs` — admin action audit trail
+
+## Import formats
+
+**Attendees (Luma CSV):** Uses standard Luma export columns (`email`, `name` or `first_name`/`last_name`, `checked_in_at`). By default only checked-in rows are imported.
+
+**Coupons:** One valid URL per line, or a CSV with a header such as `coupon_link`. Duplicate URLs in a file are skipped.
+
+Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
+
+## Authentication
+
+1. Admin signs in with Google (Firebase client SDK).
+2. Client posts the Firebase ID token to `/api/auth/session`.
+3. Server creates a Firebase session cookie (`eventclaim_session`, 5-day expiry).
+4. `(admin)` layout routes call `getSession()` and redirect to `/login` if missing.
+
+## Deployment
+
+Standard Next.js deployment (e.g. [Vercel](https://vercel.com)) works. Set all environment variables in the hosting provider, including `APP_BASE_URL` for production claim links. Ensure `FIREBASE_SERVICE_ACCOUNT` (or equivalent credentials) is available to the server runtime.
+
+There is no project-specific `vercel.json` or Docker configuration in this repository.
+
+## Testing
+
+No automated test suite is configured in this repo.
+
+## Project notes
+
+- This project uses a newer Next.js release; see `AGENTS.md` and `node_modules/next/dist/docs/` for framework-specific APIs and conventions.
+- Generated `.next` output and local caches should not be committed.

@@ -1,0 +1,154 @@
+"use server";
+
+import { adminDb } from "@/lib/firebase/admin";
+import { requireSession } from "@/lib/session";
+import { writeAuditLog } from "@/lib/audit";
+import { slugify } from "@/lib/utils";
+import { Event, EventStatus } from "@/lib/types";
+import { nanoid } from "nanoid";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+const EventSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  date: z.string().min(1, "Date is required"),
+  notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
+  status: z.enum(["draft", "active", "completed"]),
+});
+
+export async function createEvent(
+  _prevState: unknown,
+  formData: FormData
+): Promise<{ success: boolean; eventId?: string; slug?: string; errors?: Record<string, string[]> }> {
+  const session = await requireSession();
+
+  const raw = {
+    name: formData.get("name") as string,
+    date: formData.get("date") as string,
+    notionGuideUrl: (formData.get("notionGuideUrl") as string) || "",
+    status: (formData.get("status") as EventStatus) || "draft",
+  };
+
+  const parsed = EventSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { success: false, errors: parsed.error.flatten().fieldErrors };
+  }
+
+  const id = nanoid();
+  const slug = slugify(parsed.data.name) + "-" + id.slice(0, 6);
+  const now = new Date().toISOString();
+
+  const event: Event = {
+    id,
+    name: parsed.data.name,
+    slug,
+    date: parsed.data.date,
+    notionGuideUrl: parsed.data.notionGuideUrl,
+    status: parsed.data.status,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await adminDb.collection("events").doc(id).set(event);
+  await writeAuditLog({
+    eventId: id,
+    action: "event_created",
+    metadata: { name: event.name, slug },
+    userId: session.uid,
+  });
+
+  revalidatePath("/events");
+  return { success: true, eventId: id, slug };
+}
+
+const EventSettingsSchema = z.object({
+  notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
+});
+
+export async function updateEventSettings(
+  eventId: string,
+  data: { notionGuideUrl: string }
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  const parsed = EventSettingsSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.flatten().fieldErrors.notionGuideUrl?.[0] ?? "Invalid URL",
+    };
+  }
+
+  const eventDoc = await adminDb.collection("events").doc(eventId).get();
+  if (!eventDoc.exists) {
+    return { success: false, error: "Event not found" };
+  }
+
+  const event = eventDoc.data() as Event;
+
+  await adminDb.collection("events").doc(eventId).update({
+    notionGuideUrl: parsed.data.notionGuideUrl,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await writeAuditLog({
+    eventId,
+    action: "event_updated",
+    metadata: { notionGuideUrl: parsed.data.notionGuideUrl },
+    userId: session.uid,
+  });
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${event.slug}`);
+  return { success: true };
+}
+
+export async function updateEventStatus(
+  eventId: string,
+  status: EventStatus
+): Promise<{ success: boolean }> {
+  const session = await requireSession();
+
+  await adminDb.collection("events").doc(eventId).update({
+    status,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await writeAuditLog({
+    eventId,
+    action: "event_updated",
+    metadata: { status },
+    userId: session.uid,
+  });
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  return { success: true };
+}
+
+export async function getEvents(): Promise<Event[]> {
+  await requireSession();
+  const snap = await adminDb
+    .collection("events")
+    .orderBy("createdAt", "desc")
+    .get();
+  return snap.docs.map((d) => d.data() as Event);
+}
+
+export async function getEventBySlug(slug: string): Promise<Event | null> {
+  await requireSession();
+  const snap = await adminDb
+    .collection("events")
+    .where("slug", "==", slug)
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  return snap.docs[0].data() as Event;
+}
+
+export async function getEventById(id: string): Promise<Event | null> {
+  await requireSession();
+  const doc = await adminDb.collection("events").doc(id).get();
+  if (!doc.exists) return null;
+  return doc.data() as Event;
+}
