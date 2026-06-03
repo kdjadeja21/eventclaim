@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { updateEventSettings } from "../actions";
 import { Button } from "@/components/ui/button";
@@ -25,11 +25,6 @@ export default function NotionGuideEditor({
   const [url, setUrl] = useState(notionGuideUrl);
   const [draftUrl, setDraftUrl] = useState(notionGuideUrl);
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    setUrl(notionGuideUrl);
-    setDraftUrl(notionGuideUrl);
-  }, [notionGuideUrl]);
 
   function startEditing() {
     setDraftUrl(url);

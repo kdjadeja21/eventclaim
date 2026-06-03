@@ -89,3 +89,25 @@ export async function bulkResendFailed(
   revalidatePath(`/events`);
   return result;
 }
+
+export async function bulkSendSelected(
+  eventId: string,
+  attendeeIds: string[],
+  mode: "send" | "resend"
+): Promise<{ success: number; failed: number }> {
+  await requireSession();
+  let success = 0;
+  let failed = 0;
+
+  for (const attendeeId of attendeeIds) {
+    const result =
+      mode === "send"
+        ? await sendSingleEmail(eventId, attendeeId)
+        : await resendSingleEmail(eventId, attendeeId);
+    if (result.success) success++;
+    else failed++;
+  }
+
+  revalidatePath(`/events`);
+  return { success, failed };
+}

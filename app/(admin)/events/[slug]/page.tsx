@@ -147,6 +147,7 @@ export default async function EventDetailPage({ params }: Props) {
 
       {/* Notion guide */}
       <NotionGuideEditor
+        key={event.notionGuideUrl}
         eventId={event.id}
         notionGuideUrl={event.notionGuideUrl}
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Send,
@@ -14,6 +14,10 @@ import {
   XCircle,
   CheckCheck,
   Ticket,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  X,
 } from "lucide-react";
 import { Attendee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -41,8 +45,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatDateTime } from "@/lib/utils";
-import { sendSingleEmail, resendSingleEmail } from "./email-actions";
+import { formatDateTime, cn } from "@/lib/utils";
+import {
+  sendSingleEmail,
+  resendSingleEmail,
+  bulkSendSelected,
+} from "./email-actions";
 import { getAttendeeDetail } from "./attendee-data-actions";
 
 type Filter =
@@ -54,11 +62,66 @@ type Filter =
   | "unclaimed"
   | "no-coupon";
 
+type SortKey =
+  | "name"
+  | "emailStatus"
+  | "claimed"
+  | "emailSentAt"
+  | "claimedAt"
+  | "createdAt";
+type SortDir = "asc" | "desc";
+
 const emailStatusConfig = {
   pending: { label: "Pending", variant: "warning" as const, icon: Clock },
   sent: { label: "Sent", variant: "success" as const, icon: CheckCircle2 },
   failed: { label: "Failed", variant: "destructive" as const, icon: XCircle },
 };
+
+function compareNullableDate(
+  a: string | null,
+  b: string | null,
+  dir: SortDir
+): number {
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  const cmp = a.localeCompare(b);
+  return dir === "asc" ? cmp : -cmp;
+}
+
+function sortAttendees(
+  list: Attendee[],
+  sortConfig: { key: SortKey; dir: SortDir } | null
+): Attendee[] {
+  if (!sortConfig) return list;
+
+  const { key, dir } = sortConfig;
+  const sorted = [...list];
+
+  sorted.sort((a, b) => {
+    let cmp = 0;
+    switch (key) {
+      case "name":
+        cmp = a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        break;
+      case "emailStatus":
+        cmp = a.emailStatus.localeCompare(b.emailStatus);
+        break;
+      case "claimed":
+        cmp = Number(a.claimed) - Number(b.claimed);
+        break;
+      case "emailSentAt":
+        return compareNullableDate(a.emailSentAt, b.emailSentAt, dir);
+      case "claimedAt":
+        return compareNullableDate(a.claimedAt, b.claimedAt, dir);
+      case "createdAt":
+        return compareNullableDate(a.createdAt, b.createdAt, dir);
+    }
+    return dir === "asc" ? cmp : -cmp;
+  });
+
+  return sorted;
+}
 
 export default function AttendeeTable({
   attendees: initial,
@@ -72,21 +135,37 @@ export default function AttendeeTable({
   const [attendees, setAttendees] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    dir: SortDir;
+  } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkPending, setBulkPending] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<string | null>(null);
-  const [detailData, setDetailData] = useState<Awaited<ReturnType<typeof getAttendeeDetail>> | null>(null);
+  const [detailData, setDetailData] = useState<Awaited<
+    ReturnType<typeof getAttendeeDetail>
+  > | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
-  // Filter + search
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [filter, search]);
+
   const filtered = useMemo(() => {
     let list = attendees;
 
-    if (filter === "pending") list = list.filter((a) => a.emailStatus === "pending" && a.couponId);
-    else if (filter === "sent") list = list.filter((a) => a.emailStatus === "sent");
-    else if (filter === "failed") list = list.filter((a) => a.emailStatus === "failed");
+    if (filter === "pending")
+      list = list.filter((a) => a.emailStatus === "pending" && a.couponId);
+    else if (filter === "sent")
+      list = list.filter((a) => a.emailStatus === "sent");
+    else if (filter === "failed")
+      list = list.filter((a) => a.emailStatus === "failed");
     else if (filter === "claimed") list = list.filter((a) => a.claimed);
-    else if (filter === "unclaimed") list = list.filter((a) => !a.claimed && a.couponId);
+    else if (filter === "unclaimed")
+      list = list.filter((a) => !a.claimed && a.couponId);
     else if (filter === "no-coupon") list = list.filter((a) => !a.couponId);
 
     if (search.trim()) {
@@ -99,8 +178,53 @@ export default function AttendeeTable({
       );
     }
 
-    return list;
-  }, [attendees, filter, search]);
+    return sortAttendees(list, sortConfig);
+  }, [attendees, filter, search, sortConfig]);
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((a) => selectedIds.has(a.id));
+  const someVisibleSelected =
+    filtered.some((a) => selectedIds.has(a.id)) && !allVisibleSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [someVisibleSelected, selectedIds, filtered]);
+
+  function toggleSort(key: SortKey) {
+    setSortConfig((prev) => {
+      if (prev?.key === key) {
+        return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      }
+      return { key, dir: "asc" };
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((a) => next.delete(a.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((a) => next.add(a.id));
+        return next;
+      });
+    }
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function updateAttendee(id: string, patch: Partial<Attendee>) {
     setAttendees((prev) =>
@@ -144,6 +268,42 @@ export default function AttendeeTable({
     });
   }
 
+  async function handleBulk(
+    mode: "send" | "resend",
+    predicate: (a: Attendee) => boolean
+  ) {
+    const targets = attendees.filter(
+      (a) => selectedIds.has(a.id) && predicate(a)
+    );
+    if (targets.length === 0) {
+      toast.error("No eligible attendees in selection");
+      return;
+    }
+
+    setBulkPending(true);
+    const ids = targets.map((a) => a.id);
+    const res = await bulkSendSelected(eventId, ids, mode);
+    const now = new Date().toISOString();
+
+    if (res.success === ids.length) {
+      targets.forEach((a) =>
+        updateAttendee(a.id, { emailStatus: "sent", emailSentAt: now })
+      );
+      toast.success(
+        mode === "send"
+          ? `Sent ${res.success} email${res.success !== 1 ? "s" : ""}`
+          : `Resent ${res.success} email${res.success !== 1 ? "s" : ""}`
+      );
+    } else if (res.failed === ids.length) {
+      targets.forEach((a) => updateAttendee(a.id, { emailStatus: "failed" }));
+      toast.error(`All ${res.failed} email${res.failed !== 1 ? "s" : ""} failed`);
+    } else {
+      toast.warning(`${res.success} succeeded, ${res.failed} failed`);
+    }
+
+    setBulkPending(false);
+  }
+
   async function openDetail(attendeeId: string) {
     setSelectedDetail(attendeeId);
     setLoadingDetail(true);
@@ -152,7 +312,8 @@ export default function AttendeeTable({
     setLoadingDetail(false);
   }
 
-  function exportCsv() {
+  function exportCsv(rows?: Attendee[]) {
+    const data = rows ?? filtered;
     const headers = [
       "Name",
       "Email",
@@ -163,7 +324,7 @@ export default function AttendeeTable({
       "Email Sent At",
       "Claimed At",
     ];
-    const rows = filtered.map((a) => [
+    const csvRows = data.map((a) => [
       a.name,
       a.email,
       a.couponId ? "Yes" : "No",
@@ -173,7 +334,7 @@ export default function AttendeeTable({
       a.emailSentAt ?? "",
       a.claimedAt ?? "",
     ]);
-    const csv = [headers, ...rows]
+    const csv = [headers, ...csvRows]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -188,7 +349,9 @@ export default function AttendeeTable({
   const counts = useMemo(() => {
     return {
       all: attendees.length,
-      pending: attendees.filter((a) => a.emailStatus === "pending" && a.couponId).length,
+      pending: attendees.filter(
+        (a) => a.emailStatus === "pending" && a.couponId
+      ).length,
       sent: attendees.filter((a) => a.emailStatus === "sent").length,
       failed: attendees.filter((a) => a.emailStatus === "failed").length,
       claimed: attendees.filter((a) => a.claimed).length,
@@ -197,9 +360,25 @@ export default function AttendeeTable({
     };
   }, [attendees]);
 
+  const selectedAttendees = useMemo(
+    () => attendees.filter((a) => selectedIds.has(a.id)),
+    [attendees, selectedIds]
+  );
+
+  const bulkSendCount = selectedAttendees.filter(
+    (a) => a.couponId && a.emailStatus === "pending"
+  ).length;
+  const bulkResendCount = selectedAttendees.filter(
+    (a) => a.emailStatus === "sent"
+  ).length;
+  const bulkRetryCount = selectedAttendees.filter(
+    (a) => a.emailStatus === "failed"
+  ).length;
+
+  const hasSelection = selectedIds.size > 0;
+
   return (
-    <div className="space-y-4">
-      {/* Controls */}
+    <div className={cn("space-y-4", hasSelection && "pb-20")}>
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -216,31 +395,69 @@ export default function AttendeeTable({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All ({counts.all})</SelectItem>
-            <SelectItem value="no-coupon">No Coupon ({counts["no-coupon"]})</SelectItem>
+            <SelectItem value="no-coupon">
+              No Coupon ({counts["no-coupon"]})
+            </SelectItem>
             <SelectItem value="pending">Pending ({counts.pending})</SelectItem>
             <SelectItem value="sent">Sent ({counts.sent})</SelectItem>
             <SelectItem value="failed">Failed ({counts.failed})</SelectItem>
             <SelectItem value="claimed">Claimed ({counts.claimed})</SelectItem>
-            <SelectItem value="unclaimed">Unclaimed ({counts.unclaimed})</SelectItem>
+            <SelectItem value="unclaimed">
+              Unclaimed ({counts.unclaimed})
+            </SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" onClick={exportCsv}>
+        <Button variant="outline" size="sm" onClick={() => exportCsv()}>
           <Download className="h-4 w-4" />
           Export CSV
         </Button>
       </div>
 
-      {/* Table */}
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name / Email</TableHead>
+              <TableHead className="w-10">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allVisibleSelected && filtered.length > 0}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  aria-label="Select all visible attendees"
+                />
+              </TableHead>
+              <SortableHead
+                label="Name / Email"
+                sortKey="name"
+                sortConfig={sortConfig}
+                onSort={toggleSort}
+              />
               <TableHead>Coupon</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Claim</TableHead>
-              <TableHead>Email Sent</TableHead>
-              <TableHead>Claimed At</TableHead>
+              <SortableHead
+                label="Email"
+                sortKey="emailStatus"
+                sortConfig={sortConfig}
+                onSort={toggleSort}
+              />
+              <SortableHead
+                label="Claim"
+                sortKey="claimed"
+                sortConfig={sortConfig}
+                onSort={toggleSort}
+              />
+              <SortableHead
+                label="Email Sent"
+                sortKey="emailSentAt"
+                sortConfig={sortConfig}
+                onSort={toggleSort}
+              />
+              <SortableHead
+                label="Claimed At"
+                sortKey="claimedAt"
+                sortConfig={sortConfig}
+                onSort={toggleSort}
+              />
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -248,7 +465,7 @@ export default function AttendeeTable({
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="text-center py-12 text-muted-foreground text-sm"
                 >
                   No attendees match this filter.
@@ -256,7 +473,24 @@ export default function AttendeeTable({
               </TableRow>
             ) : (
               filtered.map((attendee) => (
-                <TableRow key={attendee.id}>
+                <TableRow
+                  key={attendee.id}
+                  data-state={
+                    selectedIds.has(attendee.id) ? "selected" : undefined
+                  }
+                  className={cn(
+                    selectedIds.has(attendee.id) && "bg-muted/50"
+                  )}
+                >
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(attendee.id)}
+                      onChange={() => toggleRow(attendee.id)}
+                      className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                      aria-label={`Select ${attendee.name}`}
+                    />
+                  </TableCell>
                   <TableCell className="min-w-40">
                     <div className="font-medium text-sm leading-tight">
                       {attendee.name}
@@ -311,23 +545,24 @@ export default function AttendeeTable({
 
                   <TableCell>
                     <div className="flex items-center justify-end gap-1.5">
-                      {attendee.couponId && attendee.emailStatus === "pending" && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={() => handleSend(attendee)}
-                          disabled={
-                            actionPending === attendee.id + "-send"
-                          }
-                        >
-                          {actionPending === attendee.id + "-send" ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Send className="h-3.5 w-3.5" />
-                          )}
-                          Send
-                        </Button>
-                      )}
+                      {attendee.couponId &&
+                        attendee.emailStatus === "pending" && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            onClick={() => handleSend(attendee)}
+                            disabled={
+                              actionPending === attendee.id + "-send"
+                            }
+                          >
+                            {actionPending === attendee.id + "-send" ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Send className="h-3.5 w-3.5" />
+                            )}
+                            Send
+                          </Button>
+                        )}
 
                       {attendee.emailStatus === "sent" && (
                         <Button
@@ -381,11 +616,92 @@ export default function AttendeeTable({
         </Table>
       </div>
 
+      {hasSelection && (
+        <div
+          role="toolbar"
+          aria-label="Bulk attendee actions"
+          className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:left-60"
+        >
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-3">
+            <span className="text-sm font-medium mr-2 shrink-0">
+              {selectedIds.size} selected
+            </span>
+            <Button
+              size="sm"
+              disabled={bulkPending || bulkSendCount === 0}
+              onClick={() =>
+                handleBulk(
+                  "send",
+                  (a) => !!a.couponId && a.emailStatus === "pending"
+                )
+              }
+            >
+              {bulkPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              Send Email
+              {bulkSendCount > 0 && ` (${bulkSendCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkPending || bulkResendCount === 0}
+              onClick={() =>
+                handleBulk("resend", (a) => a.emailStatus === "sent")
+              }
+            >
+              {bulkPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Resend
+              {bulkResendCount > 0 && ` (${bulkResendCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={bulkPending || bulkRetryCount === 0}
+              onClick={() =>
+                handleBulk("resend", (a) => a.emailStatus === "failed")
+              }
+            >
+              {bulkPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Retry Failed
+              {bulkRetryCount > 0 && ` (${bulkRetryCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkPending}
+              onClick={() => exportCsv(selectedAttendees)}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={bulkPending}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X className="h-3.5 w-3.5" />
+              Deselect
+            </Button>
+          </div>
+        </div>
+      )}
+
       <p className="text-xs text-muted-foreground text-right">
         Showing {filtered.length} of {attendees.length} attendees
       </p>
 
-      {/* Detail Dialog */}
       <Dialog
         open={selectedDetail !== null}
         onOpenChange={(open) => !open && setSelectedDetail(null)}
@@ -447,6 +763,38 @@ export default function AttendeeTable({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SortableHead({
+  label,
+  sortKey,
+  sortConfig,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sortConfig: { key: SortKey; dir: SortDir } | null;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortConfig?.key === sortKey;
+  const Icon = active
+    ? sortConfig!.dir === "asc"
+      ? ArrowUp
+      : ArrowDown
+    : ArrowUpDown;
+
+  return (
+    <TableHead>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 font-medium hover:text-foreground text-muted-foreground transition-colors"
+      >
+        {label}
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+      </button>
+    </TableHead>
   );
 }
 
