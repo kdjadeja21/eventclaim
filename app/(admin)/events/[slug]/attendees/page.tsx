@@ -5,6 +5,7 @@ import { getAttendees } from "./attendee-data-actions";
 import { getEventBySlug } from "../../actions";
 import { Button } from "@/components/ui/button";
 import AttendeeTable from "./attendee-table";
+import { EventSectionNav } from "../event-section-nav";
 
 // Bulk email sends run as Server Actions invoked from this page. Raise the
 // default execution limit so larger batches have room to finish on platforms
@@ -39,6 +40,8 @@ export default async function AttendeesPage({ params }: Props) {
           </p>
         </div>
       </div>
+
+      <EventSectionNav slug={slug} active="attendees" />
 
       <AttendeeTable
         attendees={attendees}

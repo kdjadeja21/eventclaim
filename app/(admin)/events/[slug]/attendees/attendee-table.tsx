@@ -18,6 +18,7 @@ import {
   ArrowDown,
   ArrowUpDown,
   X,
+  Trash2,
 } from "lucide-react";
 import { Attendee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -46,12 +47,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDateTime, cn } from "@/lib/utils";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   sendSingleEmail,
   resendSingleEmail,
   bulkSendSelected,
 } from "./email-actions";
-import { getAttendeeDetail } from "./attendee-data-actions";
+import {
+  deleteAttendee,
+  getAttendeeDetail,
+} from "./attendee-data-actions";
 
 type Filter =
   | "all"
@@ -139,6 +144,8 @@ export default function AttendeeTable({
     key: SortKey;
     dir: SortDir;
   } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkPending, setBulkPending] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<string | null>(null);
@@ -147,12 +154,14 @@ export default function AttendeeTable({
   > | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [actionPending, setActionPending] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Attendee | null>(null);
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [filter, search]);
+    setCurrentPage(1);
+  }, [filter, search, sortConfig]);
 
   const filtered = useMemo(() => {
     let list = attendees;
@@ -181,16 +190,21 @@ export default function AttendeeTable({
     return sortAttendees(list, sortConfig);
   }, [attendees, filter, search, sortConfig]);
 
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
   const allVisibleSelected =
-    filtered.length > 0 && filtered.every((a) => selectedIds.has(a.id));
+    paginated.length > 0 && paginated.every((a) => selectedIds.has(a.id));
   const someVisibleSelected =
-    filtered.some((a) => selectedIds.has(a.id)) && !allVisibleSelected;
+    paginated.some((a) => selectedIds.has(a.id)) && !allVisibleSelected;
 
   useEffect(() => {
     if (selectAllRef.current) {
       selectAllRef.current.indeterminate = someVisibleSelected;
     }
-  }, [someVisibleSelected, selectedIds, filtered]);
+  }, [someVisibleSelected, selectedIds, paginated]);
 
   function toggleSort(key: SortKey) {
     setSortConfig((prev) => {
@@ -205,13 +219,13 @@ export default function AttendeeTable({
     if (allVisibleSelected) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        filtered.forEach((a) => next.delete(a.id));
+        paginated.forEach((a) => next.delete(a.id));
         return next;
       });
     } else {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        filtered.forEach((a) => next.add(a.id));
+        paginated.forEach((a) => next.add(a.id));
         return next;
       });
     }
@@ -230,6 +244,31 @@ export default function AttendeeTable({
     setAttendees((prev) =>
       prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
     );
+  }
+
+  function removeAttendee(id: string) {
+    setAttendees((prev) => prev.filter((a) => a.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    if (selectedDetail === id) setSelectedDetail(null);
+  }
+
+  async function handleDelete(attendee: Attendee) {
+    setActionPending(attendee.id + "-delete");
+    startTransition(async () => {
+      const res = await deleteAttendee(eventId, attendee.id, eventSlug);
+      setActionPending(null);
+      if (res.success) {
+        removeAttendee(attendee.id);
+        toast.success(`${attendee.name} removed.`);
+      } else {
+        toast.error(res.error ?? "Delete failed.");
+      }
+      setDeleteTarget(null);
+    });
   }
 
   async function handleSend(attendee: Attendee) {
@@ -459,7 +498,7 @@ export default function AttendeeTable({
                 <input
                   ref={selectAllRef}
                   type="checkbox"
-                  checked={allVisibleSelected && filtered.length > 0}
+                  checked={allVisibleSelected && paginated.length > 0}
                   onChange={toggleSelectAll}
                   className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
                   aria-label="Select all visible attendees"
@@ -510,7 +549,7 @@ export default function AttendeeTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((attendee) => (
+              paginated.map((attendee) => (
                 <TableRow
                   key={attendee.id}
                   data-state={
@@ -645,6 +684,23 @@ export default function AttendeeTable({
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
+
+                      {!attendee.couponId && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(attendee)}
+                          disabled={actionPending === attendee.id + "-delete"}
+                          className="text-destructive hover:text-destructive"
+                          title="Delete attendee"
+                        >
+                          {actionPending === attendee.id + "-delete" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -736,9 +792,66 @@ export default function AttendeeTable({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground text-right">
-        Showing {filtered.length} of {attendees.length} attendees
-      </p>
+      <TablePagination
+        total={filtered.length}
+        page={currentPage}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+        itemLabel="attendees"
+      />
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Delete Attendee?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently remove the attendee record. Only attendees
+              without an assigned coupon can be deleted.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget && (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+              <p>
+                <span className="text-muted-foreground">Name:</span>{" "}
+                <span className="font-medium">{deleteTarget.name}</span>
+              </p>
+              <p>
+                <span className="text-muted-foreground">Email:</span>{" "}
+                <span className="font-medium">{deleteTarget.email}</span>
+              </p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              disabled={
+                actionPending === (deleteTarget?.id ?? "") + "-delete"
+              }
+              onClick={() => deleteTarget && handleDelete(deleteTarget)}
+            >
+              {actionPending === (deleteTarget?.id ?? "") + "-delete" ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={selectedDetail !== null}

@@ -194,6 +194,9 @@ export async function sendCouponEmail(
   notionGuideUrl: string,
   isResend = false
 ): Promise<{ success: boolean; error?: string }> {
+  if (!attendee.couponId) {
+    return { success: false, error: "No coupon assigned — cannot send email" };
+  }
   if (!attendee.claimToken) {
     return { success: false, error: "No claim token — coupon not assigned yet" };
   }
@@ -324,11 +327,11 @@ export async function sendCouponEmailsConcurrent(
   const results: BulkSendResult["results"] = new Array(attendees.length);
 
   await mapWithConcurrency(attendees, SEND_CONCURRENCY, async (attendee, i) => {
-    if (!attendee.claimToken) {
+    if (!attendee.couponId || !attendee.claimToken) {
       results[i] = {
         attendeeId: attendee.id,
         status: "skipped",
-        error: "No claim token — coupon not assigned yet",
+        error: "No coupon assigned — cannot send email",
       };
       return;
     }
@@ -375,20 +378,21 @@ export async function sendPendingEmails(
 export async function resendFailedEmails(
   eventId: string,
   notionGuideUrl: string
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; skipped: number }> {
   const snap = await adminDb
     .collection("events")
     .doc(eventId)
     .collection("attendees")
     .where("emailStatus", "==", "failed")
+    .where("couponId", "!=", null)
     .get();
 
   const attendees = snap.docs.map((doc) => doc.data() as Attendee);
-  const { sent, failed } = await sendCouponEmailsConcurrent(
+  const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
     attendees,
     notionGuideUrl,
     true
   );
 
-  return { sent, failed };
+  return { sent, failed, skipped };
 }

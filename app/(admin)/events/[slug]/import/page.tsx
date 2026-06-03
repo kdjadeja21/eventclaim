@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AttendeeImportResult, CouponImportResult } from "@/lib/types";
+import { EventSectionNav } from "../event-section-nav";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -46,6 +47,8 @@ export default function ImportPage({ params: paramsPromise }: Props) {
           </p>
         </div>
       </div>
+
+      <EventSectionNav slug={slug} active="import" />
 
       <Tabs defaultValue="attendees">
         <TabsList className="w-full">

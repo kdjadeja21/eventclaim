@@ -44,6 +44,9 @@ export async function sendSingleEmail(
     hasClaimToken: !!attendee.claimToken,
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
+  if (!attendee.couponId) {
+    return { success: false, error: "No coupon assigned — cannot send email" };
+  }
   const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", false);
   console.log("[sendSingleEmail] result", result);
   revalidatePath(`/events`);
@@ -64,6 +67,9 @@ export async function resendSingleEmail(
     hasClaimToken: !!attendee.claimToken,
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
+  if (!attendee.couponId) {
+    return { success: false, error: "No coupon assigned — cannot resend email" };
+  }
   const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", true);
   console.log("[resendSingleEmail] result", result);
   revalidatePath(`/events`);
@@ -85,7 +91,7 @@ export async function bulkSendPending(
 
 export async function bulkResendFailed(
   eventId: string
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; skipped: number }> {
   console.log("[bulkResendFailed] start", { eventId });
   await requireSession();
   const eventDoc = await adminDb.collection("events").doc(eventId).get();
@@ -150,6 +156,14 @@ export async function bulkSendSelected(
         continue;
       }
       const attendee = doc.data() as Attendee;
+      if (!attendee.couponId) {
+        results.push({
+          attendeeId: attendee.id,
+          status: "skipped",
+          error: "No coupon assigned — cannot send email",
+        });
+        continue;
+      }
       // In "send" mode, never re-send to someone already marked sent.
       if (!isResend && attendee.emailStatus === "sent") {
         results.push({

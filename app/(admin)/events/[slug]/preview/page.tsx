@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { getPreviewStats } from "./preview-actions";
 import { bulkSendPending, bulkResendFailed } from "../attendees/email-actions";
+import { EventSectionNav } from "../event-section-nav";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -63,8 +64,11 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
     if (!stats) return;
     startTransition(async () => {
       const result = await bulkResendFailed(stats.eventId);
-      if (result.failed > 0) {
-        toast.warning(`Resent: ${result.sent} · Still failed: ${result.failed}`);
+      if (result.failed > 0 || result.skipped > 0) {
+        const parts = [`Resent: ${result.sent}`];
+        if (result.failed > 0) parts.push(`Still failed: ${result.failed}`);
+        if (result.skipped > 0) parts.push(`Skipped (no coupon): ${result.skipped}`);
+        toast.warning(parts.join(" · "));
       } else {
         toast.success(`${result.sent} email${result.sent !== 1 ? "s" : ""} resent successfully`);
       }
@@ -90,6 +94,8 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
           </p>
         </div>
       </div>
+
+      <EventSectionNav slug={slug} active="preview" />
 
       {loading ? (
         <Card>

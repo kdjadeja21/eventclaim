@@ -5,6 +5,7 @@ import {
   useMemo,
   useTransition,
   useCallback,
+  useEffect,
 } from "react";
 import { toast } from "sonner";
 import {
@@ -63,6 +64,7 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { TablePagination } from "@/components/ui/table-pagination";
 import {
   autoAssignToAttendee,
   assignSpecificCoupon,
@@ -186,6 +188,12 @@ export default function CouponTable({
     key: SortKey;
     dir: SortDir;
   } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, search]);
 
   // Dialog states
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -239,6 +247,11 @@ export default function CouponTable({
     return sortCoupons(list, sortConfig);
   }, [coupons, filter, search, sortConfig]);
 
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
   const counts = useMemo(() => ({
     all: coupons.length,
     available: coupons.filter((c) => c.status === "available").length,
@@ -268,6 +281,7 @@ export default function CouponTable({
       if (prev?.key === key) return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
       return { key, dir: "asc" };
     });
+    setCurrentPage(1);
   }
 
   // ─── Assign dialog open: fetch fresh data ───────────────────────────────────
@@ -614,7 +628,7 @@ export default function CouponTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((coupon) => {
+              paginated.map((coupon) => {
                 const cfg = statusConfig[coupon.status];
                 const Icon = cfg.icon;
                 const isActing =
@@ -724,9 +738,14 @@ export default function CouponTable({
         </Table>
       </div>
 
-      <p className="text-xs text-muted-foreground text-right">
-        Showing {filtered.length} of {coupons.length} coupons
-      </p>
+      <TablePagination
+        total={filtered.length}
+        page={currentPage}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+        itemLabel="coupons"
+      />
 
       {/* ─── Assign Coupon Dialog ─────────────────────────────────────────────── */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>

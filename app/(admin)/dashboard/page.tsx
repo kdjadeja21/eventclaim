@@ -71,7 +71,7 @@ async function getDashboardData() {
   const auditSnap = await adminDb
     .collection("auditLogs")
     .orderBy("timestamp", "desc")
-    .limit(10)
+    .limit(5)
     .get();
 
   const recentActivity = auditSnap.docs.map((d) => ({
@@ -99,6 +99,7 @@ const actionLabels: Record<string, string> = {
   event_created: "Event created",
   event_updated: "Event updated",
   attendee_imported: "Attendees imported",
+  attendee_deleted: "Attendee deleted",
   coupon_imported: "Coupons imported",
   coupon_assigned: "Coupon assigned",
   email_sent: "Email sent",

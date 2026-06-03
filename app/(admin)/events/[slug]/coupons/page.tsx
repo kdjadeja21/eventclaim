@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import CouponTable from "./coupon-table";
-import { CouponStats } from "@/lib/types";
+import { EventSectionNav } from "../event-section-nav";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -44,6 +44,8 @@ export default async function CouponsPage({ params }: Props) {
           </p>
         </div>
       </div>
+
+      <EventSectionNav slug={slug} active="coupons" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard

@@ -11,6 +11,7 @@ export type AuditAction =
   | "event_updated"
   | "event_deleted"
   | "attendee_imported"
+  | "attendee_deleted"
   | "coupon_imported"
   | "coupon_assigned"
   | "coupon_unassigned"
