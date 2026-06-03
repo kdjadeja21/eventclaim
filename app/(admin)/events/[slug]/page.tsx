@@ -58,6 +58,12 @@ export default async function EventDetailPage({ params }: Props) {
       description: "View, search, filter, and send emails",
     },
     {
+      href: `/events/${slug}/coupons`,
+      label: "Manage Coupons",
+      icon: Ticket,
+      description: "Assign, unassign, add, and track coupons",
+    },
+    {
       href: `/events/${slug}/preview`,
       label: "Preview & Send",
       icon: Send,
@@ -123,7 +129,7 @@ export default async function EventDetailPage({ params }: Props) {
       </div>
 
       {/* Quick links */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {quickLinks.map(({ href, label, icon: Icon, description }) => (
           <Link key={href} href={href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">

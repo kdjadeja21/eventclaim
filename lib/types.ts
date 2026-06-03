@@ -12,6 +12,8 @@ export type AuditAction =
   | "attendee_imported"
   | "coupon_imported"
   | "coupon_assigned"
+  | "coupon_unassigned"
+  | "coupon_added"
   | "email_sent"
   | "email_resent"
   | "email_failed"
@@ -100,6 +102,24 @@ export interface CouponImportResult {
   invalidSkipped: number;
   autoAssigned: number;
   errors: string[];
+}
+
+// ─── Coupon Management Types ──────────────────────────────────────────────────
+
+export interface CouponWithAttendee extends Coupon {
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+}
+
+export interface CouponStats {
+  total: number;
+  available: number;
+  assigned: number;
+  emailSent: number;
+  claimed: number;
+  unclaimed: number;
+  assignRate: number;
+  claimRate: number;
 }
 
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────

@@ -17,13 +17,13 @@ const actionVariant: Record<
   string,
   "default" | "success" | "info" | "warning" | "destructive" | "secondary"
 > = {
-  event_created: "info",
-  event_updated: "secondary",
+  event_created: "default",
+  event_updated: "info",
   attendee_imported: "info",
   coupon_imported: "info",
   coupon_assigned: "success",
   email_sent: "success",
-  email_resent: "info",
+  email_resent: "warning",
   email_failed: "destructive",
   coupon_claimed: "success",
   status_checked: "secondary",
