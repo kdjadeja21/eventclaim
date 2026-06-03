@@ -11,6 +11,69 @@ const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID!;
 const EMAILJS_PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY!;
 const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY!;
 
+// How many emails to send in parallel during bulk operations. Kept low to
+// respect EmailJS rate limits while still being far faster than serial sends.
+const SEND_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.EMAIL_SEND_CONCURRENCY) || 5
+);
+// Max retry attempts for a single email on transient (429 / 5xx) failures.
+const SEND_MAX_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Fixed-size worker pool: runs `worker` over `items` with at most `limit`
+// concurrent executions. Each item is processed exactly once.
+async function mapWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  const poolSize = Math.min(Math.max(1, limit), items.length);
+  const runners = Array.from({ length: poolSize }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+}
+
+// POST to EmailJS with retry + backoff on rate limiting (429) and 5xx errors.
+async function postEmailJs(body: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(
+      "https://api.emailjs.com/api/v1.0/email/send",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      }
+    );
+
+    const retryable = response.status === 429 || response.status >= 500;
+    if (response.ok || !retryable || attempt >= SEND_MAX_RETRIES) {
+      return response;
+    }
+
+    const retryAfterHeader = Number(response.headers.get("retry-after"));
+    const backoffMs =
+      Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+        ? retryAfterHeader * 1000
+        : Math.min(2000 * 2 ** attempt, 10_000);
+    console.warn("[postEmailJs] retrying", {
+      status: response.status,
+      attempt: attempt + 1,
+      backoffMs,
+    });
+    // Add jitter to avoid synchronized retries across concurrent sends.
+    await sleep(backoffMs + Math.floor(Math.random() * 250));
+  }
+}
+
 // ─── Email Template ────────────────────────────────────────────────────────────
 
 function buildEmailHtml(params: {
@@ -144,10 +207,8 @@ export async function sendCouponEmail(
   });
 
   try {
-    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const response = await postEmailJs(
+      JSON.stringify({
         service_id: EMAILJS_SERVICE_ID,
         template_id: EMAILJS_TEMPLATE_ID,
         user_id: EMAILJS_PUBLIC_KEY,
@@ -162,8 +223,8 @@ export async function sendCouponEmail(
             notionGuideUrl,
           }),
         },
-      }),
-    });
+      })
+    );
 
     console.log("[sendCouponEmail] emailjs response", { status: response.status });
 
@@ -241,6 +302,50 @@ export async function sendCouponEmail(
   }
 }
 
+// ─── Concurrent bulk send ────────────────────────────────────────────────────
+
+export type AttendeeSendStatus = "sent" | "failed" | "skipped";
+
+export interface BulkSendResult {
+  sent: number;
+  failed: number;
+  skipped: number;
+  results: { attendeeId: string; status: AttendeeSendStatus; error?: string }[];
+}
+
+// Sends to many attendees in parallel (bounded by SEND_CONCURRENCY) and returns
+// a per-attendee outcome so callers can update UI/state accurately. Attendees
+// without a claim token are skipped (their coupon is not assigned yet).
+export async function sendCouponEmailsConcurrent(
+  attendees: Attendee[],
+  notionGuideUrl: string,
+  isResend: boolean
+): Promise<BulkSendResult> {
+  const results: BulkSendResult["results"] = new Array(attendees.length);
+
+  await mapWithConcurrency(attendees, SEND_CONCURRENCY, async (attendee, i) => {
+    if (!attendee.claimToken) {
+      results[i] = {
+        attendeeId: attendee.id,
+        status: "skipped",
+        error: "No claim token — coupon not assigned yet",
+      };
+      return;
+    }
+
+    const result = await sendCouponEmail(attendee, notionGuideUrl, isResend);
+    results[i] = result.success
+      ? { attendeeId: attendee.id, status: "sent" }
+      : { attendeeId: attendee.id, status: "failed", error: result.error };
+  });
+
+  const sent = results.filter((r) => r.status === "sent").length;
+  const failed = results.filter((r) => r.status === "failed").length;
+  const skipped = results.filter((r) => r.status === "skipped").length;
+
+  return { sent, failed, skipped, results };
+}
+
 // ─── Bulk send pending emails ──────────────────────────────────────────────────
 
 export async function sendPendingEmails(
@@ -255,18 +360,12 @@ export async function sendPendingEmails(
     .where("couponId", "!=", null)
     .get();
 
-  let sent = 0;
-  let failed = 0;
-  let skipped = 0;
-
-  for (const doc of snap.docs) {
-    const attendee = doc.data() as Attendee;
-    if (!attendee.claimToken) { skipped++; continue; }
-
-    const result = await sendCouponEmail(attendee, notionGuideUrl, false);
-    if (result.success) sent++;
-    else failed++;
-  }
+  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
+    attendees,
+    notionGuideUrl,
+    false
+  );
 
   return { sent, failed, skipped };
 }
@@ -284,15 +383,12 @@ export async function resendFailedEmails(
     .where("emailStatus", "==", "failed")
     .get();
 
-  let sent = 0;
-  let failed = 0;
-
-  for (const doc of snap.docs) {
-    const attendee = doc.data() as Attendee;
-    const result = await sendCouponEmail(attendee, notionGuideUrl, true);
-    if (result.success) sent++;
-    else failed++;
-  }
+  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const { sent, failed } = await sendCouponEmailsConcurrent(
+    attendees,
+    notionGuideUrl,
+    true
+  );
 
   return { sent, failed };
 }

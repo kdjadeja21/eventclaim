@@ -282,26 +282,64 @@ export default function AttendeeTable({
 
     setBulkPending(true);
     const ids = targets.map((a) => a.id);
-    const res = await bulkSendSelected(eventId, ids, mode);
     const now = new Date().toISOString();
 
-    if (res.success === ids.length) {
-      targets.forEach((a) =>
-        updateAttendee(a.id, { emailStatus: "sent", emailSentAt: now })
-      );
-      toast.success(
-        mode === "send"
-          ? `Sent ${res.success} email${res.success !== 1 ? "s" : ""}`
-          : `Resent ${res.success} email${res.success !== 1 ? "s" : ""}`
-      );
-    } else if (res.failed === ids.length) {
-      targets.forEach((a) => updateAttendee(a.id, { emailStatus: "failed" }));
-      toast.error(`All ${res.failed} email${res.failed !== 1 ? "s" : ""} failed`);
-    } else {
-      toast.warning(`${res.success} succeeded, ${res.failed} failed`);
-    }
+    // Send in chunks so a single server action call never risks a timeout, and
+    // the admin sees progress as each chunk completes.
+    const CHUNK_SIZE = 25;
+    let success = 0;
+    let failed = 0;
+    let skipped = 0;
 
-    setBulkPending(false);
+    const toastId = toast.loading(`Sending 0 / ${ids.length}…`);
+
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunkIds = ids.slice(i, i + CHUNK_SIZE);
+        const res = await bulkSendSelected(eventId, chunkIds, mode);
+
+        // Apply the precise per-attendee outcome returned by the server.
+        for (const r of res.results) {
+          if (r.status === "sent") {
+            updateAttendee(r.attendeeId, {
+              emailStatus: "sent",
+              emailSentAt: now,
+            });
+          } else if (r.status === "failed") {
+            updateAttendee(r.attendeeId, { emailStatus: "failed" });
+          }
+        }
+
+        success += res.success;
+        failed += res.failed;
+        skipped += res.skipped;
+
+        toast.loading(
+          `Sending ${Math.min(i + CHUNK_SIZE, ids.length)} / ${ids.length}…`,
+          { id: toastId }
+        );
+      }
+
+      const verb = mode === "send" ? "Sent" : "Resent";
+      if (failed === 0 && skipped === 0) {
+        toast.success(`${verb} ${success} email${success !== 1 ? "s" : ""}`, {
+          id: toastId,
+        });
+      } else if (success === 0 && failed > 0) {
+        toast.error(`All ${failed} email${failed !== 1 ? "s" : ""} failed`, {
+          id: toastId,
+        });
+      } else {
+        const parts = [`${success} ${verb.toLowerCase()}`];
+        if (failed > 0) parts.push(`${failed} failed`);
+        if (skipped > 0) parts.push(`${skipped} skipped`);
+        toast.warning(parts.join(", "), { id: toastId });
+      }
+    } catch {
+      toast.error("Bulk send failed unexpectedly", { id: toastId });
+    } finally {
+      setBulkPending(false);
+    }
   }
 
   async function openDetail(attendeeId: string) {

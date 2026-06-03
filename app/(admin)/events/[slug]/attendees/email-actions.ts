@@ -2,7 +2,13 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
-import { sendCouponEmail, sendPendingEmails, resendFailedEmails } from "@/lib/email";
+import {
+  sendCouponEmail,
+  sendPendingEmails,
+  resendFailedEmails,
+  sendCouponEmailsConcurrent,
+  type AttendeeSendStatus,
+} from "@/lib/email";
 import { Attendee } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 
@@ -94,20 +100,82 @@ export async function bulkSendSelected(
   eventId: string,
   attendeeIds: string[],
   mode: "send" | "resend"
-): Promise<{ success: number; failed: number }> {
+): Promise<{
+  success: number;
+  failed: number;
+  skipped: number;
+  results: { attendeeId: string; status: AttendeeSendStatus; error?: string }[];
+}> {
+  console.log("[bulkSendSelected] start", {
+    eventId,
+    count: attendeeIds.length,
+    mode,
+  });
+  // Validate the session and load the event a single time for the whole batch,
+  // instead of once per attendee.
   await requireSession();
-  let success = 0;
-  let failed = 0;
 
-  for (const attendeeId of attendeeIds) {
-    const result =
-      mode === "send"
-        ? await sendSingleEmail(eventId, attendeeId)
-        : await resendSingleEmail(eventId, attendeeId);
-    if (result.success) success++;
-    else failed++;
+  const eventDoc = await adminDb.collection("events").doc(eventId).get();
+  if (!eventDoc.exists) throw new Error("Event not found");
+  const notionGuideUrl = eventDoc.data()!.notionGuideUrl || "";
+
+  const isResend = mode === "resend";
+  const attendeesRef = adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("attendees");
+
+  // Batch-read all selected attendees. Firestore getAll accepts many refs; we
+  // chunk defensively to keep individual reads bounded.
+  const results: {
+    attendeeId: string;
+    status: AttendeeSendStatus;
+    error?: string;
+  }[] = [];
+  const toSend: Attendee[] = [];
+
+  const READ_CHUNK = 300;
+  for (let i = 0; i < attendeeIds.length; i += READ_CHUNK) {
+    const idsChunk = attendeeIds.slice(i, i + READ_CHUNK);
+    const refs = idsChunk.map((id) => attendeesRef.doc(id));
+    const docs = await adminDb.getAll(...refs);
+
+    for (const doc of docs) {
+      if (!doc.exists) {
+        results.push({
+          attendeeId: doc.id,
+          status: "skipped",
+          error: "Attendee not found",
+        });
+        continue;
+      }
+      const attendee = doc.data() as Attendee;
+      // In "send" mode, never re-send to someone already marked sent.
+      if (!isResend && attendee.emailStatus === "sent") {
+        results.push({
+          attendeeId: attendee.id,
+          status: "skipped",
+          error: "Already sent",
+        });
+        continue;
+      }
+      toSend.push(attendee);
+    }
   }
 
+  const sendResult = await sendCouponEmailsConcurrent(
+    toSend,
+    notionGuideUrl,
+    isResend
+  );
+  results.push(...sendResult.results);
+
   revalidatePath(`/events`);
-  return { success, failed };
+
+  const success = results.filter((r) => r.status === "sent").length;
+  const failed = results.filter((r) => r.status === "failed").length;
+  const skipped = results.filter((r) => r.status === "skipped").length;
+
+  console.log("[bulkSendSelected] result", { success, failed, skipped });
+  return { success, failed, skipped, results };
 }

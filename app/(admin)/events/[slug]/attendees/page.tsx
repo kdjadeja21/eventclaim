@@ -6,6 +6,12 @@ import { getEventBySlug } from "../../actions";
 import { Button } from "@/components/ui/button";
 import AttendeeTable from "./attendee-table";
 
+// Bulk email sends run as Server Actions invoked from this page. Raise the
+// default execution limit so larger batches have room to finish on platforms
+// that honor maxDuration (e.g. Vercel). Client-side chunking keeps each call
+// well under this ceiling.
+export const maxDuration = 300;
+
 type Props = { params: Promise<{ slug: string }> };
 
 export default async function AttendeesPage({ params }: Props) {
