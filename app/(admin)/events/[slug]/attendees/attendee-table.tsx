@@ -19,6 +19,7 @@ import {
   ArrowUpDown,
   X,
   Trash2,
+  Settings2,
 } from "lucide-react";
 import { Attendee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -608,22 +609,44 @@ export default function AttendeeTable({
     <div className={cn("space-y-4", hasSelection && "pb-20")}>
       {lumaApiEnabled && (
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLumaDialogOpen(true)}
-            disabled={isFetching}
-          >
-            {isFetching ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            {isFetching ? "Fetching from Luma…" : "Fetch from Luma"}
-          </Button>
+          {lumaConfig.lumaEventId ? (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runSync(lumaConfig)}
+                disabled={isFetching}
+              >
+                {isFetching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                {isFetching ? "Fetching…" : "Fetch Now"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setLumaDialogOpen(true)}
+                disabled={isFetching}
+                title="Luma fetch settings"
+              >
+                <Settings2 className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLumaDialogOpen(true)}
+            >
+              <Settings2 className="h-4 w-4" />
+              Configure Luma
+            </Button>
+          )}
           {lastSyncedAt && (
             <span className="text-xs text-muted-foreground">
-              Last updated: {formatDateTime(lastSyncedAt)}
+              Last synced: {formatDateTime(lastSyncedAt)}
             </span>
           )}
         </div>

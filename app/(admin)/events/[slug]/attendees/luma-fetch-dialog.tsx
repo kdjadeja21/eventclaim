@@ -111,6 +111,7 @@ export default function LumaFetchDialog({
   }
 
   const canFetch = draft.lumaEventId.trim().length > 0;
+  const hasUnsavedChanges = JSON.stringify(draft) !== JSON.stringify(config);
   const intervalLabel = draft.intervalMinutes <= 0
     ? "Off (manual only)"
     : `Every ${draft.intervalMinutes} min`;
@@ -300,32 +301,36 @@ export default function LumaFetchDialog({
           </div>
 
           {/* Action buttons */}
-          <div className="flex gap-2 pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              disabled={!canFetch || isFetching}
-              onClick={() => {
-                onConfigChange(draft);
-                onFetchNow();
-              }}
-            >
-              {isFetching ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              {isFetching ? "Fetching…" : "Fetch Now"}
-            </Button>
-            <Button
-              size="sm"
-              className="flex-1"
-              disabled={!canFetch}
-              onClick={handleSave}
-            >
-              Save & Close
-            </Button>
+          <div className="space-y-2 pt-1">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={!canFetch || isFetching || hasUnsavedChanges}
+                onClick={onFetchNow}
+              >
+                {isFetching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {isFetching ? "Fetching…" : "Fetch Now"}
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1"
+                disabled={!canFetch}
+                onClick={handleSave}
+              >
+                Save & Close
+              </Button>
+            </div>
+            {hasUnsavedChanges && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 text-center">
+                You have unsaved changes — save before fetching.
+              </p>
+            )}
           </div>
         </div>
       </DialogContent>

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cursor Community — Event Coupon Platform",
+  title: "Cursor Community | Event Coupon Distribution Platform",
   description:
     "Distribute Cursor credits to event attendees securely and track claims.",
 };
