@@ -56,7 +56,14 @@ import {
 import {
   deleteAttendee,
   getAttendeeDetail,
+  syncLumaGuests,
 } from "./attendee-data-actions";
+import LumaFetchDialog, {
+  LumaFetchConfig,
+  defaultConfig,
+  getStoredConfig,
+  saveStoredConfig,
+} from "./luma-fetch-dialog";
 
 type Filter =
   | "all"
@@ -132,10 +139,12 @@ export default function AttendeeTable({
   attendees: initial,
   eventId,
   eventSlug,
+  initialLumaLastSyncedAt,
 }: {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
+  initialLumaLastSyncedAt?: string | null;
 }) {
   const [attendees, setAttendees] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
@@ -155,8 +164,112 @@ export default function AttendeeTable({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Attendee | null>(null);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
+
+  // ── Luma fetch state ──────────────────────────────────────────────────────
+  const [lumaDialogOpen, setLumaDialogOpen] = useState(false);
+  const [lumaConfig, setLumaConfig] = useState<LumaFetchConfig>(() => {
+    // Will be replaced client-side by localStorage in useEffect
+    return defaultConfig;
+  });
+  const [isFetching, setIsFetching] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(
+    initialLumaLastSyncedAt ?? null
+  );
+  const [lastRunStatus, setLastRunStatus] = useState<{
+    addedCount: number;
+    skipped: number;
+    totalFetched: number;
+    checkedInCount: number;
+    noCheckedInRecords: boolean;
+    checkedInOnly: boolean;
+  } | null>(null);
+  const [newlyAddedIds, setNewlyAddedIds] = useState<Set<string>>(new Set());
+  const inFlightRef = useRef(false);
+
+  // Load persisted config from localStorage on mount
+  useEffect(() => {
+    const stored = getStoredConfig(eventSlug);
+    if (stored) setLumaConfig(stored);
+  }, [eventSlug]);
+
+  // Auto-fetch interval
+  useEffect(() => {
+    if (!lumaConfig.autoFetch || lumaConfig.intervalMinutes <= 0 || !lumaConfig.lumaEventId) {
+      return;
+    }
+    const ms = lumaConfig.intervalMinutes * 60 * 1000;
+    const id = setInterval(() => runSync(lumaConfig), ms);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lumaConfig.autoFetch, lumaConfig.intervalMinutes, lumaConfig.lumaEventId]);
+
+  async function runSync(cfg: LumaFetchConfig) {
+    if (inFlightRef.current || !cfg.lumaEventId) return;
+    inFlightRef.current = true;
+    setIsFetching(true);
+
+    const res = await syncLumaGuests(eventSlug, {
+      event_id: cfg.lumaEventId,
+      approval_status: cfg.approvalStatus === "any" ? undefined : cfg.approvalStatus,
+      sort_column: cfg.sortColumn === "none" ? undefined : cfg.sortColumn,
+      sort_direction: cfg.sortDirection === "none" ? undefined : cfg.sortDirection,
+    }, cfg.checkedInOnly);
+
+    setIsFetching(false);
+    inFlightRef.current = false;
+
+    if (res.error) {
+      toast.error(`Luma sync failed: ${res.error}`);
+      return;
+    }
+
+    if (res.added.length > 0) {
+      setAttendees((prev) => {
+        const existingIds = new Set(prev.map((a) => a.id));
+        const fresh = res.added.filter((a) => !existingIds.has(a.id));
+        return [...fresh, ...prev];
+      });
+    }
+
+    // Mark newly added rows only when there were also skipped (existing) records —
+    // that's when the "New" badge helps distinguish fresh vs. old.
+    if (res.skipped > 0 && res.added.length > 0) {
+      setNewlyAddedIds(new Set(res.added.map((a) => a.id)));
+    } else {
+      setNewlyAddedIds(new Set());
+    }
+
+    setLastSyncedAt(res.syncedAt);
+    setLastRunStatus({
+      addedCount: res.addedCount,
+      skipped: res.skipped,
+      totalFetched: res.totalFetched,
+      checkedInCount: res.checkedInCount,
+      noCheckedInRecords: res.noCheckedInRecords,
+      checkedInOnly: cfg.checkedInOnly,
+    });
+
+    if (res.noCheckedInRecords) {
+      toast.warning(
+        `No checked-in guests found (${res.totalFetched} fetched from Luma, none checked in)`
+      );
+    } else if (res.addedCount > 0) {
+      toast.success(
+        `Luma sync: ${res.addedCount} added, ${res.skipped} skipped (${res.totalFetched} total)`
+      );
+    } else {
+      toast.info(`Luma sync: no new guests (${res.totalFetched} fetched, ${res.skipped} skipped)`);
+    }
+  }
+
+  function handleConfigChange(cfg: LumaFetchConfig) {
+    setLumaConfig(cfg);
+    saveStoredConfig(eventSlug, cfg);
+  }
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -269,6 +382,36 @@ export default function AttendeeTable({
       }
       setDeleteTarget(null);
     });
+  }
+
+  async function handleBulkDelete() {
+    const targets = selectedAttendees.filter((a) => !a.couponId);
+    if (targets.length === 0) return;
+    setBulkDeletePending(true);
+    setBulkDeleteConfirm(false);
+
+    let deleted = 0;
+    let failed = 0;
+    const toastId = toast.loading(`Deleting 0 / ${targets.length}…`);
+
+    for (let i = 0; i < targets.length; i++) {
+      const attendee = targets[i];
+      const res = await deleteAttendee(eventId, attendee.id, eventSlug);
+      if (res.success) {
+        removeAttendee(attendee.id);
+        deleted++;
+      } else {
+        failed++;
+      }
+      toast.loading(`Deleting ${i + 1} / ${targets.length}…`, { id: toastId });
+    }
+
+    setBulkDeletePending(false);
+    if (failed === 0) {
+      toast.success(`Deleted ${deleted} attendee${deleted !== 1 ? "s" : ""}`, { id: toastId });
+    } else {
+      toast.warning(`Deleted ${deleted}, failed ${failed}`, { id: toastId });
+    }
   }
 
   async function handleSend(attendee: Attendee) {
@@ -451,11 +594,36 @@ export default function AttendeeTable({
   const bulkRetryCount = selectedAttendees.filter(
     (a) => a.emailStatus === "failed"
   ).length;
+  const bulkDeleteCount = selectedAttendees.filter(
+    (a) => !a.couponId
+  ).length;
 
   const hasSelection = selectedIds.size > 0;
 
   return (
     <div className={cn("space-y-4", hasSelection && "pb-20")}>
+      {/* Luma sync bar above main toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLumaDialogOpen(true)}
+          disabled={isFetching}
+        >
+          {isFetching ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          {isFetching ? "Fetching from Luma…" : "Fetch from Luma"}
+        </Button>
+        {lastSyncedAt && (
+          <span className="text-xs text-muted-foreground">
+            Last updated: {formatDateTime(lastSyncedAt)}
+          </span>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -569,8 +737,15 @@ export default function AttendeeTable({
                     />
                   </TableCell>
                   <TableCell className="min-w-40">
-                    <div className="font-medium text-sm leading-tight">
-                      {attendee.name}
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-sm leading-tight">
+                        {attendee.name}
+                      </span>
+                      {newlyAddedIds.has(attendee.id) && (
+                        <Badge variant="success" className="px-1.5 py-0 text-[10px] leading-4 shrink-0">
+                          New
+                        </Badge>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {attendee.email}
@@ -773,7 +948,7 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkPending}
+              disabled={bulkPending || bulkDeletePending}
               onClick={() => exportCsv(selectedAttendees)}
             >
               <Download className="h-3.5 w-3.5" />
@@ -781,8 +956,22 @@ export default function AttendeeTable({
             </Button>
             <Button
               size="sm"
+              variant="destructive"
+              disabled={bulkPending || bulkDeletePending || bulkDeleteCount === 0}
+              onClick={() => setBulkDeleteConfirm(true)}
+            >
+              {bulkDeletePending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete
+              {bulkDeleteCount > 0 && ` (${bulkDeleteCount})`}
+            </Button>
+            <Button
+              size="sm"
               variant="ghost"
-              disabled={bulkPending}
+              disabled={bulkPending || bulkDeletePending}
               onClick={() => setSelectedIds(new Set())}
             >
               <X className="h-3.5 w-3.5" />
@@ -853,6 +1042,37 @@ export default function AttendeeTable({
         </DialogContent>
       </Dialog>
 
+      {/* Bulk delete confirmation */}
+      <Dialog open={bulkDeleteConfirm} onOpenChange={(open) => !open && setBulkDeleteConfirm(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Delete {bulkDeleteCount} Attendee{bulkDeleteCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently remove {bulkDeleteCount} attendee{bulkDeleteCount !== 1 ? "s" : ""} without an assigned coupon. Attendees with a coupon will be skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkDeleteConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={handleBulkDelete}
+            >
+              Delete {bulkDeleteCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={selectedDetail !== null}
         onOpenChange={(open) => !open && setSelectedDetail(null)}
@@ -873,6 +1093,14 @@ export default function AttendeeTable({
               <DetailSection title="Attendee">
                 <DetailRow label="Name" value={detailData.attendee.name} />
                 <DetailRow label="Email" value={detailData.attendee.email} />
+                <DetailRow
+                  label="Registered At"
+                  value={formatDateTime(detailData.attendee.registeredAt)}
+                />
+                <DetailRow
+                  label="Checked In At"
+                  value={formatDateTime(detailData.attendee.checkedInAt)}
+                />
                 <DetailRow
                   label="Created At"
                   value={formatDateTime(detailData.attendee.createdAt)}
@@ -913,6 +1141,18 @@ export default function AttendeeTable({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <LumaFetchDialog
+        open={lumaDialogOpen}
+        onOpenChange={setLumaDialogOpen}
+        eventSlug={eventSlug}
+        lastSyncedAt={lastSyncedAt}
+        isFetching={isFetching}
+        lastRunStatus={lastRunStatus}
+        config={lumaConfig}
+        onConfigChange={handleConfigChange}
+        onFetchNow={() => runSync(lumaConfig)}
+      />
     </div>
   );
 }

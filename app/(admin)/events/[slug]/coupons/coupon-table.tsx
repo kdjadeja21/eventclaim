@@ -6,7 +6,9 @@ import {
   useTransition,
   useCallback,
   useEffect,
+  useRef,
 } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Search,
@@ -29,6 +31,7 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  X,
 } from "lucide-react";
 import { CouponWithAttendee, CouponStats } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -181,6 +184,11 @@ export default function CouponTable({
   stats: CouponStats;
 }) {
   const [coupons, setCoupons] = useState(initial);
+  const router = useRouter();
+
+  useEffect(() => {
+    setCoupons(initial);
+  }, [initial]);
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [search, setSearch] = useState("");
   const [showCouponLinks, setShowCouponLinks] = useState(false);
@@ -191,9 +199,18 @@ export default function CouponTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  // ─── Row selection ──────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [bulkUnassignConfirm, setBulkUnassignConfirm] = useState(false);
+  const [bulkUnassignPending, setBulkUnassignPending] = useState(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
+    setSelectedIds(new Set());
     setCurrentPage(1);
-  }, [filter, search]);
+  }, [filter, search, sortConfig]);
 
   // Dialog states
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
@@ -268,11 +285,67 @@ export default function CouponTable({
 
   function removeCoupon(id: string) {
     setCoupons((prev) => prev.filter((c) => c.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function addCouponToList(coupon: CouponWithAttendee) {
     setCoupons((prev) => [coupon, ...prev]);
   }
+
+  // ─── Selection helpers ──────────────────────────────────────────────────────
+
+  const allVisibleSelected =
+    paginated.length > 0 && paginated.every((c) => selectedIds.has(c.id));
+  const someVisibleSelected =
+    paginated.some((c) => selectedIds.has(c.id)) && !allVisibleSelected;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someVisibleSelected;
+    }
+  }, [someVisibleSelected, selectedIds, paginated]);
+
+  function toggleSelectAll() {
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        paginated.forEach((c) => next.delete(c.id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        paginated.forEach((c) => next.add(c.id));
+        return next;
+      });
+    }
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const selectedCoupons = useMemo(
+    () => coupons.filter((c) => selectedIds.has(c.id)),
+    [coupons, selectedIds]
+  );
+
+  const bulkDeleteCount = selectedCoupons.filter(
+    (c) => c.status === "available"
+  ).length;
+  const bulkUnassignCount = selectedCoupons.filter(
+    (c) => c.status === "assigned" || c.status === "emailSent"
+  ).length;
+  const hasSelection = selectedIds.size > 0;
 
   // ─── Sort toggle ─────────────────────────────────────────────────────────────
 
@@ -312,7 +385,7 @@ export default function CouponTable({
       toast.success("Coupon auto-assigned successfully.");
       setAssignDialogOpen(false);
       // Refresh list from server — simplest approach is to reload
-      window.location.reload();
+      router.refresh();
     } else {
       toast.error(res.error ?? "Assignment failed.");
     }
@@ -333,7 +406,7 @@ export default function CouponTable({
     if (res.success) {
       toast.success("Coupon assigned successfully.");
       setAssignDialogOpen(false);
-      window.location.reload();
+      router.refresh();
     } else {
       toast.error(res.error ?? "Assignment failed.");
     }
@@ -400,7 +473,7 @@ export default function CouponTable({
       toast.success(parts.join(", ") || "No new coupons imported.");
       setAddText("");
       setAddDialogOpen(false);
-      window.location.reload();
+      router.refresh();
     } else {
       toast.error(res.error ?? "Failed to add coupons.");
     }
@@ -417,12 +490,85 @@ export default function CouponTable({
         toast.success(
           `${res.assigned} attendee${res.assigned !== 1 ? "s" : ""} assigned coupons.`
         );
-        window.location.reload();
+        router.refresh();
       } else {
         toast.info("No pending attendees to assign.");
       }
     } else {
       toast.error(res.error ?? "Bulk assign failed.");
+    }
+  }
+
+  // ─── Handle bulk delete (available coupons only) ─────────────────────────────
+
+  async function handleBulkDelete() {
+    const targets = selectedCoupons.filter((c) => c.status === "available");
+    if (targets.length === 0) return;
+    setBulkDeletePending(true);
+    setBulkDeleteConfirm(false);
+
+    let deleted = 0;
+    let failed = 0;
+    const toastId = toast.loading(`Deleting 0 / ${targets.length}…`);
+
+    for (let i = 0; i < targets.length; i++) {
+      const coupon = targets[i];
+      const res = await deleteCoupon(eventId, coupon.id, eventSlug);
+      if (res.success) {
+        removeCoupon(coupon.id);
+        deleted++;
+      } else {
+        failed++;
+      }
+      toast.loading(`Deleting ${i + 1} / ${targets.length}…`, { id: toastId });
+    }
+
+    setBulkDeletePending(false);
+    if (failed === 0) {
+      toast.success(`Deleted ${deleted} coupon${deleted !== 1 ? "s" : ""}`, { id: toastId });
+    } else {
+      toast.warning(`Deleted ${deleted}, failed ${failed}`, { id: toastId });
+    }
+  }
+
+  // ─── Handle bulk unassign (assigned / emailSent coupons) ──────────────────────
+
+  async function handleBulkUnassign() {
+    const targets = selectedCoupons.filter(
+      (c) => c.status === "assigned" || c.status === "emailSent"
+    );
+    if (targets.length === 0) return;
+    setBulkUnassignPending(true);
+    setBulkUnassignConfirm(false);
+
+    let unassigned = 0;
+    let failed = 0;
+    const toastId = toast.loading(`Unassigning 0 / ${targets.length}…`);
+
+    for (let i = 0; i < targets.length; i++) {
+      const coupon = targets[i];
+      const res = await unassignCoupon(eventId, coupon.id, eventSlug);
+      if (res.success) {
+        updateCoupon(coupon.id, {
+          status: "available",
+          assignedTo: null,
+          assignedAt: null,
+          claimedAt: null,
+          attendeeName: null,
+          attendeeEmail: null,
+        });
+        unassigned++;
+      } else {
+        failed++;
+      }
+      toast.loading(`Unassigning ${i + 1} / ${targets.length}…`, { id: toastId });
+    }
+
+    setBulkUnassignPending(false);
+    if (failed === 0) {
+      toast.success(`Unassigned ${unassigned} coupon${unassigned !== 1 ? "s" : ""}`, { id: toastId });
+    } else {
+      toast.warning(`Unassigned ${unassigned}, failed ${failed}`, { id: toastId });
     }
   }
 
@@ -436,7 +582,8 @@ export default function CouponTable({
 
   // ─── Export CSV ─────────────────────────────────────────────────────────────
 
-  function exportCsv() {
+  function exportCsv(rows?: CouponWithAttendee[]) {
+    const data = rows ?? filtered;
     const headers = [
       "Coupon ID",
       "Coupon Link",
@@ -447,7 +594,7 @@ export default function CouponTable({
       "Assigned At",
       "Claimed At",
     ];
-    const rows = filtered.map((c) => [
+    const csvRows = data.map((c) => [
       c.id,
       c.couponLink,
       c.status,
@@ -457,7 +604,7 @@ export default function CouponTable({
       c.assignedAt ?? "",
       c.claimedAt ?? "",
     ]);
-    const csv = [headers, ...rows]
+    const csv = [headers, ...csvRows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -472,7 +619,7 @@ export default function CouponTable({
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className={cn("space-y-4", hasSelection && "pb-20")}>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-48">
@@ -535,7 +682,7 @@ export default function CouponTable({
           Add Coupons
         </Button>
 
-        <Button size="sm" variant="outline" onClick={exportCsv}>
+        <Button size="sm" variant="outline" onClick={() => exportCsv()}>
           <Download className="h-4 w-4" />
           Export CSV
         </Button>
@@ -546,6 +693,16 @@ export default function CouponTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allVisibleSelected && paginated.length > 0}
+                  onChange={toggleSelectAll}
+                  className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  aria-label="Select all visible coupons"
+                />
+              </TableHead>
               <SortableHead
                 label="Status"
                 sortKey="status"
@@ -621,7 +778,7 @@ export default function CouponTable({
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="text-center py-12 text-muted-foreground text-sm"
                 >
                   No coupons match this filter.
@@ -636,7 +793,20 @@ export default function CouponTable({
                   actionPending === coupon.id + "-delete";
 
                 return (
-                  <TableRow key={coupon.id}>
+                  <TableRow
+                    key={coupon.id}
+                    data-state={selectedIds.has(coupon.id) ? "selected" : undefined}
+                    className={cn(selectedIds.has(coupon.id) && "bg-muted/50")}
+                  >
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(coupon.id)}
+                        onChange={() => toggleRow(coupon.id)}
+                        className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                        aria-label={`Select coupon ${coupon.id}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Badge variant={cfg.variant} className="gap-1">
                         <Icon className="h-3 w-3" />
@@ -746,6 +916,129 @@ export default function CouponTable({
         onPageSizeChange={setPageSize}
         itemLabel="coupons"
       />
+
+      {/* ─── Bulk action panel ─────────────────────────────────────────────────── */}
+      {hasSelection && (
+        <div
+          role="toolbar"
+          aria-label="Bulk coupon actions"
+          className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:left-60"
+        >
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-3">
+            <span className="text-sm font-medium mr-2 shrink-0">
+              {selectedIds.size} selected
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUnassignPending || bulkDeletePending || bulkUnassignCount === 0}
+              onClick={() => setBulkUnassignConfirm(true)}
+            >
+              {bulkUnassignPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <UserMinus className="h-3.5 w-3.5" />
+              )}
+              Unassign
+              {bulkUnassignCount > 0 && ` (${bulkUnassignCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkUnassignPending || bulkDeletePending}
+              onClick={() => exportCsv(selectedCoupons)}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={bulkUnassignPending || bulkDeletePending || bulkDeleteCount === 0}
+              onClick={() => setBulkDeleteConfirm(true)}
+            >
+              {bulkDeletePending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Delete
+              {bulkDeleteCount > 0 && ` (${bulkDeleteCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={bulkUnassignPending || bulkDeletePending}
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X className="h-3.5 w-3.5" />
+              Deselect
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Bulk Unassign Confirm Dialog ────────────────────────────────────── */}
+      <Dialog open={bulkUnassignConfirm} onOpenChange={(open) => !open && setBulkUnassignConfirm(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Unassign {bulkUnassignCount} Coupon{bulkUnassignCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will release {bulkUnassignCount} coupon{bulkUnassignCount !== 1 ? "s" : ""} back to the available pool and reset the attendees&apos; assignments. Claimed coupons will be skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkUnassignConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={handleBulkUnassign}
+            >
+              Unassign {bulkUnassignCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Bulk Delete Confirm Dialog ───────────────────────────────────────── */}
+      <Dialog open={bulkDeleteConfirm} onOpenChange={(open) => !open && setBulkDeleteConfirm(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              Delete {bulkDeleteCount} Coupon{bulkDeleteCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete {bulkDeleteCount} available coupon{bulkDeleteCount !== 1 ? "s" : ""}. Only unassigned coupons can be deleted. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkDeleteConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={handleBulkDelete}
+            >
+              Delete {bulkDeleteCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Assign Coupon Dialog ─────────────────────────────────────────────── */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>

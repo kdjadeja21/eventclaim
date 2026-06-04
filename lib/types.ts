@@ -12,6 +12,7 @@ export type AuditAction =
   | "event_deleted"
   | "attendee_imported"
   | "attendee_deleted"
+  | "attendee_luma_synced"
   | "coupon_imported"
   | "coupon_assigned"
   | "coupon_unassigned"
@@ -33,6 +34,7 @@ export interface Event {
   status: EventStatus;
   createdAt: string;
   updatedAt: string;
+  lumaLastSyncedAt?: string | null;
 }
 
 export interface Attendee {
@@ -48,6 +50,8 @@ export interface Attendee {
   claimedAt: string | null;
   claimToken: string | null;
   createdAt: string;
+  registeredAt?: string | null;
+  checkedInAt?: string | null;
 }
 
 export interface Coupon {

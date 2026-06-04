@@ -5,6 +5,11 @@ import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
 import { Attendee } from "@/lib/types";
 import { revalidatePath } from "next/cache";
+import { attendeeDocId } from "@/lib/import";
+import { normalizeEmail } from "@/lib/utils";
+import { z } from "zod";
+import { fetchAllLumaGuests, FetchAllGuestsParams } from "@/lib/luma";
+import { assignPendingForEvent } from "@/lib/assignment";
 
 async function deleteQueryInBatches(
   query: FirebaseFirestore.Query
@@ -162,4 +167,160 @@ export async function deleteAttendee(
       error: err instanceof Error ? err.message : "Delete failed.",
     };
   }
+}
+
+export interface SyncLumaResult {
+  addedCount: number;
+  skipped: number;
+  totalFetched: number;
+  checkedInCount: number;
+  noCheckedInRecords: boolean;
+  invalid: number;
+  syncedAt: string;
+  added: Attendee[];
+  error?: string;
+}
+
+export async function syncLumaGuests(
+  slug: string,
+  lumaParams: FetchAllGuestsParams,
+  checkedInOnly = false
+): Promise<SyncLumaResult> {
+  const session = await requireSession();
+
+  const eventSnap = await adminDb
+    .collection("events")
+    .where("slug", "==", slug)
+    .limit(1)
+    .get();
+  if (eventSnap.empty) {
+    return {
+      addedCount: 0,
+      skipped: 0,
+      totalFetched: 0,
+      checkedInCount: 0,
+      noCheckedInRecords: false,
+      invalid: 0,
+      syncedAt: "",
+      added: [],
+      error: "Event not found.",
+    };
+  }
+  const eventId = eventSnap.docs[0].id;
+
+  let guests;
+  try {
+    guests = await fetchAllLumaGuests(lumaParams);
+  } catch (err) {
+    return {
+      addedCount: 0,
+      skipped: 0,
+      totalFetched: 0,
+      checkedInCount: 0,
+      noCheckedInRecords: false,
+      invalid: 0,
+      syncedAt: "",
+      added: [],
+      error: err instanceof Error ? err.message : "Luma API request failed.",
+    };
+  }
+
+  const totalFetched = guests.length;
+
+  // Apply checked-in filter before deduplication
+  if (checkedInOnly) {
+    guests = guests.filter((g) => g.checked_in_at !== null && g.checked_in_at !== "");
+  }
+  const checkedInCount = guests.length;
+  const noCheckedInRecords = checkedInOnly && checkedInCount === 0;
+
+  const attendeesRef = adminDb.collection("events").doc(eventId).collection("attendees");
+  const seenEmails = new Set<string>();
+
+  let addedCount = 0;
+  let skipped = 0;
+  let invalid = 0;
+  const added: Attendee[] = [];
+
+  for (const guest of guests) {
+    const rawEmail = guest.user_email ?? "";
+    const email = normalizeEmail(rawEmail);
+
+    if (!email || !z.string().email().safeParse(email).success) {
+      invalid++;
+      continue;
+    }
+
+    if (seenEmails.has(email)) {
+      skipped++;
+      continue;
+    }
+    seenEmails.add(email);
+
+    const name =
+      (guest.user_name ?? "").trim() ||
+      `${(guest.user_first_name ?? "").trim()} ${(guest.user_last_name ?? "").trim()}`.trim() ||
+      email;
+
+    const docId = attendeeDocId(eventId, email);
+    const docRef = attendeesRef.doc(docId);
+    const existing = await docRef.get();
+
+    if (existing.exists) {
+      skipped++;
+      continue;
+    }
+
+    const now = new Date().toISOString();
+    const attendee: Attendee = {
+      id: docId,
+      eventId,
+      name,
+      email,
+      couponId: null,
+      couponLink: null,
+      emailStatus: "pending",
+      emailSentAt: null,
+      claimed: false,
+      claimedAt: null,
+      claimToken: null,
+      createdAt: now,
+      registeredAt: guest.registered_at ?? null,
+      checkedInAt: guest.checked_in_at ?? null,
+    };
+
+    await docRef.set(attendee);
+    added.push(attendee);
+    addedCount++;
+  }
+
+  const syncedAt = new Date().toISOString();
+
+  await assignPendingForEvent(eventId);
+
+  await adminDb.collection("events").doc(eventId).update({ lumaLastSyncedAt: syncedAt });
+
+  await writeAuditLog({
+    eventId,
+    action: "attendee_luma_synced",
+    metadata: {
+      lumaEventId: lumaParams.event_id,
+      totalFetched,
+      addedCount,
+      skipped,
+      invalid,
+    },
+    userId: session.uid,
+  });
+
+  return {
+    addedCount,
+    skipped,
+    totalFetched,
+    checkedInCount,
+    noCheckedInRecords,
+    invalid,
+    syncedAt,
+    added,
+  };
 }

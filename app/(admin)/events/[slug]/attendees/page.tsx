@@ -47,6 +47,7 @@ export default async function AttendeesPage({ params }: Props) {
         attendees={attendees}
         eventId={eventId}
         eventSlug={slug}
+        initialLumaLastSyncedAt={event.lumaLastSyncedAt ?? null}
       />
     </div>
   );
