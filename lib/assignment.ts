@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
+import { Attendee } from "@/lib/types";
 import { nanoid } from "nanoid";
 
 /**
@@ -102,8 +103,28 @@ export async function assignPendingForEvent(eventId: string): Promise<number> {
     .where("couponId", "==", null)
     .get();
 
+  // Sort: checked-in attendees first (asc checkedInAt),
+  // then non-checked-in attendees (asc registeredAt).
+  const sorted = attendeesSnap.docs.slice().sort((a, b) => {
+    const aData = a.data() as Attendee;
+    const bData = b.data() as Attendee;
+    const aChecked = aData.checkedInAt ?? null;
+    const bChecked = bData.checkedInAt ?? null;
+
+    // Both checked in → compare checkedInAt ascending
+    if (aChecked && bChecked) return aChecked.localeCompare(bChecked);
+    // Only a checked in → a comes first
+    if (aChecked) return -1;
+    // Only b checked in → b comes first
+    if (bChecked) return 1;
+    // Neither checked in → compare registeredAt ascending (null sorts last)
+    const aReg = aData.registeredAt ?? aData.createdAt;
+    const bReg = bData.registeredAt ?? bData.createdAt;
+    return aReg.localeCompare(bReg);
+  });
+
   let assigned = 0;
-  for (const doc of attendeesSnap.docs) {
+  for (const doc of sorted) {
     const ok = await assignCouponToAttendee(eventId, doc.id);
     if (ok) assigned++;
     else break; // no more coupons available
