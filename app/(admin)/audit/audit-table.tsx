@@ -37,6 +37,7 @@ const actionVariant: Record<
   event_deleted: "destructive",
   attendee_imported: "info",
   attendee_deleted: "destructive",
+  attendee_luma_synced: "info",
   coupon_imported: "info",
   coupon_assigned: "success",
   coupon_unassigned: "warning",
@@ -54,6 +55,7 @@ const actionLabels: Record<AuditAction, string> = {
   event_deleted: "Event Deleted",
   attendee_imported: "Attendees Imported",
   attendee_deleted: "Attendee Deleted",
+  attendee_luma_synced: "Luma Sync",
   coupon_imported: "Coupons Imported",
   coupon_assigned: "Coupon Assigned",
   coupon_unassigned: "Coupon Unassigned",
@@ -140,6 +142,19 @@ function getAuditMessage(log: AuditLog): string {
       return `Attendee ${eventName ? `"${eventName}" ` : ""}${
         email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""
       }was deleted.`;
+    case "attendee_luma_synced": {
+      const addedCount = getMetadataNumber(metadata, "addedCount");
+      const skipped = getMetadataNumber(metadata, "skipped");
+      const invalid = getMetadataNumber(metadata, "invalid");
+      const parts = [
+        addedCount !== null
+          ? `Synced ${addedCount} attendees from Luma`
+          : "Synced attendees from Luma",
+        skipped ? `skipped ${skipped} duplicates` : null,
+        invalid ? `ignored ${invalid} invalid rows` : null,
+      ].filter(Boolean);
+      return `${parts.join(", ")}.`;
+    }
     case "coupon_imported":
       return formatImportMessage("Imported", "coupons", metadata);
     case "coupon_added":

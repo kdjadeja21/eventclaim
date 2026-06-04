@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getAttendees } from "./attendee-data-actions";
 import { getEventBySlug } from "../../actions";
+import { isLumaApiConfigured } from "@/lib/luma";
 import { Button } from "@/components/ui/button";
 import AttendeeTable from "./attendee-table";
 import { EventSectionNav } from "../event-section-nav";
@@ -48,6 +49,7 @@ export default async function AttendeesPage({ params }: Props) {
         eventId={eventId}
         eventSlug={slug}
         initialLumaLastSyncedAt={event.lumaLastSyncedAt ?? null}
+        lumaApiEnabled={isLumaApiConfigured()}
       />
     </div>
   );

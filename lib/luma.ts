@@ -49,10 +49,14 @@ export interface FetchAllGuestsParams {
 const LUMA_API_BASE = "https://public-api.luma.com";
 const MAX_PAGES = 200; // safety cap: 200 × 50 = 10 000 guests max
 
+export function isLumaApiConfigured(): boolean {
+  return Boolean(process.env.LUMA_API_KEY?.trim());
+}
+
 export async function fetchAllLumaGuests(
   params: FetchAllGuestsParams
 ): Promise<LumaGuest[]> {
-  const apiKey = process.env.LUMA_API_KEY;
+  const apiKey = process.env.LUMA_API_KEY?.trim();
   if (!apiKey) throw new Error("LUMA_API_KEY is not set in environment.");
 
   const all: LumaGuest[] = [];

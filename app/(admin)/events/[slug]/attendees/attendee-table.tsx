@@ -140,11 +140,13 @@ export default function AttendeeTable({
   eventId,
   eventSlug,
   initialLumaLastSyncedAt,
+  lumaApiEnabled = false,
 }: {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
   initialLumaLastSyncedAt?: string | null;
+  lumaApiEnabled?: boolean;
 }) {
   const [attendees, setAttendees] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
@@ -192,12 +194,14 @@ export default function AttendeeTable({
 
   // Load persisted config from localStorage on mount
   useEffect(() => {
+    if (!lumaApiEnabled) return;
     const stored = getStoredConfig(eventSlug);
     if (stored) setLumaConfig(stored);
-  }, [eventSlug]);
+  }, [eventSlug, lumaApiEnabled]);
 
   // Auto-fetch interval
   useEffect(() => {
+    if (!lumaApiEnabled) return;
     if (!lumaConfig.autoFetch || lumaConfig.intervalMinutes <= 0 || !lumaConfig.lumaEventId) {
       return;
     }
@@ -205,7 +209,7 @@ export default function AttendeeTable({
     const id = setInterval(() => runSync(lumaConfig), ms);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lumaConfig.autoFetch, lumaConfig.intervalMinutes, lumaConfig.lumaEventId]);
+  }, [lumaApiEnabled, lumaConfig.autoFetch, lumaConfig.intervalMinutes, lumaConfig.lumaEventId]);
 
   async function runSync(cfg: LumaFetchConfig) {
     if (inFlightRef.current || !cfg.lumaEventId) return;
@@ -602,27 +606,28 @@ export default function AttendeeTable({
 
   return (
     <div className={cn("space-y-4", hasSelection && "pb-20")}>
-      {/* Luma sync bar above main toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLumaDialogOpen(true)}
-          disabled={isFetching}
-        >
-          {isFetching ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
+      {lumaApiEnabled && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLumaDialogOpen(true)}
+            disabled={isFetching}
+          >
+            {isFetching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {isFetching ? "Fetching from Luma…" : "Fetch from Luma"}
+          </Button>
+          {lastSyncedAt && (
+            <span className="text-xs text-muted-foreground">
+              Last updated: {formatDateTime(lastSyncedAt)}
+            </span>
           )}
-          {isFetching ? "Fetching from Luma…" : "Fetch from Luma"}
-        </Button>
-        {lastSyncedAt && (
-          <span className="text-xs text-muted-foreground">
-            Last updated: {formatDateTime(lastSyncedAt)}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-48">
@@ -1142,17 +1147,19 @@ export default function AttendeeTable({
         </DialogContent>
       </Dialog>
 
-      <LumaFetchDialog
-        open={lumaDialogOpen}
-        onOpenChange={setLumaDialogOpen}
-        eventSlug={eventSlug}
-        lastSyncedAt={lastSyncedAt}
-        isFetching={isFetching}
-        lastRunStatus={lastRunStatus}
-        config={lumaConfig}
-        onConfigChange={handleConfigChange}
-        onFetchNow={() => runSync(lumaConfig)}
-      />
+      {lumaApiEnabled && (
+        <LumaFetchDialog
+          open={lumaDialogOpen}
+          onOpenChange={setLumaDialogOpen}
+          eventSlug={eventSlug}
+          lastSyncedAt={lastSyncedAt}
+          isFetching={isFetching}
+          lastRunStatus={lastRunStatus}
+          config={lumaConfig}
+          onConfigChange={handleConfigChange}
+          onFetchNow={() => runSync(lumaConfig)}
+        />
+      )}
     </div>
   );
 }
