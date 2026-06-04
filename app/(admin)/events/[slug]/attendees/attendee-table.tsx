@@ -604,51 +604,89 @@ export default function AttendeeTable({
   ).length;
 
   const hasSelection = selectedIds.size > 0;
+  const lumaLastRunSummary = lastRunStatus
+    ? [
+        `${lastRunStatus.addedCount} added`,
+        `${lastRunStatus.skipped} skipped`,
+        `${lastRunStatus.totalFetched} fetched`,
+        ...(lastRunStatus.checkedInOnly
+          ? [`${lastRunStatus.checkedInCount} checked in`]
+          : []),
+      ].join(" · ")
+    : null;
 
   return (
     <div className={cn("space-y-4", hasSelection && "pb-20")}>
       {lumaApiEnabled && (
-        <div className="flex flex-wrap items-center gap-3">
-          {lumaConfig.lumaEventId ? (
-            <div className="flex items-center gap-1">
+        <div className="rounded-lg border bg-muted/40 px-3 py-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium">Luma sync</p>
+                {lumaConfig.lumaEventId ? (
+                  <Badge variant="outline">Configured</Badge>
+                ) : (
+                  <Badge variant="warning">Setup needed</Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>
+                  Last updated:{" "}
+                  <span className="font-medium text-foreground">
+                    {lastSyncedAt ? formatDateTime(lastSyncedAt) : "Never"}
+                  </span>
+                </span>
+                {lumaLastRunSummary && (
+                  <span>
+                    Last run:{" "}
+                    <span className="font-medium text-foreground">
+                      {lumaLastRunSummary}
+                    </span>
+                  </span>
+                )}
+                {!lumaConfig.lumaEventId && (
+                  <span>Connect a Luma event to fetch attendees.</span>
+                )}
+              </div>
+            </div>
+
+            {lumaConfig.lumaEventId ? (
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runSync(lumaConfig)}
+                  disabled={isFetching}
+                >
+                  {isFetching ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  {isFetching ? "Fetching…" : "Fetch Now"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLumaDialogOpen(true)}
+                  disabled={isFetching}
+                  title="Luma fetch settings"
+                >
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => runSync(lumaConfig)}
-                disabled={isFetching}
-              >
-                {isFetching ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                {isFetching ? "Fetching…" : "Fetch Now"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
+                className="shrink-0"
                 onClick={() => setLumaDialogOpen(true)}
-                disabled={isFetching}
-                title="Luma fetch settings"
               >
                 <Settings2 className="h-4 w-4" />
+                Configure Luma
               </Button>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLumaDialogOpen(true)}
-            >
-              <Settings2 className="h-4 w-4" />
-              Configure Luma
-            </Button>
-          )}
-          {lastSyncedAt && (
-            <span className="text-xs text-muted-foreground">
-              Last synced: {formatDateTime(lastSyncedAt)}
-            </span>
-          )}
+            )}
+          </div>
         </div>
       )}
 
