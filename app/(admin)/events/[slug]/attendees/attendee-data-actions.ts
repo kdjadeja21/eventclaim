@@ -3,7 +3,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
-import { Attendee } from "@/lib/types";
+import { Attendee, Event } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import { attendeeDocId } from "@/lib/import";
 import { normalizeEmail } from "@/lib/utils";
@@ -175,6 +175,7 @@ export interface SyncLumaResult {
   totalFetched: number;
   checkedInCount: number;
   noCheckedInRecords: boolean;
+  blacklistedCount: number;
   invalid: number;
   syncedAt: string;
   added: Attendee[];
@@ -200,6 +201,7 @@ export async function syncLumaGuests(
       totalFetched: 0,
       checkedInCount: 0,
       noCheckedInRecords: false,
+      blacklistedCount: 0,
       invalid: 0,
       syncedAt: "",
       added: [],
@@ -207,6 +209,8 @@ export async function syncLumaGuests(
     };
   }
   const eventId = eventSnap.docs[0].id;
+  const eventData = eventSnap.docs[0].data() as Event;
+  const eventIsPast = new Date(eventData.date) < new Date();
 
   let guests;
   try {
@@ -218,6 +222,7 @@ export async function syncLumaGuests(
       totalFetched: 0,
       checkedInCount: 0,
       noCheckedInRecords: false,
+      blacklistedCount: 0,
       invalid: 0,
       syncedAt: "",
       added: [],
@@ -240,6 +245,7 @@ export async function syncLumaGuests(
   let addedCount = 0;
   let skipped = 0;
   let invalid = 0;
+  let blacklistedCount = 0;
   const added: Attendee[] = [];
 
   for (const guest of guests) {
@@ -267,11 +273,17 @@ export async function syncLumaGuests(
     const existing = await docRef.get();
 
     if (existing.exists) {
+      const existingData = existing.data() as Attendee;
+      if (eventIsPast && !existingData.checkedInAt && !existingData.isBlacklisted) {
+        await docRef.update({ isBlacklisted: true });
+        blacklistedCount++;
+      }
       skipped++;
       continue;
     }
 
     const now = new Date().toISOString();
+    const isBlacklisted = eventIsPast && !guest.checked_in_at;
     const attendee: Attendee = {
       id: docId,
       eventId,
@@ -287,11 +299,13 @@ export async function syncLumaGuests(
       createdAt: now,
       registeredAt: guest.registered_at ?? null,
       checkedInAt: guest.checked_in_at ?? null,
+      ...(isBlacklisted ? { isBlacklisted: true } : {}),
     };
 
     await docRef.set(attendee);
     added.push(attendee);
     addedCount++;
+    if (isBlacklisted) blacklistedCount++;
   }
 
   const syncedAt = new Date().toISOString();
@@ -309,6 +323,7 @@ export async function syncLumaGuests(
       addedCount,
       skipped,
       invalid,
+      blacklistedCount,
     },
     userId: session.uid,
   });
@@ -319,6 +334,7 @@ export async function syncLumaGuests(
     totalFetched,
     checkedInCount,
     noCheckedInRecords,
+    blacklistedCount,
     invalid,
     syncedAt,
     added,

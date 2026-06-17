@@ -73,7 +73,8 @@ type Filter =
   | "failed"
   | "claimed"
   | "unclaimed"
-  | "no-coupon";
+  | "no-coupon"
+  | "blacklisted";
 
 type SortKey =
   | "name"
@@ -188,6 +189,7 @@ export default function AttendeeTable({
     totalFetched: number;
     checkedInCount: number;
     noCheckedInRecords: boolean;
+    blacklistedCount: number;
     checkedInOnly: boolean;
   } | null>(null);
   const [newlyAddedIds, setNewlyAddedIds] = useState<Set<string>>(new Set());
@@ -255,6 +257,7 @@ export default function AttendeeTable({
       totalFetched: res.totalFetched,
       checkedInCount: res.checkedInCount,
       noCheckedInRecords: res.noCheckedInRecords,
+      blacklistedCount: res.blacklistedCount,
       checkedInOnly: cfg.checkedInOnly,
     });
 
@@ -294,6 +297,8 @@ export default function AttendeeTable({
     else if (filter === "unclaimed")
       list = list.filter((a) => !a.claimed && a.couponId);
     else if (filter === "no-coupon") list = list.filter((a) => !a.couponId);
+    else if (filter === "blacklisted")
+      list = list.filter((a) => a.isBlacklisted);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -582,6 +587,7 @@ export default function AttendeeTable({
       claimed: attendees.filter((a) => a.claimed).length,
       unclaimed: attendees.filter((a) => !a.claimed && a.couponId).length,
       "no-coupon": attendees.filter((a) => !a.couponId).length,
+      blacklisted: attendees.filter((a) => a.isBlacklisted).length,
     };
   }, [attendees]);
 
@@ -611,6 +617,9 @@ export default function AttendeeTable({
         `${lastRunStatus.totalFetched} fetched`,
         ...(lastRunStatus.checkedInOnly
           ? [`${lastRunStatus.checkedInCount} checked in`]
+          : []),
+        ...(lastRunStatus.blacklistedCount > 0
+          ? [`${lastRunStatus.blacklistedCount} blacklisted`]
           : []),
       ].join(" · ")
     : null;
@@ -715,6 +724,9 @@ export default function AttendeeTable({
             <SelectItem value="claimed">Claimed ({counts.claimed})</SelectItem>
             <SelectItem value="unclaimed">
               Unclaimed ({counts.unclaimed})
+            </SelectItem>
+            <SelectItem value="blacklisted">
+              Blacklisted ({counts.blacklisted})
             </SelectItem>
           </SelectContent>
         </Select>

@@ -13,6 +13,7 @@ export async function checkAttendeeStatus(email: string): Promise<{
   emailSentAt?: string | null;
   claimed?: boolean;
   claimedAt?: string | null;
+  isBlacklisted?: boolean;
 }> {
   const normalizedEmail = normalizeEmail(email);
 
@@ -52,6 +53,7 @@ export async function checkAttendeeStatus(email: string): Promise<{
       emailSentAt: attendee.emailSentAt,
       claimed: attendee.claimed,
       claimedAt: attendee.claimedAt,
+      isBlacklisted: attendee.isBlacklisted ?? false,
     };
   }
 

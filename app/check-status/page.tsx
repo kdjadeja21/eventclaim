@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, CheckCircle2, Clock, Mail, CalendarDays, Loader2 } from "lucide-react";
+import { Search, CheckCircle2, Clock, Mail, CalendarDays, Loader2, Ban } from "lucide-react";
 import { checkAttendeeStatus } from "./status-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,6 +110,15 @@ export default function CheckStatusPage() {
               <CardDescription>{result.eventDate}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
+              {result.isBlacklisted && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Ban className="h-3.5 w-3.5" />
+                    Attendance Status
+                  </span>
+                  <Badge variant="destructive">Not Checked In</Badge>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <Mail className="h-3.5 w-3.5" />

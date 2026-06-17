@@ -52,6 +52,7 @@ export interface Attendee {
   createdAt: string;
   registeredAt?: string | null;
   checkedInAt?: string | null;
+  isBlacklisted?: boolean;
 }
 
 export interface Coupon {

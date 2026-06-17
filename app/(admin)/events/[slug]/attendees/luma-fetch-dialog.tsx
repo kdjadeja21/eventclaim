@@ -38,6 +38,7 @@ interface RunStatus {
   totalFetched: number;
   checkedInCount: number;
   noCheckedInRecords: boolean;
+  blacklistedCount: number;
   checkedInOnly: boolean;
 }
 
@@ -294,6 +295,8 @@ export default function LumaFetchDialog({
                     {lastRunStatus.totalFetched} fetched
                     {lastRunStatus.checkedInOnly &&
                       ` · ${lastRunStatus.checkedInCount} checked in`}
+                    {lastRunStatus.blacklistedCount > 0 &&
+                      ` · ${lastRunStatus.blacklistedCount} blacklisted`}
                   </span>
                 </div>
               </>

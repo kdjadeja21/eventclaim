@@ -32,6 +32,8 @@ export async function assignCouponToAttendee(
     const attendee = attendeeSnap.data()!;
     // Already assigned — idempotent
     if (attendee.couponId) return true;
+    // Blacklisted attendees are not eligible for coupons
+    if (attendee.isBlacklisted) return false;
 
     // Find one available coupon
     const availableQuery = await couponsRef
@@ -105,7 +107,10 @@ export async function assignPendingForEvent(eventId: string): Promise<number> {
 
   // Sort: checked-in attendees first (asc checkedInAt),
   // then non-checked-in attendees (asc registeredAt).
-  const sorted = attendeesSnap.docs.slice().sort((a, b) => {
+  const sorted = attendeesSnap.docs
+    .filter((d) => !(d.data() as Attendee).isBlacklisted)
+    .slice()
+    .sort((a, b) => {
     const aData = a.data() as Attendee;
     const bData = b.data() as Attendee;
     const aChecked = aData.checkedInAt ?? null;
