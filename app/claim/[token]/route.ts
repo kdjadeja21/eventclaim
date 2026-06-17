@@ -33,6 +33,19 @@ export async function GET(request: NextRequest, { params }: Props) {
     return new NextResponse("No coupon assigned yet.", { status: 400 });
   }
 
+  if (attendee.couponId) {
+    const couponSnap = await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(attendee.couponId)
+      .get();
+
+    if (couponSnap.exists && couponSnap.data()?.isDisabled) {
+      return new NextResponse("This coupon has been disabled.", { status: 403 });
+    }
+  }
+
   const now = new Date().toISOString();
 
   // Mark claimed (idempotent — already claimed is fine, just redirect)

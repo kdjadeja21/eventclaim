@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Ticket, CheckCheck, PackageOpen, BarChart2, CircleDot } from "lucide-react";
+import { ArrowLeft, Ticket, CheckCheck, PackageOpen, BarChart2, CircleDot, Ban } from "lucide-react";
 import { getCoupons } from "./coupon-data-actions";
 import { getEventBySlug } from "../../actions";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export default async function CouponsPage({ params }: Props) {
 
       <EventSectionNav slug={slug} active="coupons" />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           icon={Ticket}
           label="Total Coupons"
@@ -79,6 +79,12 @@ export default async function CouponsPage({ params }: Props) {
           label="Unclaimed"
           value={stats.unclaimed}
           sub="Assigned but not yet claimed"
+        />
+        <StatCard
+          icon={Ban}
+          label="Disabled"
+          value={stats.disabled}
+          sub="Not available for assignment"
         />
       </div>
 

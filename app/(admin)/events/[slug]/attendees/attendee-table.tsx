@@ -20,6 +20,8 @@ import {
   X,
   Trash2,
   Settings2,
+  Ban,
+  CheckCircle,
 } from "lucide-react";
 import { Attendee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -59,6 +61,7 @@ import {
   getAttendeeDetail,
   syncLumaGuests,
 } from "./attendee-data-actions";
+import { toggleAttendeeBlacklist } from "./attendee-actions";
 import LumaFetchDialog, {
   LumaFetchConfig,
   defaultConfig,
@@ -170,6 +173,10 @@ export default function AttendeeTable({
   const [deleteTarget, setDeleteTarget] = useState<Attendee | null>(null);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [bulkBlacklistConfirm, setBulkBlacklistConfirm] = useState(false);
+  const [bulkBlacklistPending, setBulkBlacklistPending] = useState(false);
+  const [bulkUnblacklistConfirm, setBulkUnblacklistConfirm] = useState(false);
+  const [bulkUnblacklistPending, setBulkUnblacklistPending] = useState(false);
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -394,6 +401,74 @@ export default function AttendeeTable({
     });
   }
 
+  async function handleToggleBlacklist(attendee: Attendee) {
+    const blacklisted = !attendee.isBlacklisted;
+    setActionPending(attendee.id + "-blacklist");
+    startTransition(async () => {
+      const res = await toggleAttendeeBlacklist(
+        eventId,
+        attendee.id,
+        blacklisted,
+        eventSlug
+      );
+      setActionPending(null);
+      if (res.success) {
+        updateAttendee(attendee.id, { isBlacklisted: blacklisted });
+        toast.success(
+          blacklisted ? "Attendee blacklisted." : "Attendee unblacklisted."
+        );
+      } else {
+        toast.error(res.error ?? "Update failed.");
+      }
+    });
+  }
+
+  async function handleBulkToggleBlacklist(blacklisted: boolean) {
+    const targets = selectedAttendees.filter((a) =>
+      blacklisted ? !a.isBlacklisted && !a.claimed : !!a.isBlacklisted
+    );
+    if (targets.length === 0) return;
+
+    if (blacklisted) setBulkBlacklistPending(true);
+    else setBulkUnblacklistPending(true);
+    setBulkBlacklistConfirm(false);
+    setBulkUnblacklistConfirm(false);
+
+    let updated = 0;
+    let failed = 0;
+    const verb = blacklisted ? "Blacklisting" : "Unblacklisting";
+    const toastId = toast.loading(`${verb} 0 / ${targets.length}…`);
+
+    for (let i = 0; i < targets.length; i++) {
+      const attendee = targets[i];
+      const res = await toggleAttendeeBlacklist(
+        eventId,
+        attendee.id,
+        blacklisted,
+        eventSlug
+      );
+      if (res.success) {
+        updateAttendee(attendee.id, { isBlacklisted: blacklisted });
+        updated++;
+      } else {
+        failed++;
+      }
+      toast.loading(`${verb} ${i + 1} / ${targets.length}…`, { id: toastId });
+    }
+
+    setBulkBlacklistPending(false);
+    setBulkUnblacklistPending(false);
+    const label = blacklisted ? "Blacklisted" : "Unblacklisted";
+    if (failed === 0) {
+      toast.success(
+        `${label} ${updated} attendee${updated !== 1 ? "s" : ""}`,
+        { id: toastId }
+      );
+    } else {
+      toast.warning(`${label} ${updated}, failed ${failed}`, { id: toastId });
+    }
+  }
+
   async function handleBulkDelete() {
     const targets = selectedAttendees.filter((a) => !a.couponId);
     if (targets.length === 0) return;
@@ -608,6 +683,17 @@ export default function AttendeeTable({
   const bulkDeleteCount = selectedAttendees.filter(
     (a) => !a.couponId
   ).length;
+  const bulkBlacklistCount = selectedAttendees.filter(
+    (a) => !a.isBlacklisted && !a.claimed
+  ).length;
+  const bulkUnblacklistCount = selectedAttendees.filter(
+    (a) => a.isBlacklisted
+  ).length;
+  const bulkActionPending =
+    bulkPending ||
+    bulkDeletePending ||
+    bulkBlacklistPending ||
+    bulkUnblacklistPending;
 
   const hasSelection = selectedIds.size > 0;
   const lumaLastRunSummary = lastRunStatus
@@ -802,7 +888,8 @@ export default function AttendeeTable({
                     selectedIds.has(attendee.id) ? "selected" : undefined
                   }
                   className={cn(
-                    selectedIds.has(attendee.id) && "bg-muted/50"
+                    selectedIds.has(attendee.id) && "bg-muted/50",
+                    attendee.isBlacklisted && "opacity-60"
                   )}
                 >
                   <TableCell>
@@ -938,6 +1025,27 @@ export default function AttendeeTable({
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
 
+                      <Button
+                        size="sm"
+                        variant={attendee.isBlacklisted ? "outline" : "ghost"}
+                        onClick={() => handleToggleBlacklist(attendee)}
+                        disabled={actionPending === attendee.id + "-blacklist"}
+                        title={
+                          attendee.isBlacklisted
+                            ? "Unblacklist attendee"
+                            : "Blacklist attendee"
+                        }
+                      >
+                        {actionPending === attendee.id + "-blacklist" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : attendee.isBlacklisted ? (
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        ) : (
+                          <Ban className="h-3.5 w-3.5" />
+                        )}
+                        {attendee.isBlacklisted ? "Unblacklist" : "Blacklist"}
+                      </Button>
+
                       {!attendee.couponId && (
                         <Button
                           size="sm"
@@ -975,7 +1083,7 @@ export default function AttendeeTable({
             </span>
             <Button
               size="sm"
-              disabled={bulkPending || bulkSendCount === 0}
+              disabled={bulkActionPending || bulkSendCount === 0}
               onClick={() =>
                 handleBulk(
                   "send",
@@ -994,7 +1102,7 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkPending || bulkResendCount === 0}
+              disabled={bulkActionPending || bulkResendCount === 0}
               onClick={() =>
                 handleBulk("resend", (a) => a.emailStatus === "sent")
               }
@@ -1010,7 +1118,7 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="destructive"
-              disabled={bulkPending || bulkRetryCount === 0}
+              disabled={bulkActionPending || bulkRetryCount === 0}
               onClick={() =>
                 handleBulk("resend", (a) => a.emailStatus === "failed")
               }
@@ -1026,7 +1134,35 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkPending || bulkDeletePending}
+              disabled={bulkActionPending || bulkBlacklistCount === 0}
+              onClick={() => setBulkBlacklistConfirm(true)}
+            >
+              {bulkBlacklistPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Ban className="h-3.5 w-3.5" />
+              )}
+              Blacklist
+              {bulkBlacklistCount > 0 && ` (${bulkBlacklistCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkActionPending || bulkUnblacklistCount === 0}
+              onClick={() => setBulkUnblacklistConfirm(true)}
+            >
+              {bulkUnblacklistPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle className="h-3.5 w-3.5" />
+              )}
+              Unblacklist
+              {bulkUnblacklistCount > 0 && ` (${bulkUnblacklistCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkActionPending}
               onClick={() => exportCsv(selectedAttendees)}
             >
               <Download className="h-3.5 w-3.5" />
@@ -1035,7 +1171,7 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="destructive"
-              disabled={bulkPending || bulkDeletePending || bulkDeleteCount === 0}
+              disabled={bulkActionPending || bulkDeleteCount === 0}
               onClick={() => setBulkDeleteConfirm(true)}
             >
               {bulkDeletePending ? (
@@ -1049,7 +1185,7 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="ghost"
-              disabled={bulkPending || bulkDeletePending}
+              disabled={bulkActionPending}
               onClick={() => setSelectedIds(new Set())}
             >
               <X className="h-3.5 w-3.5" />
@@ -1146,6 +1282,78 @@ export default function AttendeeTable({
               onClick={handleBulkDelete}
             >
               Delete {bulkDeleteCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk blacklist confirmation */}
+      <Dialog
+        open={bulkBlacklistConfirm}
+        onOpenChange={(open) => !open && setBulkBlacklistConfirm(false)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-4 w-4 text-amber-500" />
+              Blacklist {bulkBlacklistCount} Attendee
+              {bulkBlacklistCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              Blacklisted attendees cannot receive coupons. Attendees who have
+              already claimed will be skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkBlacklistConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => handleBulkToggleBlacklist(true)}
+            >
+              Blacklist {bulkBlacklistCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk unblacklist confirmation */}
+      <Dialog
+        open={bulkUnblacklistConfirm}
+        onOpenChange={(open) => !open && setBulkUnblacklistConfirm(false)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              Unblacklist {bulkUnblacklistCount} Attendee
+              {bulkUnblacklistCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will remove the blacklist flag from {bulkUnblacklistCount}{" "}
+              attendee{bulkUnblacklistCount !== 1 ? "s" : ""}, making them
+              eligible for coupon assignment again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkUnblacklistConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => handleBulkToggleBlacklist(false)}
+            >
+              Unblacklist {bulkUnblacklistCount}
             </Button>
           </div>
         </DialogContent>

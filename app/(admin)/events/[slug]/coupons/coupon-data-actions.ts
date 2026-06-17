@@ -2,7 +2,7 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
-import { Coupon, CouponWithAttendee, CouponStats, Attendee } from "@/lib/types";
+import { Coupon, CouponWithAttendee, CouponStats, Attendee, isAssignableCoupon } from "@/lib/types";
 
 async function resolveEventId(slug: string): Promise<string> {
   const snap = await adminDb
@@ -70,12 +70,13 @@ export async function getCoupons(slug: string): Promise<{
 
   // Compute stats
   const total = coupons.length;
-  const available = coupons.filter((c) => c.status === "available").length;
+  const available = coupons.filter(isAssignableCoupon).length;
   const assigned = coupons.filter((c) => c.status === "assigned").length;
   const emailSent = coupons.filter((c) => c.status === "emailSent").length;
   const claimed = coupons.filter((c) => c.status === "claimed").length;
+  const disabled = coupons.filter((c) => c.isDisabled).length;
   const unclaimed = assigned + emailSent;
-  const assignedTotal = total - available;
+  const assignedTotal = assigned + emailSent + claimed;
   const assignRate = total > 0 ? (assignedTotal / total) * 100 : 0;
   const claimRate = assignedTotal > 0 ? (claimed / assignedTotal) * 100 : 0;
 
@@ -86,6 +87,7 @@ export async function getCoupons(slug: string): Promise<{
     emailSent,
     claimed,
     unclaimed,
+    disabled,
     assignRate,
     claimRate,
   };
@@ -106,10 +108,10 @@ export async function getAssignableAttendees(
     .orderBy("name")
     .get();
 
-  return snap.docs.map((d) => {
-    const a = d.data() as Attendee;
-    return { id: a.id, name: a.name, email: a.email };
-  });
+  return snap.docs
+    .map((d) => d.data() as Attendee)
+    .filter((a) => !a.isBlacklisted)
+    .map((a) => ({ id: a.id, name: a.name, email: a.email }));
 }
 
 export async function getAvailableCoupons(
@@ -124,8 +126,8 @@ export async function getAvailableCoupons(
     .where("status", "==", "available")
     .get();
 
-  return snap.docs.map((d) => {
-    const c = d.data() as Coupon;
-    return { id: c.id, couponLink: c.couponLink };
-  });
+  return snap.docs
+    .map((d) => d.data() as Coupon)
+    .filter(isAssignableCoupon)
+    .map((c) => ({ id: c.id, couponLink: c.couponLink }));
 }

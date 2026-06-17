@@ -32,8 +32,10 @@ import {
   Eye,
   EyeOff,
   X,
+  Ban,
+  CheckCircle,
 } from "lucide-react";
-import { CouponWithAttendee, CouponStats } from "@/lib/types";
+import { CouponWithAttendee, CouponStats, isAssignableCoupon } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +77,7 @@ import {
   addCoupons,
   deleteCoupon,
   bulkAutoAssignPending,
+  toggleCouponDisabled,
 } from "./coupon-actions";
 import {
   getAssignableAttendees,
@@ -83,7 +86,13 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type FilterStatus = "all" | "available" | "assigned" | "emailSent" | "claimed";
+type FilterStatus =
+  | "all"
+  | "available"
+  | "assigned"
+  | "emailSent"
+  | "claimed"
+  | "disabled";
 type SortKey = "status" | "couponLink" | "assignedAt" | "claimedAt" | "attendeeName";
 type SortDir = "asc" | "desc";
 
@@ -205,6 +214,10 @@ export default function CouponTable({
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [bulkUnassignConfirm, setBulkUnassignConfirm] = useState(false);
   const [bulkUnassignPending, setBulkUnassignPending] = useState(false);
+  const [bulkDisableConfirm, setBulkDisableConfirm] = useState(false);
+  const [bulkDisablePending, setBulkDisablePending] = useState(false);
+  const [bulkEnableConfirm, setBulkEnableConfirm] = useState(false);
+  const [bulkEnablePending, setBulkEnablePending] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -248,7 +261,10 @@ export default function CouponTable({
   const filtered = useMemo(() => {
     let list = coupons;
 
-    if (filter !== "all") list = list.filter((c) => c.status === filter);
+    if (filter === "disabled") list = list.filter((c) => c.isDisabled);
+    else if (filter === "available")
+      list = list.filter(isAssignableCoupon);
+    else if (filter !== "all") list = list.filter((c) => c.status === filter);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -271,10 +287,11 @@ export default function CouponTable({
 
   const counts = useMemo(() => ({
     all: coupons.length,
-    available: coupons.filter((c) => c.status === "available").length,
+    available: coupons.filter(isAssignableCoupon).length,
     assigned: coupons.filter((c) => c.status === "assigned").length,
     emailSent: coupons.filter((c) => c.status === "emailSent").length,
     claimed: coupons.filter((c) => c.status === "claimed").length,
+    disabled: coupons.filter((c) => c.isDisabled).length,
   }), [coupons]);
 
   // ─── Optimistic helpers ─────────────────────────────────────────────────────
@@ -345,6 +362,14 @@ export default function CouponTable({
   const bulkUnassignCount = selectedCoupons.filter(
     (c) => c.status === "assigned" || c.status === "emailSent"
   ).length;
+  const bulkDisableCount = selectedCoupons.filter(
+    (c) => !c.isDisabled && c.status !== "claimed"
+  ).length;
+  const bulkEnableCount = selectedCoupons.filter(
+    (c) => c.isDisabled && c.status !== "claimed"
+  ).length;
+  const bulkActionPending =
+    bulkUnassignPending || bulkDeletePending || bulkDisablePending || bulkEnablePending;
   const hasSelection = selectedIds.size > 0;
 
   // ─── Sort toggle ─────────────────────────────────────────────────────────────
@@ -437,6 +462,26 @@ export default function CouponTable({
   }
 
   // ─── Handle delete ──────────────────────────────────────────────────────────
+
+  async function handleToggleDisabled(coupon: CouponWithAttendee) {
+    const disabled = !coupon.isDisabled;
+    setActionPending(coupon.id + "-toggle-disabled");
+    startTransition(async () => {
+      const res = await toggleCouponDisabled(
+        eventId,
+        coupon.id,
+        disabled,
+        eventSlug
+      );
+      setActionPending(null);
+      if (res.success) {
+        updateCoupon(coupon.id, { isDisabled: disabled });
+        toast.success(disabled ? "Coupon disabled." : "Coupon enabled.");
+      } else {
+        toast.error(res.error ?? "Update failed.");
+      }
+    });
+  }
 
   async function handleDelete(coupon: CouponWithAttendee) {
     setActionPending(coupon.id + "-delete");
@@ -572,6 +617,55 @@ export default function CouponTable({
     }
   }
 
+  // ─── Handle bulk disable / enable ───────────────────────────────────────────
+
+  async function handleBulkToggleDisabled(disabled: boolean) {
+    const targets = selectedCoupons.filter(
+      (c) =>
+        c.status !== "claimed" &&
+        (disabled ? !c.isDisabled : !!c.isDisabled)
+    );
+    if (targets.length === 0) return;
+
+    if (disabled) setBulkDisablePending(true);
+    else setBulkEnablePending(true);
+    setBulkDisableConfirm(false);
+    setBulkEnableConfirm(false);
+
+    let updated = 0;
+    let failed = 0;
+    const verb = disabled ? "Disabling" : "Enabling";
+    const toastId = toast.loading(`${verb} 0 / ${targets.length}…`);
+
+    for (let i = 0; i < targets.length; i++) {
+      const coupon = targets[i];
+      const res = await toggleCouponDisabled(
+        eventId,
+        coupon.id,
+        disabled,
+        eventSlug
+      );
+      if (res.success) {
+        updateCoupon(coupon.id, { isDisabled: disabled });
+        updated++;
+      } else {
+        failed++;
+      }
+      toast.loading(`${verb} ${i + 1} / ${targets.length}…`, { id: toastId });
+    }
+
+    setBulkDisablePending(false);
+    setBulkEnablePending(false);
+    const label = disabled ? "Disabled" : "Enabled";
+    if (failed === 0) {
+      toast.success(`${label} ${updated} coupon${updated !== 1 ? "s" : ""}`, {
+        id: toastId,
+      });
+    } else {
+      toast.warning(`${label} ${updated}, failed ${failed}`, { id: toastId });
+    }
+  }
+
   // ─── Copy coupon link ───────────────────────────────────────────────────────
 
   function copyLink(link: string) {
@@ -651,6 +745,9 @@ export default function CouponTable({
               Email Sent ({counts.emailSent})
             </SelectItem>
             <SelectItem value="claimed">Claimed ({counts.claimed})</SelectItem>
+            <SelectItem value="disabled">
+              Disabled ({counts.disabled})
+            </SelectItem>
           </SelectContent>
         </Select>
 
@@ -790,13 +887,17 @@ export default function CouponTable({
                 const Icon = cfg.icon;
                 const isActing =
                   actionPending === coupon.id + "-unassign" ||
-                  actionPending === coupon.id + "-delete";
+                  actionPending === coupon.id + "-delete" ||
+                  actionPending === coupon.id + "-toggle-disabled";
 
                 return (
                   <TableRow
                     key={coupon.id}
                     data-state={selectedIds.has(coupon.id) ? "selected" : undefined}
-                    className={cn(selectedIds.has(coupon.id) && "bg-muted/50")}
+                    className={cn(
+                      selectedIds.has(coupon.id) && "bg-muted/50",
+                      coupon.isDisabled && "opacity-60"
+                    )}
                   >
                     <TableCell>
                       <input
@@ -808,10 +909,18 @@ export default function CouponTable({
                       />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={cfg.variant} className="gap-1">
-                        <Icon className="h-3 w-3" />
-                        {cfg.label}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant={cfg.variant} className="gap-1">
+                          <Icon className="h-3 w-3" />
+                          {cfg.label}
+                        </Badge>
+                        {coupon.isDisabled && (
+                          <Badge variant="destructive" className="gap-1">
+                            <Ban className="h-3 w-3" />
+                            Disabled
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
 
                     <TableCell className="max-w-xs">
@@ -898,6 +1007,29 @@ export default function CouponTable({
                             )}
                           </Button>
                         )}
+
+                        {coupon.status !== "claimed" && (
+                          <Button
+                            size="sm"
+                            variant={coupon.isDisabled ? "outline" : "ghost"}
+                            onClick={() => handleToggleDisabled(coupon)}
+                            disabled={isActing}
+                            title={
+                              coupon.isDisabled
+                                ? "Enable coupon"
+                                : "Disable coupon"
+                            }
+                          >
+                            {actionPending === coupon.id + "-toggle-disabled" ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : coupon.isDisabled ? (
+                              <CheckCircle className="h-3.5 w-3.5" />
+                            ) : (
+                              <Ban className="h-3.5 w-3.5" />
+                            )}
+                            {coupon.isDisabled ? "Enable" : "Disable"}
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -931,7 +1063,7 @@ export default function CouponTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkUnassignPending || bulkDeletePending || bulkUnassignCount === 0}
+              disabled={bulkActionPending || bulkUnassignCount === 0}
               onClick={() => setBulkUnassignConfirm(true)}
             >
               {bulkUnassignPending ? (
@@ -945,7 +1077,35 @@ export default function CouponTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkUnassignPending || bulkDeletePending}
+              disabled={bulkActionPending || bulkDisableCount === 0}
+              onClick={() => setBulkDisableConfirm(true)}
+            >
+              {bulkDisablePending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Ban className="h-3.5 w-3.5" />
+              )}
+              Disable
+              {bulkDisableCount > 0 && ` (${bulkDisableCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkActionPending || bulkEnableCount === 0}
+              onClick={() => setBulkEnableConfirm(true)}
+            >
+              {bulkEnablePending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle className="h-3.5 w-3.5" />
+              )}
+              Enable
+              {bulkEnableCount > 0 && ` (${bulkEnableCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkActionPending}
               onClick={() => exportCsv(selectedCoupons)}
             >
               <Download className="h-3.5 w-3.5" />
@@ -954,7 +1114,7 @@ export default function CouponTable({
             <Button
               size="sm"
               variant="destructive"
-              disabled={bulkUnassignPending || bulkDeletePending || bulkDeleteCount === 0}
+              disabled={bulkActionPending || bulkDeleteCount === 0}
               onClick={() => setBulkDeleteConfirm(true)}
             >
               {bulkDeletePending ? (
@@ -968,7 +1128,7 @@ export default function CouponTable({
             <Button
               size="sm"
               variant="ghost"
-              disabled={bulkUnassignPending || bulkDeletePending}
+              disabled={bulkActionPending}
               onClick={() => setSelectedIds(new Set())}
             >
               <X className="h-3.5 w-3.5" />
@@ -1035,6 +1195,72 @@ export default function CouponTable({
               onClick={handleBulkDelete}
             >
               Delete {bulkDeleteCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Bulk Disable Confirm Dialog ──────────────────────────────────────── */}
+      <Dialog
+        open={bulkDisableConfirm}
+        onOpenChange={(open) => !open && setBulkDisableConfirm(false)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-4 w-4 text-amber-500" />
+              Disable {bulkDisableCount} Coupon{bulkDisableCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              Disabled coupons cannot be assigned or claimed. Claimed coupons in
+              your selection will be skipped.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkDisableConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              onClick={() => handleBulkToggleDisabled(true)}
+            >
+              Disable {bulkDisableCount}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Bulk Enable Confirm Dialog ───────────────────────────────────────── */}
+      <Dialog
+        open={bulkEnableConfirm}
+        onOpenChange={(open) => !open && setBulkEnableConfirm(false)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              Enable {bulkEnableCount} Coupon{bulkEnableCount !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will re-enable {bulkEnableCount} disabled coupon
+              {bulkEnableCount !== 1 ? "s" : ""} for assignment and claiming.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setBulkEnableConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={() => handleBulkToggleDisabled(false)}>
+              Enable {bulkEnableCount}
             </Button>
           </div>
         </DialogContent>

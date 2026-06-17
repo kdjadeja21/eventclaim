@@ -2,6 +2,7 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
+import { isAssignableCoupon, Coupon } from "@/lib/types";
 
 export async function getPreviewStats(slug: string) {
   await requireSession();
@@ -34,9 +35,9 @@ export async function getPreviewStats(slug: string) {
   let emailsFailed = 0;
 
   for (const doc of couponsSnap.docs) {
-    const s = doc.data().status;
-    if (s === "available") couponsAvailable++;
-    if (s !== "available") couponsAssigned++;
+    const c = doc.data() as Coupon;
+    if (isAssignableCoupon(c)) couponsAvailable++;
+    if (c.status !== "available") couponsAssigned++;
   }
 
   let attendeesWithCoupon = 0;

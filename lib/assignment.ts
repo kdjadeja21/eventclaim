@@ -1,7 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee } from "@/lib/types";
+import { Attendee, Coupon } from "@/lib/types";
 import { nanoid } from "nanoid";
 
 /**
@@ -25,6 +25,17 @@ export async function assignCouponToAttendee(
     .doc(eventId)
     .collection("coupons");
 
+  const availableQuery = await couponsRef
+    .where("status", "==", "available")
+    .limit(20)
+    .get();
+
+  const candidates = availableQuery.docs.filter(
+    (d) => !(d.data() as Coupon).isDisabled
+  );
+
+  if (candidates.length === 0) return false;
+
   return adminDb.runTransaction(async (txn) => {
     const attendeeSnap = await txn.get(attendeeRef);
     if (!attendeeSnap.exists) throw new Error("Attendee not found");
@@ -35,51 +46,42 @@ export async function assignCouponToAttendee(
     // Blacklisted attendees are not eligible for coupons
     if (attendee.isBlacklisted) return false;
 
-    // Find one available coupon
-    const availableQuery = await couponsRef
-      .where("status", "==", "available")
-      .limit(1)
-      .get();
+    for (const couponDoc of candidates) {
+      const couponRef = couponsRef.doc(couponDoc.id);
+      const couponSnap = await txn.get(couponRef);
+      if (!couponSnap.exists) continue;
 
-    if (availableQuery.empty) return false;
+      const coupon = couponSnap.data() as Coupon;
+      if (coupon.status !== "available" || coupon.isDisabled) continue;
 
-    const couponDoc = availableQuery.docs[0];
-    const couponRef = couponsRef.doc(couponDoc.id);
+      const now = new Date().toISOString();
+      const claimToken = nanoid(32);
 
-    // Re-read inside transaction to prevent race condition
-    const couponSnap = await txn.get(couponRef);
-    if (!couponSnap.exists || couponSnap.data()!.status !== "available") {
-      return false;
+      txn.update(couponRef, {
+        assignedTo: attendeeId,
+        status: "assigned",
+        assignedAt: now,
+      });
+
+      txn.update(attendeeRef, {
+        couponId: couponDoc.id,
+        couponLink: coupon.couponLink,
+        claimToken,
+        emailStatus: "pending",
+      });
+
+      const tokenRef = adminDb.collection("claimTokens").doc(claimToken);
+      txn.set(tokenRef, {
+        token: claimToken,
+        eventId,
+        attendeeId,
+        createdAt: now,
+      });
+
+      return true;
     }
 
-    const now = new Date().toISOString();
-    const claimToken = nanoid(32);
-
-    // Update coupon
-    txn.update(couponRef, {
-      assignedTo: attendeeId,
-      status: "assigned",
-      assignedAt: now,
-    });
-
-    // Update attendee
-    txn.update(attendeeRef, {
-      couponId: couponDoc.id,
-      couponLink: couponSnap.data()!.couponLink,
-      claimToken,
-      emailStatus: "pending",
-    });
-
-    // Write claim token lookup
-    const tokenRef = adminDb.collection("claimTokens").doc(claimToken);
-    txn.set(tokenRef, {
-      token: claimToken,
-      eventId,
-      attendeeId,
-      createdAt: now,
-    });
-
-    return true;
+    return false;
   }).then(async (assigned) => {
     if (assigned) {
       await writeAuditLog({

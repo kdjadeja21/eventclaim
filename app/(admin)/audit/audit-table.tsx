@@ -46,6 +46,10 @@ const actionVariant: Record<
   email_resent: "warning",
   email_failed: "destructive",
   coupon_claimed: "success",
+  coupon_disabled: "warning",
+  coupon_enabled: "success",
+  attendee_blacklisted: "warning",
+  attendee_unblacklisted: "success",
   status_checked: "secondary",
 };
 
@@ -64,6 +68,10 @@ const actionLabels: Record<AuditAction, string> = {
   email_resent: "Email Resent",
   email_failed: "Email Failed",
   coupon_claimed: "Coupon Claimed",
+  coupon_disabled: "Coupon Disabled",
+  coupon_enabled: "Coupon Enabled",
+  attendee_blacklisted: "Attendee Blacklisted",
+  attendee_unblacklisted: "Attendee Unblacklisted",
   status_checked: "Status Checked",
 };
 
@@ -181,6 +189,14 @@ function getAuditMessage(log: AuditLog): string {
       return `Coupon ${couponId ?? "record"} was claimed${
         email ? ` by ${email}` : attendeeId ? ` by attendee ${attendeeId}` : ""
       }.`;
+    case "coupon_disabled":
+      return `Coupon ${couponId ?? "record"} was disabled.`;
+    case "coupon_enabled":
+      return `Coupon ${couponId ?? "record"} was enabled.`;
+    case "attendee_blacklisted":
+      return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was blacklisted.`;
+    case "attendee_unblacklisted":
+      return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was unblacklisted.`;
     case "status_checked":
       return `Claim status was checked${email ? ` for ${email}` : ""}.`;
   }

@@ -1,5 +1,5 @@
 import { adminDb } from "@/lib/firebase/admin";
-import { EventStats } from "@/lib/types";
+import { EventStats, Coupon } from "@/lib/types";
 
 export async function getEventCountStats(eventId: string): Promise<EventStats> {
   const attendeesRef = adminDb
@@ -28,7 +28,7 @@ export async function getEventCountStats(eventId: string): Promise<EventStats> {
     attendeesRef.where("emailStatus", "==", "pending").count().get(),
     attendeesRef.where("emailStatus", "==", "failed").count().get(),
     attendeesRef.where("claimed", "==", true).count().get(),
-    couponsRef.where("status", "==", "available").count().get(),
+    couponsRef.where("status", "==", "available").get(),
   ]);
 
   const totalAttendees = totalAttendeesSnap.data().count;
@@ -38,7 +38,9 @@ export async function getEventCountStats(eventId: string): Promise<EventStats> {
   const totalEmailsPending = pendingSnap.data().count;
   const totalEmailsFailed = failedSnap.data().count;
   const totalClaimed = claimedSnap.data().count;
-  const totalAvailable = availableSnap.data().count;
+  const totalAvailable = availableSnap.docs.filter(
+    (d) => !(d.data() as Coupon).isDisabled
+  ).length;
   const totalUnclaimed = totalAssigned - totalClaimed;
   const claimRate =
     totalAssigned > 0 ? (totalClaimed / totalAssigned) * 100 : 0;

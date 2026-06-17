@@ -21,6 +21,10 @@ export type AuditAction =
   | "email_resent"
   | "email_failed"
   | "coupon_claimed"
+  | "coupon_disabled"
+  | "coupon_enabled"
+  | "attendee_blacklisted"
+  | "attendee_unblacklisted"
   | "status_checked";
 
 // ─── Firestore Document Types ─────────────────────────────────────────────────
@@ -63,6 +67,14 @@ export interface Coupon {
   status: CouponStatus;
   assignedAt: string | null;
   claimedAt: string | null;
+  isDisabled?: boolean;
+}
+
+/** Available for assignment (excludes disabled coupons). */
+export function isAssignableCoupon(
+  coupon: Pick<Coupon, "status" | "isDisabled">
+): boolean {
+  return coupon.status === "available" && !coupon.isDisabled;
 }
 
 export interface EmailLog {
@@ -125,6 +137,7 @@ export interface CouponStats {
   emailSent: number;
   claimed: number;
   unclaimed: number;
+  disabled: number;
   assignRate: number;
   claimRate: number;
 }

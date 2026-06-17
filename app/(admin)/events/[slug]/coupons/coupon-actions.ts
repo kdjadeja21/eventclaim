@@ -75,8 +75,14 @@ export async function assignSpecificCoupon(
       if (coupon.status !== "available") {
         throw new Error("Coupon is no longer available.");
       }
+      if (coupon.isDisabled) {
+        throw new Error("Coupon is disabled.");
+      }
       if (attendee.couponId) {
         throw new Error("Attendee already has a coupon assigned.");
+      }
+      if (attendee.isBlacklisted) {
+        throw new Error("Blacklisted attendees cannot receive coupons.");
       }
 
       const now = new Date().toISOString();
@@ -355,6 +361,50 @@ export async function bulkAutoAssignPending(
       success: false,
       assigned: 0,
       error: err instanceof Error ? err.message : "Bulk assign failed.",
+    };
+  }
+}
+
+// ─── Toggle coupon disabled state ─────────────────────────────────────────────
+
+export async function toggleCouponDisabled(
+  eventId: string,
+  couponId: string,
+  disabled: boolean,
+  slug: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  const couponRef = adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .doc(couponId);
+
+  try {
+    const snap = await couponRef.get();
+    if (!snap.exists) return { success: false, error: "Coupon not found." };
+
+    const coupon = snap.data() as Coupon;
+    if (coupon.status === "claimed") {
+      return { success: false, error: "Claimed coupons cannot be disabled." };
+    }
+
+    await couponRef.update({ isDisabled: disabled });
+
+    await writeAuditLog({
+      eventId,
+      action: disabled ? "coupon_disabled" : "coupon_enabled",
+      metadata: { couponId },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Update failed.",
     };
   }
 }
