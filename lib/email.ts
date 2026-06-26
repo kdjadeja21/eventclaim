@@ -10,6 +10,10 @@ const EMAILJS_SERVICE_ID = process.env.EMAILJS_SERVICE_ID!;
 const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID!;
 const EMAILJS_PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY!;
 const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY!;
+const EMAILJS_MONTHLY_QUOTA = Math.max(
+  0,
+  Number(process.env.EMAILJS_MONTHLY_QUOTA) || 200
+);
 
 // How many emails to send in parallel during bulk operations. Kept low to
 // respect EmailJS rate limits while still being far faster than serial sends.
@@ -71,6 +75,108 @@ async function postEmailJs(body: string): Promise<Response> {
     });
     // Add jitter to avoid synchronized retries across concurrent sends.
     await sleep(backoffMs + Math.floor(Math.random() * 250));
+  }
+}
+
+// ─── EmailJS quota (history API) ───────────────────────────────────────────────
+
+export type EmailQuota = {
+  limit: number;
+  used: number;
+  remaining: number;
+  ok: boolean;
+};
+
+type EmailJsHistoryRow = { created_at: string };
+type EmailJsHistoryResponse = {
+  is_last_page: boolean;
+  rows: EmailJsHistoryRow[];
+};
+
+const QUOTA_CACHE_TTL_MS = 60_000;
+const HISTORY_PAGE_SIZE = 100;
+const HISTORY_MAX_PAGES = 50;
+
+let quotaCache: { at: number; value: EmailQuota } | null = null;
+
+function getCurrentMonthStartUtc(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+async function fetchEmailJsHistoryPage(
+  page: number
+): Promise<EmailJsHistoryResponse> {
+  const params = new URLSearchParams({
+    user_id: EMAILJS_PUBLIC_KEY,
+    accessToken: EMAILJS_PRIVATE_KEY,
+    page: String(page),
+    count: String(HISTORY_PAGE_SIZE),
+  });
+
+  const response = await fetch(
+    `https://api.emailjs.com/api/v1.1/history?${params}`,
+    { method: "GET" }
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`EmailJS history error ${response.status}: ${body}`);
+  }
+
+  return response.json() as Promise<EmailJsHistoryResponse>;
+}
+
+export async function getEmailQuota(): Promise<EmailQuota> {
+  const limit = EMAILJS_MONTHLY_QUOTA;
+
+  if (quotaCache && Date.now() - quotaCache.at < QUOTA_CACHE_TTL_MS) {
+    return quotaCache.value;
+  }
+
+  try {
+    if (!EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
+      return { limit, used: 0, remaining: limit, ok: false };
+    }
+
+    const monthStart = getCurrentMonthStartUtc();
+    let used = 0;
+    let page = 1;
+    let done = false;
+
+    while (!done && page <= HISTORY_MAX_PAGES) {
+      if (page > 1) {
+        // History API is rate-limited to 1 request per second.
+        await sleep(1100);
+      }
+
+      const data = await fetchEmailJsHistoryPage(page);
+      const rows = data.rows ?? [];
+
+      for (const row of rows) {
+        const createdAt = new Date(row.created_at);
+        if (createdAt >= monthStart) {
+          used++;
+        } else {
+          done = true;
+          break;
+        }
+      }
+
+      if (data.is_last_page || rows.length === 0) {
+        done = true;
+      } else {
+        page++;
+      }
+    }
+
+    const remaining = Math.max(0, limit - used);
+    const value: EmailQuota = { limit, used, remaining, ok: true };
+    quotaCache = { at: Date.now(), value };
+    return value;
+  } catch (err) {
+    console.error("[getEmailQuota] failed", err);
+    return { limit, used: 0, remaining: limit, ok: false };
   }
 }
 
