@@ -119,6 +119,48 @@ export default function NewEventPage() {
               </Select>
             </div>
 
+            <div className="pt-2 border-t">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                Claim Page Hero (optional)
+              </p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label htmlFor="tagline">Headline</Label>
+                  <Input
+                    id="tagline"
+                    name="tagline"
+                    placeholder="Build together, claim your credits."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    name="description"
+                    placeholder="A morning of building with fellow developers…"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="timeLabel">Time</Label>
+                    <Input
+                      id="timeLabel"
+                      name="timeLabel"
+                      placeholder="10:00 – 14:00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="venue">Venue</Label>
+                    <Input
+                      id="venue"
+                      name="venue"
+                      placeholder="Trekanten, Oslo"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3 pt-2">
               <Button type="submit" disabled={isPending}>
                 {isPending ? (

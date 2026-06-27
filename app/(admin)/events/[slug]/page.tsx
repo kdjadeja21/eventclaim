@@ -25,6 +25,7 @@ import { formatDate } from "@/lib/utils";
 import { Event } from "@/lib/types";
 import EventStatusButton from "./event-status-button";
 import NotionGuideEditor from "./notion-guide-editor";
+import EventHeroEditor from "./event-hero-editor";
 import DeleteEventButton from "./delete-event-button";
 
 const statusVariant: Record<
@@ -48,9 +49,9 @@ export default async function EventDetailPage({ params }: Props) {
   const quickLinks = [
     {
       href: `/events/${slug}/import`,
-      label: "Import Attendees / Coupons",
+      label: "Import Attendees",
       icon: Upload,
-      description: "Upload Luma CSV or coupon links",
+      description: "Upload a Luma CSV export",
     },
     {
       href: `/events/${slug}/attendees`,
@@ -106,13 +107,13 @@ export default async function EventDetailPage({ params }: Props) {
           icon={Users}
           label="Attendees"
           value={stats.totalAttendees}
-          sub={`${stats.totalAssigned} assigned`}
+          sub={`${stats.totalGranted} with offers`}
         />
         <StatCard
           icon={Ticket}
-          label="Coupons"
-          value={stats.totalCoupons}
-          sub={`${stats.totalAvailable} available`}
+          label="Offer Types"
+          value={stats.totalCouponDefs}
+          sub="unique partner offers"
         />
         <StatCard
           icon={Mail}
@@ -124,7 +125,7 @@ export default async function EventDetailPage({ params }: Props) {
           icon={BarChart2}
           label="Claim Rate"
           value={`${stats.claimRate.toFixed(1)}%`}
-          sub={`${stats.totalClaimed} / ${stats.totalAssigned} claimed`}
+          sub={`${stats.totalClaimed} / ${stats.totalGranted} claimed`}
           progress={stats.claimRate}
         />
       </div>
@@ -157,6 +158,16 @@ export default async function EventDetailPage({ params }: Props) {
         key={event.notionGuideUrl}
         eventId={event.id}
         notionGuideUrl={event.notionGuideUrl}
+      />
+
+      {/* Claim page hero */}
+      <EventHeroEditor
+        key={`${event.tagline}-${event.venue}`}
+        eventId={event.id}
+        tagline={event.tagline}
+        description={event.description}
+        timeLabel={event.timeLabel}
+        venue={event.venue}
       />
 
       {/* Danger Zone */}

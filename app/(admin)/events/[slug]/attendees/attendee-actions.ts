@@ -25,10 +25,10 @@ export async function toggleAttendeeBlacklist(
     if (!snap.exists) return { success: false, error: "Attendee not found." };
 
     const attendee = snap.data() as Attendee;
-    if (blacklisted && attendee.claimed) {
+    if (blacklisted && attendee.claimedAny) {
       return {
         success: false,
-        error: "Cannot blacklist an attendee who has already claimed their coupon.",
+        error: "Cannot blacklist an attendee who has already claimed their offers.",
       };
     }
 

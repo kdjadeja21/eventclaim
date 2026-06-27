@@ -2,7 +2,11 @@
 
 export type EventStatus = "draft" | "active" | "completed";
 
-export type CouponStatus = "available" | "assigned" | "emailSent" | "claimed";
+export type CouponKind = "uniqueLink" | "sharedCode" | "sharedLink";
+
+export type CouponLinkStatus = "available" | "assigned" | "claimed";
+
+export type GrantStatus = "assigned" | "claimed";
 
 export type EmailStatus = "pending" | "sent" | "failed";
 
@@ -10,21 +14,25 @@ export type AuditAction =
   | "event_created"
   | "event_updated"
   | "event_deleted"
+  | "event_hero_updated"
   | "attendee_imported"
   | "attendee_deleted"
   | "attendee_luma_synced"
-  | "coupon_imported"
-  | "coupon_assigned"
+  | "attendee_blacklisted"
+  | "attendee_unblacklisted"
+  | "coupon_created"
+  | "coupon_updated"
+  | "coupon_deleted"
+  | "coupon_disabled"
+  | "coupon_enabled"
+  | "coupon_links_added"
+  | "coupon_granted"
   | "coupon_unassigned"
-  | "coupon_added"
+  | "coupon_link_deleted"
+  | "grant_claimed"
   | "email_sent"
   | "email_resent"
   | "email_failed"
-  | "coupon_claimed"
-  | "coupon_disabled"
-  | "coupon_enabled"
-  | "attendee_blacklisted"
-  | "attendee_unblacklisted"
   | "status_checked";
 
 // ─── Firestore Document Types ─────────────────────────────────────────────────
@@ -39,6 +47,11 @@ export interface Event {
   createdAt: string;
   updatedAt: string;
   lumaLastSyncedAt?: string | null;
+  // Hero fields for claim landing page
+  tagline?: string;
+  description?: string;
+  timeLabel?: string; // e.g. "10:00 – 14:00"
+  venue?: string;     // e.g. "Trekanten, Oslo"
 }
 
 export interface Attendee {
@@ -46,12 +59,11 @@ export interface Attendee {
   eventId: string;
   name: string;
   email: string;
-  couponId: string | null;
-  couponLink: string | null;
+  // Grant tracking (replaces old couponId/couponLink/claimed fields)
+  grantCount: number;       // how many grants this attendee has
+  claimedAny: boolean;      // true when any grant has been claimed
   emailStatus: EmailStatus;
   emailSentAt: string | null;
-  claimed: boolean;
-  claimedAt: string | null;
   claimToken: string | null;
   createdAt: string;
   registeredAt?: string | null;
@@ -59,22 +71,63 @@ export interface Attendee {
   isBlacklisted?: boolean;
 }
 
+/**
+ * A Coupon Definition — one "partner offer" card.
+ * Stored at events/{eventId}/coupons/{couponId}.
+ */
 export interface Coupon {
   id: string;
   eventId: string;
-  couponLink: string;
-  assignedTo: string | null; // attendeeId
-  status: CouponStatus;
+  name: string;
+  kind: CouponKind;
+  // Presentation fields (drive the claim landing page card)
+  category: string;           // e.g. "VOICE DICTATION"
+  logoUrl: string;            // partner logo URL
+  highlight: string;          // gift line, e.g. "3 months of Pro, comped"
+  description: string;        // redeem instructions paragraph
+  note?: string;              // optional callout box text
+  // Value
+  sharedValue?: string;       // sharedCode: the code; sharedLink: the URL
+  redeemUrl?: string;         // optional how-to-redeem doc/guide link
+  // Pool stats for uniqueLink (denormalized)
+  linkTotal?: number;
+  linkAvailable?: number;
+  // Meta
+  sortOrder: number;
+  isDisabled: boolean;
+  createdAt: string;
+}
+
+/**
+ * A single-use URL pool entry for uniqueLink coupons.
+ * Stored at events/{eventId}/coupons/{couponId}/links/{linkId}.
+ */
+export interface CouponLink {
+  id: string;
+  couponId: string;
+  eventId: string;
+  url: string;
+  status: CouponLinkStatus;
+  assignedTo: string | null;  // attendeeId
   assignedAt: string | null;
   claimedAt: string | null;
   isDisabled?: boolean;
 }
 
-/** Available for assignment (excludes disabled coupons). */
-export function isAssignableCoupon(
-  coupon: Pick<Coupon, "status" | "isDisabled">
-): boolean {
-  return coupon.status === "available" && !coupon.isDisabled;
+/**
+ * An attendee's copy of a coupon — the actual value they can redeem.
+ * Stored at events/{eventId}/attendees/{attendeeId}/grants/{couponId}.
+ * The coupon id is used as the document id for idempotency.
+ */
+export interface Grant {
+  couponId: string;
+  eventId: string;
+  attendeeId: string;
+  value: string;              // unique URL / shared code / shared link
+  linkId?: string;            // set for uniqueLink grants
+  status: GrantStatus;
+  assignedAt: string;
+  claimedAt: string | null;
 }
 
 export interface EmailLog {
@@ -119,40 +172,47 @@ export interface CouponImportResult {
   imported: number;
   duplicatesSkipped: number;
   invalidSkipped: number;
-  autoAssigned: number;
+  autoGranted: number;
   errors: string[];
 }
 
 // ─── Coupon Management Types ──────────────────────────────────────────────────
 
-export interface CouponWithAttendee extends Coupon {
-  attendeeName: string | null;
-  attendeeEmail: string | null;
+/** Per-coupon stats shown on the admin coupons page. */
+export interface CouponStats {
+  total: number;       // total links (uniqueLink) or 1 (shared)
+  available: number;   // links not yet assigned (uniqueLink only)
+  granted: number;     // number of attendees with this grant
+  claimed: number;     // number of attendees who claimed
+  claimRate: number;   // claimed / granted * 100
+  disabled: boolean;
 }
 
-export interface CouponStats {
-  total: number;
-  available: number;
-  assigned: number;
-  emailSent: number;
-  claimed: number;
-  unclaimed: number;
-  disabled: number;
-  assignRate: number;
-  claimRate: number;
+/** Coupon definition enriched with per-coupon stats for the admin table. */
+export interface CouponWithStats extends Coupon {
+  stats: CouponStats;
 }
 
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
 export interface EventStats {
   totalAttendees: number;
-  totalCoupons: number;
-  totalAssigned: number;
-  totalAvailable: number;
+  totalCouponDefs: number;    // number of coupon definitions
+  totalGranted: number;       // total grants assigned across all attendees
   totalEmailsSent: number;
   totalEmailsPending: number;
   totalEmailsFailed: number;
   totalClaimed: number;
-  totalUnclaimed: number;
   claimRate: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Returns true if a coupon definition is active and can receive new grants. */
+export function isCouponGrantable(
+  coupon: Pick<Coupon, "isDisabled" | "kind" | "linkAvailable">
+): boolean {
+  if (coupon.isDisabled) return false;
+  if (coupon.kind === "uniqueLink") return (coupon.linkAvailable ?? 0) > 0;
+  return true;
 }

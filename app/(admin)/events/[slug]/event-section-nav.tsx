@@ -33,7 +33,7 @@ const eventSections: {
   {
     key: "coupons",
     href: (slug) => `/events/${slug}/coupons`,
-    label: "Coupons",
+    label: "Partner Offers",
     icon: Ticket,
   },
   {

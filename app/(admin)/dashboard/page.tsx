@@ -45,22 +45,22 @@ async function getDashboardData() {
   );
 
   let totalAttendees = 0;
-  let totalCoupons = 0;
-  let totalAssigned = 0;
+  let totalCouponDefs = 0;
+  let totalGranted = 0;
   let totalEmailsSent = 0;
   let totalClaimed = 0;
 
   const perEventStats = eventStatsResults.map(({ event, stats }) => {
     totalAttendees += stats.totalAttendees;
-    totalCoupons += stats.totalCoupons;
-    totalAssigned += stats.totalAssigned;
+    totalCouponDefs += stats.totalCouponDefs;
+    totalGranted += stats.totalGranted;
     totalEmailsSent += stats.totalEmailsSent;
     totalClaimed += stats.totalClaimed;
 
     return {
       event,
       attendees: stats.totalAttendees,
-      assigned: stats.totalAssigned,
+      granted: stats.totalGranted,
       sent: stats.totalEmailsSent,
       claimed: stats.totalClaimed,
       claimRate: stats.claimRate,
@@ -84,12 +84,12 @@ async function getDashboardData() {
 
   return {
     totalAttendees,
-    totalCoupons,
-    totalAssigned,
+    totalCoupons: totalCouponDefs,
+    totalGranted,
     totalEmailsSent,
     totalClaimed,
     overallClaimRate:
-      totalAssigned > 0 ? (totalClaimed / totalAssigned) * 100 : 0,
+      totalGranted > 0 ? (totalClaimed / totalGranted) * 100 : 0,
     perEventStats,
     recentActivity,
   };
@@ -98,14 +98,18 @@ async function getDashboardData() {
 const actionLabels: Record<string, string> = {
   event_created: "Event created",
   event_updated: "Event updated",
+  event_hero_updated: "Hero updated",
   attendee_imported: "Attendees imported",
   attendee_deleted: "Attendee deleted",
-  coupon_imported: "Coupons imported",
-  coupon_assigned: "Coupon assigned",
+  coupon_created: "Coupon created",
+  coupon_updated: "Coupon updated",
+  coupon_deleted: "Coupon deleted",
+  coupon_links_added: "Links added",
+  coupon_granted: "Grants issued",
+  grant_claimed: "Offer claimed",
   email_sent: "Email sent",
   email_resent: "Email resent",
   email_failed: "Email failed",
-  coupon_claimed: "Coupon claimed",
   status_checked: "Status checked",
 };
 
@@ -159,7 +163,7 @@ export default async function DashboardPage() {
             </Card>
           ) : (
             data.perEventStats.map(
-              ({ event, attendees, assigned, sent, claimed, claimRate }) => (
+              ({ event, attendees, granted, sent, claimed, claimRate }) => (
                 <Card key={event.id}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
@@ -186,7 +190,7 @@ export default async function DashboardPage() {
                   <CardContent className="space-y-2">
                     <div className="grid grid-cols-4 gap-2 text-center text-xs">
                       <Metric label="Attendees" value={attendees} />
-                      <Metric label="Assigned" value={assigned} />
+                      <Metric label="Granted" value={granted} />
                       <Metric label="Sent" value={sent} />
                       <Metric label="Claimed" value={claimed} />
                     </div>
@@ -300,9 +304,11 @@ function ActionIcon({ action }: { action: string }) {
   const iconMap: Record<string, React.ElementType> = {
     email_sent: Mail,
     email_resent: Mail,
-    coupon_claimed: CheckCheck,
+    grant_claimed: CheckCheck,
     attendee_imported: Users,
-    coupon_imported: Ticket,
+    coupon_created: Ticket,
+    coupon_links_added: Ticket,
+    coupon_granted: Ticket,
     event_created: CalendarDays,
   };
   const Icon = iconMap[action] ?? Clock;

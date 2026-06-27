@@ -1,67 +1,66 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
+
+function CouponCardSkeleton() {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-start gap-3">
+          <Skeleton className="h-8 w-8 rounded shrink-0" />
+          <div className="flex-1 min-w-0 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <Skeleton className="h-3 w-16" />
+            </div>
+            <Skeleton className="h-3 w-56" />
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Skeleton className="h-8 w-16 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-16 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+            <Skeleton className="h-8 w-8 rounded-md" />
+          </div>
+        </div>
+      </CardHeader>
+    </Card>
+  );
+}
 
 export default function CouponsLoading() {
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Skeleton className="h-9 w-9 rounded-md" />
+        <Skeleton className="h-9 w-9 rounded-md shrink-0" />
         <div className="space-y-1.5">
-          <Skeleton className="h-7 w-48" />
-          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-7 w-44" />
+          <Skeleton className="h-4 w-52" />
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-1.5">
-                <Skeleton className="h-3.5 w-3.5 rounded" />
-                <Skeleton className="h-3 w-20" />
-              </div>
-              <Skeleton className="h-8 w-14 mt-1" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-3 w-28" />
-            </CardContent>
-          </Card>
-        ))}
+      {/* Section nav */}
+      <div className="overflow-x-auto pb-1">
+        <div className="flex min-w-max gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-28 rounded-md" />
+          ))}
+        </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Skeleton className="h-9 flex-1 min-w-48 rounded-md" />
-        <Skeleton className="h-9 w-44 rounded-md" />
-        <Skeleton className="h-9 w-32 rounded-md" />
-        <Skeleton className="h-9 w-32 rounded-md" />
-        <Skeleton className="h-9 w-28 rounded-md" />
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-4 w-72" />
         <Skeleton className="h-9 w-28 rounded-md" />
       </div>
 
-      {/* Table */}
-      <div className="rounded-lg border">
-        <div className="p-4 space-y-3">
-          {/* Header row */}
-          <div className="flex items-center gap-4 pb-2 border-b">
-            {[80, 200, 140, 100, 100, 80].map((w, i) => (
-              <Skeleton key={i} className={`h-4 w-[${w}px]`} />
-            ))}
-          </div>
-          {/* Data rows */}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4">
-              <Skeleton className="h-6 w-20 rounded-full" />
-              <Skeleton className="h-4 flex-1" />
-              <Skeleton className="h-4 w-36" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-7 w-16 rounded-md" />
-            </div>
-          ))}
-        </div>
+      {/* Coupon cards */}
+      <div className="grid gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <CouponCardSkeleton key={i} />
+        ))}
       </div>
     </div>
   );

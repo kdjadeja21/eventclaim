@@ -4,13 +4,8 @@ import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
-import {
-  parseLumaAttendeeCsv,
-  parseCouponCsv,
-  attendeeDocId,
-  couponDocId,
-} from "@/lib/import";
-import { Attendee, AttendeeImportResult, Coupon, CouponImportResult } from "@/lib/types";
+import { parseLumaAttendeeCsv, attendeeDocId } from "@/lib/import";
+import { Attendee, AttendeeImportResult } from "@/lib/types";
 
 async function resolveEventId(slug: string): Promise<string> {
   const snap = await adminDb
@@ -59,12 +54,10 @@ export async function importAttendees(
       eventId,
       name: row.name,
       email: row.email,
-      couponId: null,
-      couponLink: null,
+      grantCount: 0,
+      claimedAny: false,
       emailStatus: "pending",
       emailSentAt: null,
-      claimed: false,
-      claimedAt: null,
       claimToken: null,
       createdAt: now,
     };
@@ -80,7 +73,7 @@ export async function importAttendees(
     userId: session.uid,
   });
 
-  // Trigger reservation queue
+  // Grant all coupons to newly-imported attendees
   const assigned = await assignPendingForEvent(eventId);
 
   return {
@@ -89,67 +82,6 @@ export async function importAttendees(
     invalid: invalidCount,
     waitingForCoupon: imported - assigned,
     assigned,
-    errors,
-  };
-}
-
-export async function importCoupons(
-  slug: string,
-  csvText: string
-): Promise<CouponImportResult> {
-  const session = await requireSession();
-  const eventId = await resolveEventId(slug);
-
-  const { rows, duplicatesInFile, invalidCount, errors } =
-    parseCouponCsv(csvText);
-
-  let imported = 0;
-  let duplicatesSkipped = duplicatesInFile;
-
-  const couponsRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons");
-
-  for (const row of rows) {
-    const docId = couponDocId(eventId, row.couponLink);
-    const docRef = couponsRef.doc(docId);
-    const existing = await docRef.get();
-
-    if (existing.exists) {
-      duplicatesSkipped++;
-      continue;
-    }
-
-    const coupon: Coupon = {
-      id: docId,
-      eventId,
-      couponLink: row.couponLink,
-      assignedTo: null,
-      status: "available",
-      assignedAt: null,
-      claimedAt: null,
-    };
-
-    await docRef.set(coupon);
-    imported++;
-  }
-
-  await writeAuditLog({
-    eventId,
-    action: "coupon_imported",
-    metadata: { imported, duplicatesSkipped, invalid: invalidCount },
-    userId: session.uid,
-  });
-
-  // Trigger reservation queue for attendees waiting for coupons
-  const autoAssigned = await assignPendingForEvent(eventId);
-
-  return {
-    imported,
-    duplicatesSkipped,
-    invalidSkipped: invalidCount,
-    autoAssigned,
     errors,
   };
 }

@@ -2,7 +2,12 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
-import { Coupon, CouponWithAttendee, CouponStats, Attendee, isAssignableCoupon } from "@/lib/types";
+import {
+  Coupon,
+  CouponLink,
+  Grant,
+  CouponWithStats,
+} from "@/lib/types";
 
 async function resolveEventId(slug: string): Promise<string> {
   const snap = await adminDb
@@ -15,9 +20,8 @@ async function resolveEventId(slug: string): Promise<string> {
 }
 
 export async function getCoupons(slug: string): Promise<{
-  coupons: CouponWithAttendee[];
+  coupons: CouponWithStats[];
   eventId: string;
-  stats: CouponStats;
 }> {
   await requireSession();
   const eventId = await resolveEventId(slug);
@@ -26,108 +30,103 @@ export async function getCoupons(slug: string): Promise<{
     .collection("events")
     .doc(eventId)
     .collection("coupons")
-    .orderBy("status")
+    .orderBy("sortOrder")
     .get();
 
-  const rawCoupons = couponsSnap.docs.map((d) => d.data() as Coupon);
+  const coupons = couponsSnap.docs.map((d) => d.data() as Coupon);
 
-  // Collect unique attendee IDs to batch-fetch
-  const attendeeIds = [
-    ...new Set(rawCoupons.map((c) => c.assignedTo).filter(Boolean) as string[]),
-  ];
+  // Build per-coupon stats in parallel
+  const couponsWithStats: CouponWithStats[] = await Promise.all(
+    coupons.map(async (coupon) => {
+      // Count grants for this coupon (across all attendees via collectionGroup)
+      const grantsSnap = await adminDb
+        .collectionGroup("grants")
+        .where("couponId", "==", coupon.id)
+        .where("eventId", "==", eventId)
+        .get();
 
-  const attendeeMap = new Map<string, { name: string; email: string }>();
-  if (attendeeIds.length > 0) {
-    // Firestore 'in' query max 30 items; chunk if needed
-    const chunks: string[][] = [];
-    for (let i = 0; i < attendeeIds.length; i += 30) {
-      chunks.push(attendeeIds.slice(i, i + 30));
-    }
-    await Promise.all(
-      chunks.map(async (chunk) => {
-        const snap = await adminDb
-          .collection("events")
-          .doc(eventId)
-          .collection("attendees")
-          .where("id", "in", chunk)
-          .get();
-        snap.docs.forEach((d) => {
-          const a = d.data() as Attendee;
-          attendeeMap.set(a.id, { name: a.name, email: a.email });
-        });
-      })
-    );
-  }
+      const grants = grantsSnap.docs.map((d) => d.data() as Grant);
+      const granted = grants.length;
+      const claimed = grants.filter((g) => g.status === "claimed").length;
+      const claimRate = granted > 0 ? (claimed / granted) * 100 : 0;
 
-  const coupons: CouponWithAttendee[] = rawCoupons.map((c) => {
-    const att = c.assignedTo ? attendeeMap.get(c.assignedTo) : null;
-    return {
-      ...c,
-      attendeeName: att?.name ?? null,
-      attendeeEmail: att?.email ?? null,
-    };
-  });
+      return {
+        ...coupon,
+        stats: {
+          total: coupon.kind === "uniqueLink" ? (coupon.linkTotal ?? 0) : 1,
+          available:
+            coupon.kind === "uniqueLink" ? (coupon.linkAvailable ?? 0) : 0,
+          granted,
+          claimed,
+          claimRate,
+          disabled: coupon.isDisabled,
+        },
+      };
+    })
+  );
 
-  // Compute stats
-  const total = coupons.length;
-  const available = coupons.filter(isAssignableCoupon).length;
-  const assigned = coupons.filter((c) => c.status === "assigned").length;
-  const emailSent = coupons.filter((c) => c.status === "emailSent").length;
-  const claimed = coupons.filter((c) => c.status === "claimed").length;
-  const disabled = coupons.filter((c) => c.isDisabled).length;
-  const unclaimed = assigned + emailSent;
-  const assignedTotal = assigned + emailSent + claimed;
-  const assignRate = total > 0 ? (assignedTotal / total) * 100 : 0;
-  const claimRate = assignedTotal > 0 ? (claimed / assignedTotal) * 100 : 0;
-
-  const stats: CouponStats = {
-    total,
-    available,
-    assigned,
-    emailSent,
-    claimed,
-    unclaimed,
-    disabled,
-    assignRate,
-    claimRate,
-  };
-
-  return { coupons, eventId, stats };
+  return { coupons: couponsWithStats, eventId };
 }
 
-export async function getAssignableAttendees(
-  eventId: string
-): Promise<Array<{ id: string; name: string; email: string }>> {
-  await requireSession();
-
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .where("couponId", "==", null)
-    .orderBy("name")
-    .get();
-
-  return snap.docs
-    .map((d) => d.data() as Attendee)
-    .filter((a) => !a.isBlacklisted)
-    .map((a) => ({ id: a.id, name: a.name, email: a.email }));
-}
-
-export async function getAvailableCoupons(
-  eventId: string
-): Promise<Array<{ id: string; couponLink: string }>> {
+export async function getCouponLinks(
+  eventId: string,
+  couponId: string
+): Promise<CouponLink[]> {
   await requireSession();
 
   const snap = await adminDb
     .collection("events")
     .doc(eventId)
     .collection("coupons")
-    .where("status", "==", "available")
+    .doc(couponId)
+    .collection("links")
+    .orderBy("status")
     .get();
 
-  return snap.docs
-    .map((d) => d.data() as Coupon)
-    .filter(isAssignableCoupon)
-    .map((c) => ({ id: c.id, couponLink: c.couponLink }));
+  return snap.docs.map((d) => d.data() as CouponLink);
+}
+
+export async function getCouponGrants(
+  eventId: string,
+  couponId: string
+): Promise<Array<Grant & { attendeeName: string; attendeeEmail: string }>> {
+  await requireSession();
+
+  const grantsSnap = await adminDb
+    .collectionGroup("grants")
+    .where("couponId", "==", couponId)
+    .where("eventId", "==", eventId)
+    .get();
+
+  const grants = grantsSnap.docs.map((d) => d.data() as Grant);
+
+  // Batch-fetch attendee names / emails
+  const attendeeIds = [...new Set(grants.map((g) => g.attendeeId))];
+  const attendeeMap = new Map<string, { name: string; email: string }>();
+
+  const CHUNK = 30;
+  for (let i = 0; i < attendeeIds.length; i += CHUNK) {
+    const chunk = attendeeIds.slice(i, i + CHUNK);
+    const snap = await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("attendees")
+      .where("id", "in", chunk)
+      .get();
+    snap.docs.forEach((d) => {
+      attendeeMap.set(d.id, {
+        name: d.data().name,
+        email: d.data().email,
+      });
+    });
+  }
+
+  return grants.map((g) => {
+    const att = attendeeMap.get(g.attendeeId);
+    return {
+      ...g,
+      attendeeName: att?.name ?? "—",
+      attendeeEmail: att?.email ?? "—",
+    };
+  });
 }

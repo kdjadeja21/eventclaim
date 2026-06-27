@@ -1,143 +1,208 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee, Coupon } from "@/lib/types";
-import { nanoid } from "nanoid";
+import { Attendee, Coupon, CouponLink, Grant } from "@/lib/types";
+import { ensureClaimToken } from "@/lib/assignment-helpers";
+
+export { ensureClaimToken };
 
 /**
- * Assigns one available coupon to the given attendee using a Firestore
- * transaction (prevents race conditions / double assignments).
- *
- * Returns true if a coupon was assigned, false if none available.
+ * Grants a single coupon definition to the given attendee.
+ * - uniqueLink: reserves one available pool link in a transaction.
+ * - sharedCode / sharedLink: copies the sharedValue directly.
+ * Idempotent: if the attendee already has a grant for this coupon, does nothing.
+ * Returns true if a new grant was created, false if skipped.
  */
-export async function assignCouponToAttendee(
+async function grantOneCoupon(
   eventId: string,
-  attendeeId: string
+  attendeeId: string,
+  coupon: Coupon
 ): Promise<boolean> {
-  const attendeeRef = adminDb
+  const grantRef = adminDb
     .collection("events")
     .doc(eventId)
     .collection("attendees")
-    .doc(attendeeId);
+    .doc(attendeeId)
+    .collection("grants")
+    .doc(coupon.id); // coupon id = grant id → idempotent
 
-  const couponsRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons");
+  if (coupon.kind === "uniqueLink") {
+    const linksRef = adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(coupon.id)
+      .collection("links");
 
-  const availableQuery = await couponsRef
-    .where("status", "==", "available")
-    .limit(20)
-    .get();
+    const couponRef = adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(coupon.id);
 
-  const candidates = availableQuery.docs.filter(
-    (d) => !(d.data() as Coupon).isDisabled
-  );
+    // Find available links first (outside transaction to avoid reads + writes
+    // on very large collections; we re-verify inside the txn).
+    const availableSnap = await linksRef
+      .where("status", "==", "available")
+      .limit(10)
+      .get();
 
-  if (candidates.length === 0) return false;
+    if (availableSnap.empty) return false; // pool exhausted
+
+    return adminDb.runTransaction(async (txn) => {
+      const grantSnap = await txn.get(grantRef);
+      if (grantSnap.exists) return false; // already granted — idempotent
+
+      for (const linkDoc of availableSnap.docs) {
+        const linkRef = linksRef.doc(linkDoc.id);
+        const freshLink = await txn.get(linkRef);
+        if (!freshLink.exists) continue;
+        const link = freshLink.data() as CouponLink;
+        if (link.status !== "available") continue;
+
+        const now = new Date().toISOString();
+        const grant: Grant = {
+          couponId: coupon.id,
+          eventId,
+          attendeeId,
+          value: link.url,
+          linkId: link.id,
+          status: "assigned",
+          assignedAt: now,
+          claimedAt: null,
+        };
+
+        txn.set(grantRef, grant);
+        txn.update(linkRef, {
+          status: "assigned",
+          assignedTo: attendeeId,
+          assignedAt: now,
+        });
+        // Decrement linkAvailable on the coupon definition
+        txn.update(couponRef, {
+          linkAvailable: FieldValue.increment(-1),
+        });
+        return true;
+      }
+      return false;
+    });
+  }
+
+  // sharedCode or sharedLink
+  if (!coupon.sharedValue) return false;
 
   return adminDb.runTransaction(async (txn) => {
-    const attendeeSnap = await txn.get(attendeeRef);
-    if (!attendeeSnap.exists) throw new Error("Attendee not found");
+    const grantSnap = await txn.get(grantRef);
+    if (grantSnap.exists) return false; // idempotent
 
-    const attendee = attendeeSnap.data()!;
-    // Already assigned — idempotent
-    if (attendee.couponId) return true;
-    // Blacklisted attendees are not eligible for coupons
-    if (attendee.isBlacklisted) return false;
-
-    for (const couponDoc of candidates) {
-      const couponRef = couponsRef.doc(couponDoc.id);
-      const couponSnap = await txn.get(couponRef);
-      if (!couponSnap.exists) continue;
-
-      const coupon = couponSnap.data() as Coupon;
-      if (coupon.status !== "available" || coupon.isDisabled) continue;
-
-      const now = new Date().toISOString();
-      const claimToken = nanoid(32);
-
-      txn.update(couponRef, {
-        assignedTo: attendeeId,
-        status: "assigned",
-        assignedAt: now,
-      });
-
-      txn.update(attendeeRef, {
-        couponId: couponDoc.id,
-        couponLink: coupon.couponLink,
-        claimToken,
-        emailStatus: "pending",
-      });
-
-      const tokenRef = adminDb.collection("claimTokens").doc(claimToken);
-      txn.set(tokenRef, {
-        token: claimToken,
-        eventId,
-        attendeeId,
-        createdAt: now,
-      });
-
-      return true;
-    }
-
-    return false;
-  }).then(async (assigned) => {
-    if (assigned) {
-      await writeAuditLog({
-        eventId,
-        action: "coupon_assigned",
-        metadata: { attendeeId },
-      });
-    }
-    return assigned;
+    const now = new Date().toISOString();
+    const grant: Grant = {
+      couponId: coupon.id,
+      eventId,
+      attendeeId,
+      value: coupon.sharedValue!,
+      status: "assigned",
+      assignedAt: now,
+      claimedAt: null,
+    };
+    txn.set(grantRef, grant);
+    return true;
   });
 }
 
 /**
- * Processes the reservation queue: assigns coupons to all attendees in the
- * event that are still waiting for one. Called after coupon upload or
- * attendee import.
+ * Grants ALL enabled coupons for the event to the given attendee.
+ * Issues a claimToken for the attendee if one doesn't exist yet.
+ * Returns the number of coupons newly granted.
+ */
+export async function grantCouponsToAttendee(
+  eventId: string,
+  attendeeId: string
+): Promise<number> {
+  const attendeeSnap = await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("attendees")
+    .doc(attendeeId)
+    .get();
+
+  if (!attendeeSnap.exists) return 0;
+  const attendee = attendeeSnap.data() as Attendee;
+  if (attendee.isBlacklisted) return 0;
+
+  const couponsSnap = await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .where("isDisabled", "==", false)
+    .get();
+
+  if (couponsSnap.empty) return 0;
+
+  const coupons = couponsSnap.docs.map((d) => d.data() as Coupon);
+  let newGrants = 0;
+
+  for (const coupon of coupons) {
+    const granted = await grantOneCoupon(eventId, attendeeId, coupon);
+    if (granted) newGrants++;
+  }
+
+  if (newGrants > 0) {
+    // Ensure the attendee has a claimToken
+    await ensureClaimToken(eventId, attendeeId);
+
+    // Update grantCount on the attendee doc
+    await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("attendees")
+      .doc(attendeeId)
+      .update({
+        grantCount: FieldValue.increment(newGrants),
+        emailStatus: "pending",
+      });
+
+    await writeAuditLog({
+      eventId,
+      action: "coupon_granted",
+      metadata: { attendeeId, newGrants },
+    });
+  }
+
+  return newGrants;
+}
+
+/**
+ * Grants all enabled coupons to every attendee in the event that is still
+ * missing at least one grant (or is missing grants for newly added coupons).
+ * Processes checked-in attendees first.
  */
 export async function assignPendingForEvent(eventId: string): Promise<number> {
   const attendeesSnap = await adminDb
     .collection("events")
     .doc(eventId)
     .collection("attendees")
-    .where("couponId", "==", null)
     .get();
 
-  // Sort: checked-in attendees first (asc checkedInAt),
-  // then non-checked-in attendees (asc registeredAt).
   const sorted = attendeesSnap.docs
     .filter((d) => !(d.data() as Attendee).isBlacklisted)
-    .slice()
     .sort((a, b) => {
-    const aData = a.data() as Attendee;
-    const bData = b.data() as Attendee;
-    const aChecked = aData.checkedInAt ?? null;
-    const bChecked = bData.checkedInAt ?? null;
+      const aData = a.data() as Attendee;
+      const bData = b.data() as Attendee;
+      const aChecked = aData.checkedInAt ?? null;
+      const bChecked = bData.checkedInAt ?? null;
+      if (aChecked && bChecked) return aChecked.localeCompare(bChecked);
+      if (aChecked) return -1;
+      if (bChecked) return 1;
+      const aReg = aData.registeredAt ?? aData.createdAt;
+      const bReg = bData.registeredAt ?? bData.createdAt;
+      return aReg.localeCompare(bReg);
+    });
 
-    // Both checked in → compare checkedInAt ascending
-    if (aChecked && bChecked) return aChecked.localeCompare(bChecked);
-    // Only a checked in → a comes first
-    if (aChecked) return -1;
-    // Only b checked in → b comes first
-    if (bChecked) return 1;
-    // Neither checked in → compare registeredAt ascending (null sorts last)
-    const aReg = aData.registeredAt ?? aData.createdAt;
-    const bReg = bData.registeredAt ?? bData.createdAt;
-    return aReg.localeCompare(bReg);
-  });
-
-  let assigned = 0;
+  let totalGranted = 0;
   for (const doc of sorted) {
-    const ok = await assignCouponToAttendee(eventId, doc.id);
-    if (ok) assigned++;
-    else break; // no more coupons available
+    const count = await grantCouponsToAttendee(eventId, doc.id);
+    totalGranted += count;
   }
-  return assigned;
+  return totalGranted;
 }
-
-// Suppress unused import warning for FieldValue (used in other callers)
-void FieldValue;

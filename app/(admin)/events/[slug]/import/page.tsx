@@ -4,11 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Upload, CheckCircle2, AlertCircle, Loader2, Info } from "lucide-react";
 import { toast } from "sonner";
-import { importAttendees, importCoupons } from "./actions";
+import { importAttendees } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Card,
   CardContent,
@@ -17,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AttendeeImportResult, CouponImportResult } from "@/lib/types";
+import { AttendeeImportResult } from "@/lib/types";
 import { EventSectionNav } from "../event-section-nav";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -25,7 +24,6 @@ type Props = { params: Promise<{ slug: string }> };
 export default function ImportPage({ params: paramsPromise }: Props) {
   const [slug, setSlug] = useState<string>("");
 
-  // Resolve params once on mount
   useState(() => {
     paramsPromise.then((p) => {
       setSlug(p.slug);
@@ -43,30 +41,14 @@ export default function ImportPage({ params: paramsPromise }: Props) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Import Data</h1>
           <p className="text-sm text-muted-foreground">
-            Upload attendees from Luma or add coupon links
+            Upload attendees from a Luma CSV export
           </p>
         </div>
       </div>
 
       <EventSectionNav slug={slug} active="import" />
 
-      <Tabs defaultValue="attendees">
-        <TabsList className="w-full">
-          <TabsTrigger value="attendees" className="flex-1">
-            Attendees (Luma CSV)
-          </TabsTrigger>
-          <TabsTrigger value="coupons" className="flex-1">
-            Coupons
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="attendees">
-          <AttendeeImportForm slug={slug} />
-        </TabsContent>
-        <TabsContent value="coupons">
-          <CouponImportForm slug={slug} />
-        </TabsContent>
-      </Tabs>
+      <AttendeeImportForm slug={slug} />
     </div>
   );
 }
@@ -108,7 +90,7 @@ function AttendeeImportForm({ slug }: { slug: string }) {
           <code className="text-xs bg-muted px-1 rounded">name</code>,{" "}
           <code className="text-xs bg-muted px-1 rounded">email</code>, and{" "}
           <code className="text-xs bg-muted px-1 rounded">checked_in_at</code>{" "}
-          are detected automatically.
+          are detected automatically. All enabled coupons will be granted automatically.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -129,7 +111,7 @@ function AttendeeImportForm({ slug }: { slug: string }) {
                   <p className="text-sm font-medium">{file.name}</p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Click to select CSV or drag & drop
+                    Click to select CSV or drag &amp; drop
                   </p>
                 )}
               </label>
@@ -184,109 +166,8 @@ function AttendeeImportForm({ slug }: { slug: string }) {
               { label: "Imported", value: result.imported, variant: "success" },
               { label: "Skipped (already exists)", value: result.skipped, variant: "secondary" },
               { label: "Invalid rows", value: result.invalid, variant: result.invalid > 0 ? "warning" : "secondary" },
-              { label: "Auto-assigned coupons", value: result.assigned, variant: result.assigned > 0 ? "success" : "secondary" },
-              { label: "Waiting for coupon", value: result.waitingForCoupon, variant: result.waitingForCoupon > 0 ? "warning" : "secondary" },
-            ]}
-            errors={result.errors}
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function CouponImportForm({ slug }: { slug: string }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<CouponImportResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file || !slug) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const text = await file.text();
-      const res = await importCoupons(slug, text);
-      setResult(res);
-      toast.success(`Imported ${res.imported} coupon${res.imported !== 1 ? "s" : ""}`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Import failed";
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Card className="mt-2">
-      <CardHeader>
-        <CardTitle className="text-base">Import Coupon Links</CardTitle>
-        <CardDescription>
-          Upload a plain text file or CSV with one coupon URL per line. Example:{" "}
-          <code className="text-xs bg-muted px-1 rounded">
-            https://cursor.com/referral?code=ABC
-          </code>
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="coupon-file">Coupon File (.csv or .txt)</Label>
-            <div className="mt-1.5 border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-              <input
-                id="coupon-file"
-                type="file"
-                accept=".csv,.txt,text/csv,text/plain"
-                className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
-              <label htmlFor="coupon-file" className="cursor-pointer">
-                <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                {file ? (
-                  <p className="text-sm font-medium">{file.name}</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Click to select file or drag & drop
-                  </p>
-                )}
-              </label>
-            </div>
-          </div>
-
-          <Button type="submit" disabled={!file || loading}>
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Importing…
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                Import Coupons
-              </>
-            )}
-          </Button>
-        </form>
-
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-destructive text-sm p-3 bg-destructive/10 rounded-lg">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            {error}
-          </div>
-        )}
-
-        {result && (
-          <ImportResultCard
-            items={[
-              { label: "Imported", value: result.imported, variant: "success" },
-              { label: "Duplicates skipped", value: result.duplicatesSkipped, variant: "secondary" },
-              { label: "Invalid skipped", value: result.invalidSkipped, variant: result.invalidSkipped > 0 ? "warning" : "secondary" },
-              { label: "Auto-assigned to attendees", value: result.autoAssigned, variant: result.autoAssigned > 0 ? "success" : "secondary" },
+              { label: "Offers auto-granted", value: result.assigned, variant: result.assigned > 0 ? "success" : "secondary" },
+              { label: "Waiting for pool links", value: result.waitingForCoupon, variant: result.waitingForCoupon > 0 ? "warning" : "secondary" },
             ]}
             errors={result.errors}
           />

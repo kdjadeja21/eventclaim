@@ -1,11 +1,12 @@
 import { adminDb } from "@/lib/firebase/admin";
-import { EventStats, Coupon } from "@/lib/types";
+import { EventStats, Attendee } from "@/lib/types";
 
 export async function getEventCountStats(eventId: string): Promise<EventStats> {
   const attendeesRef = adminDb
     .collection("events")
     .doc(eventId)
     .collection("attendees");
+
   const couponsRef = adminDb
     .collection("events")
     .doc(eventId)
@@ -13,48 +14,42 @@ export async function getEventCountStats(eventId: string): Promise<EventStats> {
 
   const [
     totalAttendeesSnap,
-    totalCouponsSnap,
-    assignedSnap,
+    couponDefsSnap,
     sentSnap,
     pendingSnap,
     failedSnap,
-    claimedSnap,
-    availableSnap,
+    claimedAnySnap,
+    grantedSnap,
   ] = await Promise.all([
     attendeesRef.count().get(),
     couponsRef.count().get(),
-    attendeesRef.where("couponId", "!=", null).count().get(),
     attendeesRef.where("emailStatus", "==", "sent").count().get(),
     attendeesRef.where("emailStatus", "==", "pending").count().get(),
     attendeesRef.where("emailStatus", "==", "failed").count().get(),
-    attendeesRef.where("claimed", "==", true).count().get(),
-    couponsRef.where("status", "==", "available").get(),
+    attendeesRef.where("claimedAny", "==", true).count().get(),
+    // Attendees who have >=1 grant
+    attendeesRef.where("grantCount", ">", 0).count().get(),
   ]);
 
   const totalAttendees = totalAttendeesSnap.data().count;
-  const totalCoupons = totalCouponsSnap.data().count;
-  const totalAssigned = assignedSnap.data().count;
+  const totalCouponDefs = couponDefsSnap.data().count;
   const totalEmailsSent = sentSnap.data().count;
   const totalEmailsPending = pendingSnap.data().count;
   const totalEmailsFailed = failedSnap.data().count;
-  const totalClaimed = claimedSnap.data().count;
-  const totalAvailable = availableSnap.docs.filter(
-    (d) => !(d.data() as Coupon).isDisabled
-  ).length;
-  const totalUnclaimed = totalAssigned - totalClaimed;
+  const totalClaimed = claimedAnySnap.data().count;
+  const totalGranted = grantedSnap.data().count;
+
   const claimRate =
-    totalAssigned > 0 ? (totalClaimed / totalAssigned) * 100 : 0;
+    totalGranted > 0 ? (totalClaimed / totalGranted) * 100 : 0;
 
   return {
     totalAttendees,
-    totalCoupons,
-    totalAssigned,
-    totalAvailable,
+    totalCouponDefs,
+    totalGranted,
     totalEmailsSent,
     totalEmailsPending,
     totalEmailsFailed,
     totalClaimed,
-    totalUnclaimed,
     claimRate,
   };
 }

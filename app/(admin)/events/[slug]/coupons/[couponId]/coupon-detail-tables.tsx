@@ -14,7 +14,6 @@ import {
   Search,
   Loader2,
   CheckCheck,
-  Ticket,
   PackageOpen,
   CircleDot,
   Link2,
@@ -34,8 +33,10 @@ import {
   X,
   Ban,
   CheckCircle,
+  Upload,
+  FileText,
 } from "lucide-react";
-import { CouponWithAttendee, CouponStats, isAssignableCoupon } from "@/lib/types";
+import { Coupon, CouponLink, Grant } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -71,29 +72,28 @@ import {
 import { cn } from "@/lib/utils";
 import { TablePagination } from "@/components/ui/table-pagination";
 import {
-  autoAssignToAttendee,
-  assignSpecificCoupon,
-  unassignCoupon,
-  addCoupons,
-  deleteCoupon,
-  bulkAutoAssignPending,
-  toggleCouponDisabled,
-} from "./coupon-actions";
-import {
-  getAssignableAttendees,
-  getAvailableCoupons,
-} from "./coupon-data-actions";
+  autoAssignLink,
+  assignSpecificLink,
+  unassignLink,
+  deleteLink,
+  toggleLinkDisabled,
+  bulkAutoAssignLinks,
+  getUnassignedAttendees,
+  getAvailableLinks,
+} from "./link-actions";
+import { addCouponLinks } from "../coupon-actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type FilterStatus =
-  | "all"
-  | "available"
-  | "assigned"
-  | "emailSent"
-  | "claimed"
-  | "disabled";
-type SortKey = "status" | "couponLink" | "assignedAt" | "claimedAt" | "attendeeName";
+export type LinkRow = CouponLink & {
+  attendeeName: string | null;
+  attendeeEmail: string | null;
+};
+
+type GrantRow = Grant & { attendeeName: string; attendeeEmail: string };
+
+type FilterStatus = "all" | "available" | "assigned" | "claimed" | "disabled";
+type SortKey = "status" | "url" | "assignedAt" | "claimedAt" | "attendeeName";
 type SortDir = "asc" | "desc";
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -109,11 +109,6 @@ const statusConfig = {
     variant: "warning" as const,
     icon: CircleDot,
   },
-  emailSent: {
-    label: "Email Sent",
-    variant: "default" as const,
-    icon: Ticket,
-  },
   claimed: {
     label: "Claimed",
     variant: "success" as const,
@@ -123,11 +118,7 @@ const statusConfig = {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function compareNullable(
-  a: string | null,
-  b: string | null,
-  dir: SortDir
-): number {
+function compareNullable(a: string | null, b: string | null, dir: SortDir): number {
   if (!a && !b) return 0;
   if (!a) return 1;
   if (!b) return -1;
@@ -135,24 +126,19 @@ function compareNullable(
   return dir === "asc" ? cmp : -cmp;
 }
 
-function sortCoupons(
-  list: CouponWithAttendee[],
-  sortConfig: { key: SortKey; dir: SortDir } | null
-): CouponWithAttendee[] {
+function sortLinks(list: LinkRow[], sortConfig: { key: SortKey; dir: SortDir } | null): LinkRow[] {
   if (!sortConfig) return list;
   const { key, dir } = sortConfig;
   const sorted = [...list];
   sorted.sort((a, b) => {
     switch (key) {
       case "status": {
-        const order = ["available", "assigned", "emailSent", "claimed"];
+        const order = ["available", "assigned", "claimed"];
         const cmp = order.indexOf(a.status) - order.indexOf(b.status);
         return dir === "asc" ? cmp : -cmp;
       }
-      case "couponLink":
-        return dir === "asc"
-          ? a.couponLink.localeCompare(b.couponLink)
-          : b.couponLink.localeCompare(a.couponLink);
+      case "url":
+        return dir === "asc" ? a.url.localeCompare(b.url) : b.url.localeCompare(a.url);
       case "attendeeName":
         return compareNullable(a.attendeeName, b.attendeeName, dir);
       case "assignedAt":
@@ -178,37 +164,122 @@ function truncateUrl(url: string, max = 48): string {
   return url.length > max ? url.slice(0, max) + "…" : url;
 }
 
-const MASKED_COUPON_LINK = "••••••••••••••••";
+const MASKED_LINK = "••••••••••••••••";
+
+function isAssignableLink(l: LinkRow): boolean {
+  return l.status === "available" && !l.isDisabled;
+}
+
+// ─── Read-only Grants table (for non-uniqueLink coupons) ──────────────────────
+
+function GrantsReadOnly({ grants }: { grants: GrantRow[] }) {
+  return (
+    <div className="rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Attendee</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Value</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Granted At</TableHead>
+            <TableHead>Claimed At</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {grants.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center py-10 text-sm text-muted-foreground">
+                No grants issued yet.
+              </TableCell>
+            </TableRow>
+          ) : (
+            grants.map((g) => (
+              <TableRow key={`${g.attendeeId}-${g.couponId}`}>
+                <TableCell className="font-medium text-sm">{g.attendeeName}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{g.attendeeEmail}</TableCell>
+                <TableCell className="font-mono text-xs">{g.value}</TableCell>
+                <TableCell>
+                  <Badge variant={g.status === "claimed" ? "success" : "secondary"} className="capitalize text-xs">
+                    {g.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">{formatDate(g.assignedAt)}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{formatDate(g.claimedAt)}</TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
-export default function CouponTable({
-  coupons: initial,
+export default function CouponDetailTables({
+  coupon,
+  links: initial,
+  grants,
   eventId,
   eventSlug,
 }: {
-  coupons: CouponWithAttendee[];
+  coupon: Coupon;
+  links: LinkRow[];
+  grants: GrantRow[];
   eventId: string;
   eventSlug: string;
-  stats: CouponStats;
 }) {
-  const [coupons, setCoupons] = useState(initial);
+  // Non-uniqueLink: show read-only grants table
+  if (coupon.kind !== "uniqueLink") {
+    return (
+      <div className="space-y-2">
+        <h2 className="text-base font-semibold">Grants</h2>
+        <GrantsReadOnly grants={grants} />
+      </div>
+    );
+  }
+
+  return (
+    <LinkPoolTable
+      coupon={coupon}
+      initial={initial}
+      eventId={eventId}
+      eventSlug={eventSlug}
+    />
+  );
+}
+
+// ─── Interactive link pool table ──────────────────────────────────────────────
+
+function LinkPoolTable({
+  coupon,
+  initial,
+  eventId,
+  eventSlug,
+}: {
+  coupon: Coupon;
+  initial: LinkRow[];
+  eventId: string;
+  eventSlug: string;
+}) {
+  const couponId = coupon.id;
+  const [links, setLinks] = useState(initial);
   const router = useRouter();
 
   useEffect(() => {
-    setCoupons(initial);
+    setLinks(initial);
   }, [initial]);
+
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [search, setSearch] = useState("");
-  const [showCouponLinks, setShowCouponLinks] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{
-    key: SortKey;
-    dir: SortDir;
-  } | null>(null);
+  const [showUrls, setShowUrls] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; dir: SortDir } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   // ─── Row selection ──────────────────────────────────────────────────────────
+
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
@@ -228,8 +299,8 @@ export default function CouponTable({
   // Dialog states
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
-  const [unassignTarget, setUnassignTarget] = useState<CouponWithAttendee | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<CouponWithAttendee | null>(null);
+  const [unassignTarget, setUnassignTarget] = useState<LinkRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LinkRow | null>(null);
 
   // Action loading
   const [actionPending, setActionPending] = useState<string | null>(null);
@@ -238,20 +309,36 @@ export default function CouponTable({
   // Assign dialog state
   const [assignTab, setAssignTab] = useState<"auto" | "manual">("auto");
   const [autoAttendeeId, setAutoAttendeeId] = useState("");
-  const [manualCouponId, setManualCouponId] = useState("");
+  const [manualLinkId, setManualLinkId] = useState("");
   const [manualAttendeeId, setManualAttendeeId] = useState("");
   const [assignableAttendees, setAssignableAttendees] = useState<
     Array<{ id: string; name: string; email: string }>
   >([]);
-  const [availableCoupons, setAvailableCoupons] = useState<
-    Array<{ id: string; couponLink: string }>
+  const [availableLinksForDialog, setAvailableLinksForDialog] = useState<
+    Array<{ id: string; url: string }>
   >([]);
   const [loadingAssignData, setLoadingAssignData] = useState(false);
   const [assignPending, setAssignPending] = useState(false);
 
-  // Add coupons dialog state
+  // Add links dialog state
   const [addText, setAddText] = useState("");
   const [addPending, setAddPending] = useState(false);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleCsvUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setAddText((prev) => (prev.trim() ? prev + "\n" + text : text));
+    };
+    reader.readAsText(file);
+    // Reset so the same file can be re-selected if needed
+    e.target.value = "";
+  }
 
   // Bulk assign pending
   const [bulkPending, setBulkPending] = useState(false);
@@ -259,26 +346,25 @@ export default function CouponTable({
   // ─── Filtered + sorted list ─────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
-    let list = coupons;
+    let list = links;
 
-    if (filter === "disabled") list = list.filter((c) => c.isDisabled);
-    else if (filter === "available")
-      list = list.filter(isAssignableCoupon);
-    else if (filter !== "all") list = list.filter((c) => c.status === filter);
+    if (filter === "disabled") list = list.filter((l) => l.isDisabled);
+    else if (filter === "available") list = list.filter(isAssignableLink);
+    else if (filter !== "all") list = list.filter((l) => l.status === filter);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
-        (c) =>
-          c.couponLink.toLowerCase().includes(q) ||
-          c.id.toLowerCase().includes(q) ||
-          (c.attendeeName ?? "").toLowerCase().includes(q) ||
-          (c.attendeeEmail ?? "").toLowerCase().includes(q)
+        (l) =>
+          l.url.toLowerCase().includes(q) ||
+          l.id.toLowerCase().includes(q) ||
+          (l.attendeeName ?? "").toLowerCase().includes(q) ||
+          (l.attendeeEmail ?? "").toLowerCase().includes(q)
       );
     }
 
-    return sortCoupons(list, sortConfig);
-  }, [coupons, filter, search, sortConfig]);
+    return sortLinks(list, sortConfig);
+  }, [links, filter, search, sortConfig]);
 
   const paginated = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -286,22 +372,21 @@ export default function CouponTable({
   }, [filtered, currentPage, pageSize]);
 
   const counts = useMemo(() => ({
-    all: coupons.length,
-    available: coupons.filter(isAssignableCoupon).length,
-    assigned: coupons.filter((c) => c.status === "assigned").length,
-    emailSent: coupons.filter((c) => c.status === "emailSent").length,
-    claimed: coupons.filter((c) => c.status === "claimed").length,
-    disabled: coupons.filter((c) => c.isDisabled).length,
-  }), [coupons]);
+    all: links.length,
+    available: links.filter(isAssignableLink).length,
+    assigned: links.filter((l) => l.status === "assigned").length,
+    claimed: links.filter((l) => l.status === "claimed").length,
+    disabled: links.filter((l) => l.isDisabled).length,
+  }), [links]);
 
   // ─── Optimistic helpers ─────────────────────────────────────────────────────
 
-  function updateCoupon(id: string, patch: Partial<CouponWithAttendee>) {
-    setCoupons((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  function updateLink(id: string, patch: Partial<LinkRow>) {
+    setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   }
 
-  function removeCoupon(id: string) {
-    setCoupons((prev) => prev.filter((c) => c.id !== id));
+  function removeLink(id: string) {
+    setLinks((prev) => prev.filter((l) => l.id !== id));
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.delete(id);
@@ -309,16 +394,12 @@ export default function CouponTable({
     });
   }
 
-  function addCouponToList(coupon: CouponWithAttendee) {
-    setCoupons((prev) => [coupon, ...prev]);
-  }
-
   // ─── Selection helpers ──────────────────────────────────────────────────────
 
   const allVisibleSelected =
-    paginated.length > 0 && paginated.every((c) => selectedIds.has(c.id));
+    paginated.length > 0 && paginated.every((l) => selectedIds.has(l.id));
   const someVisibleSelected =
-    paginated.some((c) => selectedIds.has(c.id)) && !allVisibleSelected;
+    paginated.some((l) => selectedIds.has(l.id)) && !allVisibleSelected;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -330,13 +411,13 @@ export default function CouponTable({
     if (allVisibleSelected) {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        paginated.forEach((c) => next.delete(c.id));
+        paginated.forEach((l) => next.delete(l.id));
         return next;
       });
     } else {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        paginated.forEach((c) => next.add(c.id));
+        paginated.forEach((l) => next.add(l.id));
         return next;
       });
     }
@@ -351,23 +432,15 @@ export default function CouponTable({
     });
   }
 
-  const selectedCoupons = useMemo(
-    () => coupons.filter((c) => selectedIds.has(c.id)),
-    [coupons, selectedIds]
+  const selectedLinks = useMemo(
+    () => links.filter((l) => selectedIds.has(l.id)),
+    [links, selectedIds]
   );
 
-  const bulkDeleteCount = selectedCoupons.filter(
-    (c) => c.status === "available"
-  ).length;
-  const bulkUnassignCount = selectedCoupons.filter(
-    (c) => c.status === "assigned" || c.status === "emailSent"
-  ).length;
-  const bulkDisableCount = selectedCoupons.filter(
-    (c) => !c.isDisabled && c.status !== "claimed"
-  ).length;
-  const bulkEnableCount = selectedCoupons.filter(
-    (c) => c.isDisabled && c.status !== "claimed"
-  ).length;
+  const bulkDeleteCount = selectedLinks.filter((l) => l.status === "available").length;
+  const bulkUnassignCount = selectedLinks.filter((l) => l.status === "assigned").length;
+  const bulkDisableCount = selectedLinks.filter((l) => !l.isDisabled && l.status !== "claimed").length;
+  const bulkEnableCount = selectedLinks.filter((l) => !!l.isDisabled && l.status !== "claimed").length;
   const bulkActionPending =
     bulkUnassignPending || bulkDeletePending || bulkDisablePending || bulkEnablePending;
   const hasSelection = selectedIds.size > 0;
@@ -387,29 +460,28 @@ export default function CouponTable({
   const openAssignDialog = useCallback(async () => {
     setAssignDialogOpen(true);
     setAutoAttendeeId("");
-    setManualCouponId("");
+    setManualLinkId("");
     setManualAttendeeId("");
     setLoadingAssignData(true);
-    const [attendees, couponsAvail] = await Promise.all([
-      getAssignableAttendees(eventId),
-      getAvailableCoupons(eventId),
+    const [attendees, available] = await Promise.all([
+      getUnassignedAttendees(eventId, couponId),
+      getAvailableLinks(eventId, couponId),
     ]);
     setAssignableAttendees(attendees);
-    setAvailableCoupons(couponsAvail);
+    setAvailableLinksForDialog(available);
     setLoadingAssignData(false);
-  }, [eventId]);
+  }, [eventId, couponId]);
 
   // ─── Handle auto-assign ─────────────────────────────────────────────────────
 
   async function handleAutoAssign() {
     if (!autoAttendeeId) return;
     setAssignPending(true);
-    const res = await autoAssignToAttendee(eventId, autoAttendeeId, eventSlug);
+    const res = await autoAssignLink(eventId, couponId, autoAttendeeId, eventSlug);
     setAssignPending(false);
     if (res.success) {
-      toast.success("Coupon auto-assigned successfully.");
+      toast.success("Link assigned successfully.");
       setAssignDialogOpen(false);
-      // Refresh list from server — simplest approach is to reload
       router.refresh();
     } else {
       toast.error(res.error ?? "Assignment failed.");
@@ -419,17 +491,18 @@ export default function CouponTable({
   // ─── Handle manual assign ───────────────────────────────────────────────────
 
   async function handleManualAssign() {
-    if (!manualCouponId || !manualAttendeeId) return;
+    if (!manualLinkId || !manualAttendeeId) return;
     setAssignPending(true);
-    const res = await assignSpecificCoupon(
+    const res = await assignSpecificLink(
       eventId,
-      manualCouponId,
+      couponId,
+      manualLinkId,
       manualAttendeeId,
       eventSlug
     );
     setAssignPending(false);
     if (res.success) {
-      toast.success("Coupon assigned successfully.");
+      toast.success("Link assigned successfully.");
       setAssignDialogOpen(false);
       router.refresh();
     } else {
@@ -439,13 +512,20 @@ export default function CouponTable({
 
   // ─── Handle unassign ────────────────────────────────────────────────────────
 
-  async function handleUnassign(coupon: CouponWithAttendee) {
-    setActionPending(coupon.id + "-unassign");
+  async function handleUnassign(link: LinkRow) {
+    if (!link.assignedTo) return;
+    setActionPending(link.id + "-unassign");
     startTransition(async () => {
-      const res = await unassignCoupon(eventId, coupon.id, eventSlug);
+      const res = await unassignLink(
+        eventId,
+        couponId,
+        link.id,
+        link.assignedTo!,
+        eventSlug
+      );
       setActionPending(null);
       if (res.success) {
-        updateCoupon(coupon.id, {
+        updateLink(link.id, {
           status: "available",
           assignedTo: null,
           assignedAt: null,
@@ -453,7 +533,7 @@ export default function CouponTable({
           attendeeName: null,
           attendeeEmail: null,
         });
-        toast.success("Coupon unassigned.");
+        toast.success("Link unassigned.");
       } else {
         toast.error(res.error ?? "Unassign failed.");
       }
@@ -461,36 +541,39 @@ export default function CouponTable({
     });
   }
 
-  // ─── Handle delete ──────────────────────────────────────────────────────────
+  // ─── Handle toggle disabled ──────────────────────────────────────────────────
 
-  async function handleToggleDisabled(coupon: CouponWithAttendee) {
-    const disabled = !coupon.isDisabled;
-    setActionPending(coupon.id + "-toggle-disabled");
+  async function handleToggleDisabled(link: LinkRow) {
+    const disabled = !link.isDisabled;
+    setActionPending(link.id + "-toggle-disabled");
     startTransition(async () => {
-      const res = await toggleCouponDisabled(
+      const res = await toggleLinkDisabled(
         eventId,
-        coupon.id,
+        couponId,
+        link.id,
         disabled,
         eventSlug
       );
       setActionPending(null);
       if (res.success) {
-        updateCoupon(coupon.id, { isDisabled: disabled });
-        toast.success(disabled ? "Coupon disabled." : "Coupon enabled.");
+        updateLink(link.id, { isDisabled: disabled });
+        toast.success(disabled ? "Link disabled." : "Link enabled.");
       } else {
         toast.error(res.error ?? "Update failed.");
       }
     });
   }
 
-  async function handleDelete(coupon: CouponWithAttendee) {
-    setActionPending(coupon.id + "-delete");
+  // ─── Handle delete ──────────────────────────────────────────────────────────
+
+  async function handleDelete(link: LinkRow) {
+    setActionPending(link.id + "-delete");
     startTransition(async () => {
-      const res = await deleteCoupon(eventId, coupon.id, eventSlug);
+      const res = await deleteLink(eventId, couponId, link.id, eventSlug);
       setActionPending(null);
       if (res.success) {
-        removeCoupon(coupon.id);
-        toast.success("Coupon deleted.");
+        removeLink(link.id);
+        toast.success("Link deleted.");
       } else {
         toast.error(res.error ?? "Delete failed.");
       }
@@ -498,29 +581,29 @@ export default function CouponTable({
     });
   }
 
-  // ─── Handle add coupons ─────────────────────────────────────────────────────
+  // ─── Handle add links ────────────────────────────────────────────────────────
 
-  async function handleAddCoupons() {
+  async function handleAddLinks() {
     if (!addText.trim()) return;
     setAddPending(true);
-    const res = await addCoupons(eventId, addText, eventSlug);
+    const res = await addCouponLinks(eventId, couponId, addText, eventSlug);
     setAddPending(false);
     if (res.success) {
       const parts: string[] = [];
       if (res.imported > 0)
-        parts.push(`${res.imported} coupon${res.imported !== 1 ? "s" : ""} added`);
-      if (res.autoAssigned > 0)
-        parts.push(`${res.autoAssigned} auto-assigned`);
+        parts.push(`${res.imported} link${res.imported !== 1 ? "s" : ""} added`);
+      if (res.autoGranted > 0)
+        parts.push(`${res.autoGranted} auto-granted`);
       if (res.duplicatesSkipped > 0)
         parts.push(`${res.duplicatesSkipped} duplicates skipped`);
       if (res.invalidSkipped > 0)
         parts.push(`${res.invalidSkipped} invalid skipped`);
-      toast.success(parts.join(", ") || "No new coupons imported.");
+      toast.success(parts.join(", ") || "No new links imported.");
       setAddText("");
       setAddDialogOpen(false);
       router.refresh();
     } else {
-      toast.error(res.error ?? "Failed to add coupons.");
+      toast.error(res.error ?? "Failed to add links.");
     }
   }
 
@@ -528,12 +611,12 @@ export default function CouponTable({
 
   async function handleBulkAssign() {
     setBulkPending(true);
-    const res = await bulkAutoAssignPending(eventId, eventSlug);
+    const res = await bulkAutoAssignLinks(eventId, couponId, eventSlug);
     setBulkPending(false);
     if (res.success) {
       if (res.assigned > 0) {
         toast.success(
-          `${res.assigned} attendee${res.assigned !== 1 ? "s" : ""} assigned coupons.`
+          `${res.assigned} attendee${res.assigned !== 1 ? "s" : ""} assigned links.`
         );
         router.refresh();
       } else {
@@ -544,10 +627,10 @@ export default function CouponTable({
     }
   }
 
-  // ─── Handle bulk delete (available coupons only) ─────────────────────────────
+  // ─── Handle bulk delete ──────────────────────────────────────────────────────
 
   async function handleBulkDelete() {
-    const targets = selectedCoupons.filter((c) => c.status === "available");
+    const targets = selectedLinks.filter((l) => l.status === "available");
     if (targets.length === 0) return;
     setBulkDeletePending(true);
     setBulkDeleteConfirm(false);
@@ -555,33 +638,29 @@ export default function CouponTable({
     let deleted = 0;
     let failed = 0;
     const toastId = toast.loading(`Deleting 0 / ${targets.length}…`);
-
     for (let i = 0; i < targets.length; i++) {
-      const coupon = targets[i];
-      const res = await deleteCoupon(eventId, coupon.id, eventSlug);
+      const link = targets[i];
+      const res = await deleteLink(eventId, couponId, link.id, eventSlug);
       if (res.success) {
-        removeCoupon(coupon.id);
+        removeLink(link.id);
         deleted++;
       } else {
         failed++;
       }
       toast.loading(`Deleting ${i + 1} / ${targets.length}…`, { id: toastId });
     }
-
     setBulkDeletePending(false);
     if (failed === 0) {
-      toast.success(`Deleted ${deleted} coupon${deleted !== 1 ? "s" : ""}`, { id: toastId });
+      toast.success(`Deleted ${deleted} link${deleted !== 1 ? "s" : ""}`, { id: toastId });
     } else {
       toast.warning(`Deleted ${deleted}, failed ${failed}`, { id: toastId });
     }
   }
 
-  // ─── Handle bulk unassign (assigned / emailSent coupons) ──────────────────────
+  // ─── Handle bulk unassign ────────────────────────────────────────────────────
 
   async function handleBulkUnassign() {
-    const targets = selectedCoupons.filter(
-      (c) => c.status === "assigned" || c.status === "emailSent"
-    );
+    const targets = selectedLinks.filter((l) => l.status === "assigned" && l.assignedTo);
     if (targets.length === 0) return;
     setBulkUnassignPending(true);
     setBulkUnassignConfirm(false);
@@ -589,12 +668,11 @@ export default function CouponTable({
     let unassigned = 0;
     let failed = 0;
     const toastId = toast.loading(`Unassigning 0 / ${targets.length}…`);
-
     for (let i = 0; i < targets.length; i++) {
-      const coupon = targets[i];
-      const res = await unassignCoupon(eventId, coupon.id, eventSlug);
+      const link = targets[i];
+      const res = await unassignLink(eventId, couponId, link.id, link.assignedTo!, eventSlug);
       if (res.success) {
-        updateCoupon(coupon.id, {
+        updateLink(link.id, {
           status: "available",
           assignedTo: null,
           assignedAt: null,
@@ -608,22 +686,19 @@ export default function CouponTable({
       }
       toast.loading(`Unassigning ${i + 1} / ${targets.length}…`, { id: toastId });
     }
-
     setBulkUnassignPending(false);
     if (failed === 0) {
-      toast.success(`Unassigned ${unassigned} coupon${unassigned !== 1 ? "s" : ""}`, { id: toastId });
+      toast.success(`Unassigned ${unassigned} link${unassigned !== 1 ? "s" : ""}`, { id: toastId });
     } else {
       toast.warning(`Unassigned ${unassigned}, failed ${failed}`, { id: toastId });
     }
   }
 
-  // ─── Handle bulk disable / enable ───────────────────────────────────────────
+  // ─── Handle bulk disable / enable ────────────────────────────────────────────
 
   async function handleBulkToggleDisabled(disabled: boolean) {
-    const targets = selectedCoupons.filter(
-      (c) =>
-        c.status !== "claimed" &&
-        (disabled ? !c.isDisabled : !!c.isDisabled)
+    const targets = selectedLinks.filter(
+      (l) => l.status !== "claimed" && (disabled ? !l.isDisabled : !!l.isDisabled)
     );
     if (targets.length === 0) return;
 
@@ -636,67 +711,60 @@ export default function CouponTable({
     let failed = 0;
     const verb = disabled ? "Disabling" : "Enabling";
     const toastId = toast.loading(`${verb} 0 / ${targets.length}…`);
-
     for (let i = 0; i < targets.length; i++) {
-      const coupon = targets[i];
-      const res = await toggleCouponDisabled(
-        eventId,
-        coupon.id,
-        disabled,
-        eventSlug
-      );
+      const link = targets[i];
+      const res = await toggleLinkDisabled(eventId, couponId, link.id, disabled, eventSlug);
       if (res.success) {
-        updateCoupon(coupon.id, { isDisabled: disabled });
+        updateLink(link.id, { isDisabled: disabled });
         updated++;
       } else {
         failed++;
       }
       toast.loading(`${verb} ${i + 1} / ${targets.length}…`, { id: toastId });
     }
-
     setBulkDisablePending(false);
     setBulkEnablePending(false);
     const label = disabled ? "Disabled" : "Enabled";
     if (failed === 0) {
-      toast.success(`${label} ${updated} coupon${updated !== 1 ? "s" : ""}`, {
-        id: toastId,
-      });
+      toast.success(`${label} ${updated} link${updated !== 1 ? "s" : ""}`, { id: toastId });
     } else {
       toast.warning(`${label} ${updated}, failed ${failed}`, { id: toastId });
     }
   }
 
-  // ─── Copy coupon link ───────────────────────────────────────────────────────
+  // ─── Copy link URL ───────────────────────────────────────────────────────────
 
-  function copyLink(link: string) {
-    navigator.clipboard.writeText(link).then(() => {
+  function copyUrl(url: string) {
+    navigator.clipboard.writeText(url).then(() => {
       toast.success("Link copied.");
     });
   }
 
   // ─── Export CSV ─────────────────────────────────────────────────────────────
 
-  function exportCsv(rows?: CouponWithAttendee[]) {
+  function exportCsv(rows?: LinkRow[]) {
     const data = rows ?? filtered;
     const headers = [
-      "Coupon ID",
-      "Coupon Link",
+      "Link ID",
+      "URL",
       "Status",
+      "Disabled",
       "Assigned To (ID)",
       "Attendee Name",
       "Attendee Email",
       "Assigned At",
       "Claimed At",
     ];
-    const csvRows = data.map((c) => [
-      c.id,
-      c.couponLink,
-      c.status,
-      c.assignedTo ?? "",
-      c.attendeeName ?? "",
-      c.attendeeEmail ?? "",
-      c.assignedAt ?? "",
-      c.claimedAt ?? "",
+    const csvRows = data.map((l) => [
+      l.id,
+      l.url,
+      l.status,
+      l.isDisabled ? "true" : "false",
+      l.assignedTo ?? "",
+      l.attendeeName ?? "",
+      l.attendeeEmail ?? "",
+      l.assignedAt ?? "",
+      l.claimedAt ?? "",
     ]);
     const csv = [headers, ...csvRows]
       .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
@@ -705,7 +773,7 @@ export default function CouponTable({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `coupons-${eventSlug}.csv`;
+    a.download = `links-${coupon.name.replace(/\s+/g, "-").toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -726,37 +794,20 @@ export default function CouponTable({
           />
         </div>
 
-        <Select
-          value={filter}
-          onValueChange={(v) => setFilter(v as FilterStatus)}
-        >
+        <Select value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All ({counts.all})</SelectItem>
-            <SelectItem value="available">
-              Available ({counts.available})
-            </SelectItem>
-            <SelectItem value="assigned">
-              Assigned ({counts.assigned})
-            </SelectItem>
-            <SelectItem value="emailSent">
-              Email Sent ({counts.emailSent})
-            </SelectItem>
+            <SelectItem value="available">Available ({counts.available})</SelectItem>
+            <SelectItem value="assigned">Assigned ({counts.assigned})</SelectItem>
             <SelectItem value="claimed">Claimed ({counts.claimed})</SelectItem>
-            <SelectItem value="disabled">
-              Disabled ({counts.disabled})
-            </SelectItem>
+            <SelectItem value="disabled">Disabled ({counts.disabled})</SelectItem>
           </SelectContent>
         </Select>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleBulkAssign}
-          disabled={bulkPending}
-        >
+        <Button size="sm" variant="outline" onClick={handleBulkAssign} disabled={bulkPending}>
           {bulkPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
@@ -767,16 +818,12 @@ export default function CouponTable({
 
         <Button size="sm" onClick={openAssignDialog}>
           <UserPlus className="h-4 w-4" />
-          Assign Coupon
+          Assign Link
         </Button>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setAddDialogOpen(true)}
-        >
+        <Button size="sm" variant="outline" onClick={() => setAddDialogOpen(true)}>
           <Plus className="h-4 w-4" />
-          Add Coupons
+          Add Links
         </Button>
 
         <Button size="sm" variant="outline" onClick={() => exportCsv()}>
@@ -797,24 +844,19 @@ export default function CouponTable({
                   checked={allVisibleSelected && paginated.length > 0}
                   onChange={toggleSelectAll}
                   className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                  aria-label="Select all visible coupons"
+                  aria-label="Select all visible links"
                 />
               </TableHead>
-              <SortableHead
-                label="Status"
-                sortKey="status"
-                sortConfig={sortConfig}
-                onSort={toggleSort}
-              />
+              <SortableHead label="Status" sortKey="status" sortConfig={sortConfig} onSort={toggleSort} />
               <TableHead>
                 <div className="flex items-center gap-0.5">
                   <button
                     type="button"
-                    onClick={() => toggleSort("couponLink")}
+                    onClick={() => toggleSort("url")}
                     className="inline-flex items-center gap-1 font-medium hover:text-foreground text-muted-foreground transition-colors"
                   >
                     Coupon Link
-                    {sortConfig?.key === "couponLink" ? (
+                    {sortConfig?.key === "url" ? (
                       sortConfig.dir === "asc" ? (
                         <ArrowUp className="h-3.5 w-3.5 shrink-0" />
                       ) : (
@@ -829,92 +871,62 @@ export default function CouponTable({
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 shrink-0"
-                    onClick={() => setShowCouponLinks((v) => !v)}
-                    title={
-                      showCouponLinks
-                        ? "Hide coupon links"
-                        : "Show coupon links"
-                    }
-                    aria-label={
-                      showCouponLinks
-                        ? "Hide coupon links"
-                        : "Show coupon links"
-                    }
-                    aria-pressed={showCouponLinks}
+                    onClick={() => setShowUrls((v) => !v)}
+                    title={showUrls ? "Hide links" : "Show links"}
+                    aria-pressed={showUrls}
                   >
-                    {showCouponLinks ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
+                    {showUrls ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               </TableHead>
-              <SortableHead
-                label="Assigned To"
-                sortKey="attendeeName"
-                sortConfig={sortConfig}
-                onSort={toggleSort}
-              />
-              <SortableHead
-                label="Assigned At"
-                sortKey="assignedAt"
-                sortConfig={sortConfig}
-                onSort={toggleSort}
-              />
-              <SortableHead
-                label="Claimed At"
-                sortKey="claimedAt"
-                sortConfig={sortConfig}
-                onSort={toggleSort}
-              />
+              <SortableHead label="Assigned To" sortKey="attendeeName" sortConfig={sortConfig} onSort={toggleSort} />
+              <SortableHead label="Assigned At" sortKey="assignedAt" sortConfig={sortConfig} onSort={toggleSort} />
+              <SortableHead label="Claimed At" sortKey="claimedAt" sortConfig={sortConfig} onSort={toggleSort} />
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell
-                  colSpan={7}
-                  className="text-center py-12 text-muted-foreground text-sm"
-                >
-                  No coupons match this filter.
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                  No links match this filter.
                 </TableCell>
               </TableRow>
             ) : (
-              paginated.map((coupon) => {
-                const cfg = statusConfig[coupon.status];
+              paginated.map((link) => {
+                const cfg = statusConfig[link.status];
                 const Icon = cfg.icon;
                 const isActing =
-                  actionPending === coupon.id + "-unassign" ||
-                  actionPending === coupon.id + "-delete" ||
-                  actionPending === coupon.id + "-toggle-disabled";
+                  actionPending === link.id + "-unassign" ||
+                  actionPending === link.id + "-delete" ||
+                  actionPending === link.id + "-toggle-disabled";
 
                 return (
                   <TableRow
-                    key={coupon.id}
-                    data-state={selectedIds.has(coupon.id) ? "selected" : undefined}
+                    key={link.id}
+                    data-state={selectedIds.has(link.id) ? "selected" : undefined}
                     className={cn(
-                      selectedIds.has(coupon.id) && "bg-muted/50",
-                      coupon.isDisabled && "opacity-60"
+                      selectedIds.has(link.id) && "bg-muted/50",
+                      link.isDisabled && "opacity-60"
                     )}
                   >
                     <TableCell>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(coupon.id)}
-                        onChange={() => toggleRow(coupon.id)}
+                        checked={selectedIds.has(link.id)}
+                        onChange={() => toggleRow(link.id)}
                         className="h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                        aria-label={`Select coupon ${coupon.id}`}
+                        aria-label={`Select link ${link.id}`}
                       />
                     </TableCell>
+
                     <TableCell>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <Badge variant={cfg.variant} className="gap-1">
                           <Icon className="h-3 w-3" />
                           {cfg.label}
                         </Badge>
-                        {coupon.isDisabled && (
+                        {link.isDisabled && (
                           <Badge variant="destructive" className="gap-1">
                             <Ban className="h-3 w-3" />
                             Disabled
@@ -928,26 +940,18 @@ export default function CouponTable({
                         <Link2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                         <span
                           className="text-xs font-mono text-muted-foreground truncate"
-                          title={
-                            showCouponLinks ? coupon.couponLink : undefined
-                          }
+                          title={showUrls ? link.url : undefined}
                         >
-                          {showCouponLinks
-                            ? truncateUrl(coupon.couponLink)
-                            : MASKED_COUPON_LINK}
+                          {showUrls ? truncateUrl(link.url) : MASKED_LINK}
                         </span>
                       </div>
                     </TableCell>
 
                     <TableCell>
-                      {coupon.attendeeName ? (
+                      {link.attendeeName ? (
                         <div>
-                          <div className="text-sm font-medium leading-tight">
-                            {coupon.attendeeName}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {coupon.attendeeEmail}
-                          </div>
+                          <div className="text-sm font-medium leading-tight">{link.attendeeName}</div>
+                          <div className="text-xs text-muted-foreground">{link.attendeeEmail}</div>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
@@ -955,11 +959,11 @@ export default function CouponTable({
                     </TableCell>
 
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(coupon.assignedAt)}
+                      {formatDate(link.assignedAt)}
                     </TableCell>
 
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(coupon.claimedAt)}
+                      {formatDate(link.claimedAt)}
                     </TableCell>
 
                     <TableCell>
@@ -967,22 +971,21 @@ export default function CouponTable({
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => copyLink(coupon.couponLink)}
+                          onClick={() => copyUrl(link.url)}
                           title="Copy link"
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </Button>
 
-                        {(coupon.status === "assigned" ||
-                          coupon.status === "emailSent") && (
+                        {link.status === "assigned" && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setUnassignTarget(coupon)}
+                            onClick={() => setUnassignTarget(link)}
                             disabled={isActing}
-                            title="Unassign coupon"
+                            title="Unassign link"
                           >
-                            {actionPending === coupon.id + "-unassign" ? (
+                            {actionPending === link.id + "-unassign" ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <UserMinus className="h-3.5 w-3.5" />
@@ -991,16 +994,16 @@ export default function CouponTable({
                           </Button>
                         )}
 
-                        {coupon.status === "available" && (
+                        {link.status === "available" && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setDeleteTarget(coupon)}
+                            onClick={() => setDeleteTarget(link)}
                             disabled={isActing}
                             className="text-destructive hover:text-destructive"
-                            title="Delete coupon"
+                            title="Delete link"
                           >
-                            {actionPending === coupon.id + "-delete" ? (
+                            {actionPending === link.id + "-delete" ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1008,26 +1011,22 @@ export default function CouponTable({
                           </Button>
                         )}
 
-                        {coupon.status !== "claimed" && (
+                        {link.status !== "claimed" && (
                           <Button
                             size="sm"
-                            variant={coupon.isDisabled ? "outline" : "ghost"}
-                            onClick={() => handleToggleDisabled(coupon)}
+                            variant={link.isDisabled ? "outline" : "ghost"}
+                            onClick={() => handleToggleDisabled(link)}
                             disabled={isActing}
-                            title={
-                              coupon.isDisabled
-                                ? "Enable coupon"
-                                : "Disable coupon"
-                            }
+                            title={link.isDisabled ? "Enable link" : "Disable link"}
                           >
-                            {actionPending === coupon.id + "-toggle-disabled" ? (
+                            {actionPending === link.id + "-toggle-disabled" ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : coupon.isDisabled ? (
+                            ) : link.isDisabled ? (
                               <CheckCircle className="h-3.5 w-3.5" />
                             ) : (
                               <Ban className="h-3.5 w-3.5" />
                             )}
-                            {coupon.isDisabled ? "Enable" : "Disable"}
+                            {link.isDisabled ? "Enable" : "Disable"}
                           </Button>
                         )}
                       </div>
@@ -1045,34 +1044,27 @@ export default function CouponTable({
         page={currentPage}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
-        itemLabel="coupons"
+        onPageSizeChange={(s) => { setPageSize(s); setCurrentPage(1); }}
+        itemLabel="links"
       />
 
       {/* ─── Bulk action panel ─────────────────────────────────────────────────── */}
       {hasSelection && (
         <div
           role="toolbar"
-          aria-label="Bulk coupon actions"
+          aria-label="Bulk link actions"
           className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:left-60"
         >
           <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-3">
-            <span className="text-sm font-medium mr-2 shrink-0">
-              {selectedIds.size} selected
-            </span>
+            <span className="text-sm font-medium mr-2 shrink-0">{selectedIds.size} selected</span>
             <Button
               size="sm"
               variant="outline"
               disabled={bulkActionPending || bulkUnassignCount === 0}
               onClick={() => setBulkUnassignConfirm(true)}
             >
-              {bulkUnassignPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <UserMinus className="h-3.5 w-3.5" />
-              )}
-              Unassign
-              {bulkUnassignCount > 0 && ` (${bulkUnassignCount})`}
+              {bulkUnassignPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserMinus className="h-3.5 w-3.5" />}
+              Unassign{bulkUnassignCount > 0 && ` (${bulkUnassignCount})`}
             </Button>
             <Button
               size="sm"
@@ -1080,13 +1072,8 @@ export default function CouponTable({
               disabled={bulkActionPending || bulkDisableCount === 0}
               onClick={() => setBulkDisableConfirm(true)}
             >
-              {bulkDisablePending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Ban className="h-3.5 w-3.5" />
-              )}
-              Disable
-              {bulkDisableCount > 0 && ` (${bulkDisableCount})`}
+              {bulkDisablePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+              Disable{bulkDisableCount > 0 && ` (${bulkDisableCount})`}
             </Button>
             <Button
               size="sm"
@@ -1094,19 +1081,14 @@ export default function CouponTable({
               disabled={bulkActionPending || bulkEnableCount === 0}
               onClick={() => setBulkEnableConfirm(true)}
             >
-              {bulkEnablePending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <CheckCircle className="h-3.5 w-3.5" />
-              )}
-              Enable
-              {bulkEnableCount > 0 && ` (${bulkEnableCount})`}
+              {bulkEnablePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+              Enable{bulkEnableCount > 0 && ` (${bulkEnableCount})`}
             </Button>
             <Button
               size="sm"
               variant="outline"
               disabled={bulkActionPending}
-              onClick={() => exportCsv(selectedCoupons)}
+              onClick={() => exportCsv(selectedLinks)}
             >
               <Download className="h-3.5 w-3.5" />
               Export CSV
@@ -1117,13 +1099,8 @@ export default function CouponTable({
               disabled={bulkActionPending || bulkDeleteCount === 0}
               onClick={() => setBulkDeleteConfirm(true)}
             >
-              {bulkDeletePending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Trash2 className="h-3.5 w-3.5" />
-              )}
-              Delete
-              {bulkDeleteCount > 0 && ` (${bulkDeleteCount})`}
+              {bulkDeletePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete{bulkDeleteCount > 0 && ` (${bulkDeleteCount})`}
             </Button>
             <Button
               size="sm"
@@ -1138,142 +1115,89 @@ export default function CouponTable({
         </div>
       )}
 
-      {/* ─── Bulk Unassign Confirm Dialog ────────────────────────────────────── */}
+      {/* ─── Bulk Unassign Confirm ────────────────────────────────────────────── */}
       <Dialog open={bulkUnassignConfirm} onOpenChange={(open) => !open && setBulkUnassignConfirm(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Unassign {bulkUnassignCount} Coupon{bulkUnassignCount !== 1 ? "s" : ""}?
+              Unassign {bulkUnassignCount} Link{bulkUnassignCount !== 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              This will release {bulkUnassignCount} coupon{bulkUnassignCount !== 1 ? "s" : ""} back to the available pool and reset the attendees&apos; assignments. Claimed coupons will be skipped.
+              This will release {bulkUnassignCount} link{bulkUnassignCount !== 1 ? "s" : ""} back to the available pool and remove the attendees&apos; grants.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setBulkUnassignConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={handleBulkUnassign}
-            >
-              Unassign {bulkUnassignCount}
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setBulkUnassignConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1" onClick={handleBulkUnassign}>Unassign {bulkUnassignCount}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Bulk Delete Confirm Dialog ───────────────────────────────────────── */}
+      {/* ─── Bulk Delete Confirm ──────────────────────────────────────────────── */}
       <Dialog open={bulkDeleteConfirm} onOpenChange={(open) => !open && setBulkDeleteConfirm(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-destructive" />
-              Delete {bulkDeleteCount} Coupon{bulkDeleteCount !== 1 ? "s" : ""}?
+              Delete {bulkDeleteCount} Link{bulkDeleteCount !== 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              This will permanently delete {bulkDeleteCount} available coupon{bulkDeleteCount !== 1 ? "s" : ""}. Only unassigned coupons can be deleted. This action cannot be undone.
+              This will permanently delete {bulkDeleteCount} available link{bulkDeleteCount !== 1 ? "s" : ""}. Only unassigned links can be deleted. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setBulkDeleteConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={handleBulkDelete}
-            >
-              Delete {bulkDeleteCount}
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setBulkDeleteConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1" onClick={handleBulkDelete}>Delete {bulkDeleteCount}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Bulk Disable Confirm Dialog ──────────────────────────────────────── */}
-      <Dialog
-        open={bulkDisableConfirm}
-        onOpenChange={(open) => !open && setBulkDisableConfirm(false)}
-      >
+      {/* ─── Bulk Disable Confirm ─────────────────────────────────────────────── */}
+      <Dialog open={bulkDisableConfirm} onOpenChange={(open) => !open && setBulkDisableConfirm(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ban className="h-4 w-4 text-amber-500" />
-              Disable {bulkDisableCount} Coupon{bulkDisableCount !== 1 ? "s" : ""}?
+              Disable {bulkDisableCount} Link{bulkDisableCount !== 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              Disabled coupons cannot be assigned or claimed. Claimed coupons in
-              your selection will be skipped.
+              Disabled links cannot be assigned. Claimed links in your selection will be skipped.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setBulkDisableConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1"
-              onClick={() => handleBulkToggleDisabled(true)}
-            >
-              Disable {bulkDisableCount}
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setBulkDisableConfirm(false)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1" onClick={() => handleBulkToggleDisabled(true)}>Disable {bulkDisableCount}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Bulk Enable Confirm Dialog ───────────────────────────────────────── */}
-      <Dialog
-        open={bulkEnableConfirm}
-        onOpenChange={(open) => !open && setBulkEnableConfirm(false)}
-      >
+      {/* ─── Bulk Enable Confirm ──────────────────────────────────────────────── */}
+      <Dialog open={bulkEnableConfirm} onOpenChange={(open) => !open && setBulkEnableConfirm(false)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              Enable {bulkEnableCount} Coupon{bulkEnableCount !== 1 ? "s" : ""}?
+              Enable {bulkEnableCount} Link{bulkEnableCount !== 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              This will re-enable {bulkEnableCount} disabled coupon
-              {bulkEnableCount !== 1 ? "s" : ""} for assignment and claiming.
+              This will re-enable {bulkEnableCount} disabled link{bulkEnableCount !== 1 ? "s" : ""} for assignment.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setBulkEnableConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={() => handleBulkToggleDisabled(false)}>
-              Enable {bulkEnableCount}
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setBulkEnableConfirm(false)}>Cancel</Button>
+            <Button className="flex-1" onClick={() => handleBulkToggleDisabled(false)}>Enable {bulkEnableCount}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Assign Coupon Dialog ─────────────────────────────────────────────── */}
+      {/* ─── Assign Link Dialog ───────────────────────────────────────────────── */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Coupon</DialogTitle>
+            <DialogTitle>Assign Link</DialogTitle>
             <DialogDescription>
-              Auto-assign the next available coupon to an attendee, or manually
-              pair a specific coupon.
+              Auto-assign the next available link to an attendee, or manually pair a specific link.
             </DialogDescription>
           </DialogHeader>
 
@@ -1282,41 +1206,25 @@ export default function CouponTable({
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <Tabs
-              value={assignTab}
-              onValueChange={(v) => setAssignTab(v as "auto" | "manual")}
-            >
+            <Tabs value={assignTab} onValueChange={(v) => setAssignTab(v as "auto" | "manual")}>
               <TabsList className="w-full">
-                <TabsTrigger value="auto" className="flex-1">
-                  Auto (by attendee)
-                </TabsTrigger>
-                <TabsTrigger value="manual" className="flex-1">
-                  Manual pairing
-                </TabsTrigger>
+                <TabsTrigger value="auto" className="flex-1">Auto (by attendee)</TabsTrigger>
+                <TabsTrigger value="manual" className="flex-1">Manual pairing</TabsTrigger>
               </TabsList>
 
               <TabsContent value="auto" className="space-y-4 pt-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Attendee</label>
                   {assignableAttendees.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">
-                      No attendees waiting for a coupon.
-                    </p>
+                    <p className="text-sm text-muted-foreground py-2">No attendees waiting for a link.</p>
                   ) : (
-                    <Select
-                      value={autoAttendeeId}
-                      onValueChange={setAutoAttendeeId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select attendee…" />
-                      </SelectTrigger>
+                    <Select value={autoAttendeeId} onValueChange={setAutoAttendeeId}>
+                      <SelectTrigger><SelectValue placeholder="Select attendee…" /></SelectTrigger>
                       <SelectContent>
                         {assignableAttendees.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}{" "}
-                            <span className="text-muted-foreground text-xs">
-                              ({a.email})
-                            </span>
+                            <span className="text-muted-foreground text-xs">({a.email})</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1324,46 +1232,30 @@ export default function CouponTable({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {availableCoupons.length} coupon
-                  {availableCoupons.length !== 1 ? "s" : ""} available in pool.
+                  {availableLinksForDialog.length} link{availableLinksForDialog.length !== 1 ? "s" : ""} available in pool.
                 </p>
                 <Button
                   className="w-full"
-                  disabled={
-                    assignPending ||
-                    !autoAttendeeId ||
-                    availableCoupons.length === 0
-                  }
+                  disabled={assignPending || !autoAttendeeId || availableLinksForDialog.length === 0}
                   onClick={handleAutoAssign}
                 >
-                  {assignPending && (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  )}
-                  Assign Next Available Coupon
+                  {assignPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Assign Next Available Link
                 </Button>
               </TabsContent>
 
               <TabsContent value="manual" className="space-y-4 pt-2">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Coupon</label>
-                  {availableCoupons.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">
-                      No available coupons.
-                    </p>
+                  <label className="text-sm font-medium">Link</label>
+                  {availableLinksForDialog.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2">No available links.</p>
                   ) : (
-                    <Select
-                      value={manualCouponId}
-                      onValueChange={setManualCouponId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select coupon…" />
-                      </SelectTrigger>
+                    <Select value={manualLinkId} onValueChange={setManualLinkId}>
+                      <SelectTrigger><SelectValue placeholder="Select link…" /></SelectTrigger>
                       <SelectContent>
-                        {availableCoupons.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            <span className="font-mono text-xs">
-                              {truncateUrl(c.couponLink, 40)}
-                            </span>
+                        {availableLinksForDialog.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>
+                            <span className="font-mono text-xs">{truncateUrl(l.url, 40)}</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1373,24 +1265,15 @@ export default function CouponTable({
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Attendee</label>
                   {assignableAttendees.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-2">
-                      No attendees waiting for a coupon.
-                    </p>
+                    <p className="text-sm text-muted-foreground py-2">No attendees waiting for a link.</p>
                   ) : (
-                    <Select
-                      value={manualAttendeeId}
-                      onValueChange={setManualAttendeeId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select attendee…" />
-                      </SelectTrigger>
+                    <Select value={manualAttendeeId} onValueChange={setManualAttendeeId}>
+                      <SelectTrigger><SelectValue placeholder="Select attendee…" /></SelectTrigger>
                       <SelectContent>
                         {assignableAttendees.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}{" "}
-                            <span className="text-muted-foreground text-xs">
-                              ({a.email})
-                            </span>
+                            <span className="text-muted-foreground text-xs">({a.email})</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1399,18 +1282,11 @@ export default function CouponTable({
                 </div>
                 <Button
                   className="w-full"
-                  disabled={
-                    assignPending ||
-                    !manualCouponId ||
-                    !manualAttendeeId ||
-                    availableCoupons.length === 0
-                  }
+                  disabled={assignPending || !manualLinkId || !manualAttendeeId || availableLinksForDialog.length === 0}
                   onClick={handleManualAssign}
                 >
-                  {assignPending && (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  )}
-                  Assign This Coupon
+                  {assignPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                  Assign This Link
                 </Button>
               </TabsContent>
             </Tabs>
@@ -1418,84 +1294,110 @@ export default function CouponTable({
         </DialogContent>
       </Dialog>
 
-      {/* ─── Add Coupons Dialog ───────────────────────────────────────────────── */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-md">
+      {/* ─── Add Links Dialog ─────────────────────────────────────────────────── */}
+      <Dialog
+        open={addDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) { setAddText(""); setCsvFileName(null); }
+        }}
+      >
+        <DialogContent className="flex flex-col gap-4 w-[calc(100vw-2rem)] sm:w-full max-w-md max-h-[90dvh] overflow-y-auto p-5 sm:p-6">
           <DialogHeader>
-            <DialogTitle>Add Coupons</DialogTitle>
+            <DialogTitle>Add Links</DialogTitle>
             <DialogDescription>
-              Paste one coupon URL per line. Duplicates and invalid URLs are
-              skipped automatically. Available coupons will be auto-assigned to
-              attendees waiting.
+              Upload a CSV file or paste URLs below — one per line. Duplicates and invalid entries are skipped. Available links are auto-assigned to waiting attendees.
             </DialogDescription>
           </DialogHeader>
+
+          {/* CSV upload zone */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex flex-wrap items-center gap-3 rounded-md border border-dashed px-4 py-3 text-left hover:bg-muted/40 transition-colors w-full"
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm truncate text-muted-foreground">
+                {csvFileName ?? "Choose a CSV file…"}
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium shadow-sm shrink-0">
+              <Upload className="h-3.5 w-3.5" />
+              Upload
+            </span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv,text/plain"
+              className="hidden"
+              onChange={handleCsvUpload}
+            />
+          </button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-background px-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                or paste URLs
+              </span>
+            </div>
+          </div>
+
           <Textarea
             value={addText}
             onChange={(e) => setAddText(e.target.value)}
             placeholder={"https://example.com/coupon/abc\nhttps://example.com/coupon/def"}
-            rows={8}
-            className="font-mono text-xs"
+            rows={6}
+            className="font-mono text-xs resize-none"
           />
+
           <Button
             className="w-full"
             disabled={addPending || !addText.trim()}
-            onClick={handleAddCoupons}
+            onClick={handleAddLinks}
           >
             {addPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Import Coupons
+            Import Links
           </Button>
         </DialogContent>
       </Dialog>
 
       {/* ─── Unassign Confirm Dialog ──────────────────────────────────────────── */}
-      <Dialog
-        open={unassignTarget !== null}
-        onOpenChange={(open) => !open && setUnassignTarget(null)}
-      >
+      <Dialog open={unassignTarget !== null} onOpenChange={(open) => !open && setUnassignTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Unassign Coupon?
+              Unassign Link?
             </DialogTitle>
             <DialogDescription>
-              This will release the coupon back to the available pool and reset
-              the attendee&apos;s assignment.
+              This will release the link back to the available pool and remove the attendee&apos;s grant.
             </DialogDescription>
           </DialogHeader>
           {unassignTarget && (
             <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
               <p>
                 <span className="text-muted-foreground">Attendee:</span>{" "}
-                <span className="font-medium">
-                  {unassignTarget.attendeeName ?? "—"}
-                </span>
+                <span className="font-medium">{unassignTarget.attendeeName ?? "—"}</span>
               </p>
               <p>
                 <span className="text-muted-foreground">Status:</span>{" "}
-                <Badge
-                  variant={statusConfig[unassignTarget.status].variant}
-                  className="text-xs"
-                >
+                <Badge variant={statusConfig[unassignTarget.status].variant} className="text-xs">
                   {statusConfig[unassignTarget.status].label}
                 </Badge>
               </p>
             </div>
           )}
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setUnassignTarget(null)}
-            >
-              Cancel
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setUnassignTarget(null)}>Cancel</Button>
             <Button
               variant="destructive"
               className="flex-1"
-              disabled={
-                actionPending === (unassignTarget?.id ?? "") + "-unassign"
-              }
+              disabled={actionPending === (unassignTarget?.id ?? "") + "-unassign"}
               onClick={() => unassignTarget && handleUnassign(unassignTarget)}
             >
               {actionPending === (unassignTarget?.id ?? "") + "-unassign" ? (
@@ -1508,40 +1410,28 @@ export default function CouponTable({
       </Dialog>
 
       {/* ─── Delete Confirm Dialog ────────────────────────────────────────────── */}
-      <Dialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-4 w-4 text-destructive" />
-              Delete Coupon?
+              Delete Link?
             </DialogTitle>
             <DialogDescription>
-              This will permanently delete the unassigned coupon. This action
-              cannot be undone.
+              This will permanently delete the unassigned link. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           {deleteTarget && (
             <div className="rounded-md border bg-muted/40 p-3 text-xs font-mono break-all">
-              {deleteTarget.couponLink}
+              {deleteTarget.url}
             </div>
           )}
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setDeleteTarget(null)}
-            >
-              Cancel
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button
               variant="destructive"
               className="flex-1"
-              disabled={
-                actionPending === (deleteTarget?.id ?? "") + "-delete"
-              }
+              disabled={actionPending === (deleteTarget?.id ?? "") + "-delete"}
               onClick={() => deleteTarget && handleDelete(deleteTarget)}
             >
               {actionPending === (deleteTarget?.id ?? "") + "-delete" ? (

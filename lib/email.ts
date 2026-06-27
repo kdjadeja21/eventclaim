@@ -186,8 +186,9 @@ function buildEmailHtml(params: {
   attendeeName: string;
   claimUrl: string;
   notionGuideUrl: string;
+  eventName?: string;
 }): string {
-  const { attendeeName, claimUrl, notionGuideUrl } = params;
+  const { attendeeName, claimUrl, notionGuideUrl, eventName } = params;
   const firstName = attendeeName.split(" ")[0] || attendeeName;
 
   return `<!DOCTYPE html>
@@ -195,7 +196,7 @@ function buildEmailHtml(params: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Cursor Credits Are Ready</title>
+  <title>Your Partner Offers Are Ready</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
@@ -226,16 +227,16 @@ function buildEmailHtml(params: {
           <tr>
             <td style="padding:40px 40px 32px;">
               <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#09090b;letter-spacing:-0.02em;">
-                Your Cursor Credits Are Ready 🎉
+                Your Partner Offers Are Ready 🎉
               </h1>
               <p style="margin:0 0 24px;font-size:16px;color:#52525b;line-height:1.6;">
                 Hi <strong>${firstName}</strong>,
               </p>
               <p style="margin:0 0 24px;font-size:16px;color:#52525b;line-height:1.6;">
-                Thank you for attending our event. We're excited to give you access to Cursor credits as a thank-you for your participation.
+                Thank you for attending${eventName ? ` <strong>${eventName}</strong>` : " our event"}. We're excited to share exclusive partner offers and credits as a thank-you for your participation.
               </p>
               <p style="margin:0 0 32px;font-size:16px;color:#52525b;line-height:1.6;">
-                Click the button below to claim your credits:
+                Click the button below to view and claim all your offers:
               </p>
 
               <!-- CTA Button -->
@@ -244,7 +245,7 @@ function buildEmailHtml(params: {
                   <td style="background:#09090b;border-radius:8px;text-align:center;">
                     <a href="${claimUrl}"
                        style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;">
-                      Claim My Cursor Credits →
+                      View My Offers →
                     </a>
                   </td>
                 </tr>
@@ -259,18 +260,18 @@ function buildEmailHtml(params: {
               <!-- Note -->
               <div style="background:#f4f4f5;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
                 <p style="margin:0;font-size:14px;color:#71717a;line-height:1.5;">
-                  <strong style="color:#09090b;">Note:</strong> This link is unique to you. Please don't share it — each credit can only be claimed once.
+                  <strong style="color:#09090b;">Note:</strong> This link is unique to you. Please don't share it.
                 </p>
               </div>
 
               ${notionGuideUrl ? `
               <p style="margin:0;font-size:15px;color:#52525b;line-height:1.6;">
-                Need help claiming? Check out our step-by-step guide:
+                Need help redeeming? Check out our step-by-step guide:
               </p>
               <p style="margin:8px 0 0;">
                 <a href="${notionGuideUrl}"
                    style="color:#09090b;font-weight:600;font-size:15px;">
-                  How to Claim Your Cursor Credits →
+                  How to Redeem Your Offers →
                 </a>
               </p>
               ` : ""}
@@ -298,13 +299,14 @@ function buildEmailHtml(params: {
 export async function sendCouponEmail(
   attendee: Attendee,
   notionGuideUrl: string,
-  isResend = false
+  isResend = false,
+  eventName?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!attendee.couponId) {
-    return { success: false, error: "No coupon assigned — cannot send email" };
+  if (!attendee.grantCount || attendee.grantCount < 1) {
+    return { success: false, error: "No offers granted yet — cannot send email" };
   }
   if (!attendee.claimToken) {
-    return { success: false, error: "No claim token — coupon not assigned yet" };
+    return { success: false, error: "No claim token — grants not assigned yet" };
   }
 
   const claimUrl = `${APP_BASE_URL}/claim/${attendee.claimToken}`;
@@ -325,11 +327,12 @@ export async function sendCouponEmail(
         template_params: {
           to_email: attendee.email,
           to_name: attendee.name,
-          subject: "Your Cursor Credits Are Ready to Claim",
+          subject: "Your Partner Offers Are Ready to Claim",
           message_html: buildEmailHtml({
             attendeeName: attendee.name,
             claimUrl,
             notionGuideUrl,
+            eventName,
           }),
         },
       })
@@ -366,16 +369,6 @@ export async function sendCouponEmail(
         emailStatus: "sent",
         emailSentAt: now,
       });
-
-    // Update coupon status to emailSent (only on first send, not resend)
-    if (!isResend && attendee.couponId) {
-      await adminDb
-        .collection("events")
-        .doc(attendee.eventId)
-        .collection("coupons")
-        .doc(attendee.couponId)
-        .update({ status: "emailSent" });
-    }
 
     await writeAuditLog({
       eventId: attendee.eventId,
@@ -433,11 +426,11 @@ export async function sendCouponEmailsConcurrent(
   const results: BulkSendResult["results"] = new Array(attendees.length);
 
   await mapWithConcurrency(attendees, SEND_CONCURRENCY, async (attendee, i) => {
-    if (!attendee.couponId || !attendee.claimToken) {
+    if (!attendee.grantCount || !attendee.claimToken) {
       results[i] = {
         attendeeId: attendee.id,
         status: "skipped",
-        error: "No coupon assigned — cannot send email",
+        error: "No offers granted — cannot send email",
       };
       return;
     }
@@ -466,7 +459,7 @@ export async function sendPendingEmails(
     .doc(eventId)
     .collection("attendees")
     .where("emailStatus", "==", "pending")
-    .where("couponId", "!=", null)
+    .where("grantCount", ">", 0)
     .get();
 
   const attendees = snap.docs.map((doc) => doc.data() as Attendee);
@@ -490,7 +483,7 @@ export async function resendFailedEmails(
     .doc(eventId)
     .collection("attendees")
     .where("emailStatus", "==", "failed")
-    .where("couponId", "!=", null)
+    .where("grantCount", ">", 0)
     .get();
 
   const attendees = snap.docs.map((doc) => doc.data() as Attendee);

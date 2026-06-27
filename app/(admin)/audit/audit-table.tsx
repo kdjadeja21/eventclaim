@@ -35,21 +35,25 @@ const actionVariant: Record<
   event_created: "default",
   event_updated: "info",
   event_deleted: "destructive",
+  event_hero_updated: "info",
   attendee_imported: "info",
   attendee_deleted: "destructive",
   attendee_luma_synced: "info",
-  coupon_imported: "info",
-  coupon_assigned: "success",
+  attendee_blacklisted: "warning",
+  attendee_unblacklisted: "success",
+  coupon_created: "success",
+  coupon_updated: "info",
+  coupon_deleted: "destructive",
+  coupon_disabled: "warning",
+  coupon_enabled: "success",
+  coupon_links_added: "success",
+  coupon_granted: "success",
   coupon_unassigned: "warning",
-  coupon_added: "success",
+  coupon_link_deleted: "destructive",
+  grant_claimed: "success",
   email_sent: "success",
   email_resent: "warning",
   email_failed: "destructive",
-  coupon_claimed: "success",
-  coupon_disabled: "warning",
-  coupon_enabled: "success",
-  attendee_blacklisted: "warning",
-  attendee_unblacklisted: "success",
   status_checked: "secondary",
 };
 
@@ -57,21 +61,25 @@ const actionLabels: Record<AuditAction, string> = {
   event_created: "Event Created",
   event_updated: "Event Updated",
   event_deleted: "Event Deleted",
+  event_hero_updated: "Hero Updated",
   attendee_imported: "Attendees Imported",
   attendee_deleted: "Attendee Deleted",
   attendee_luma_synced: "Luma Sync",
-  coupon_imported: "Coupons Imported",
-  coupon_assigned: "Coupon Assigned",
-  coupon_unassigned: "Coupon Unassigned",
-  coupon_added: "Coupon Added",
+  attendee_blacklisted: "Attendee Blacklisted",
+  attendee_unblacklisted: "Attendee Unblacklisted",
+  coupon_created: "Coupon Created",
+  coupon_updated: "Coupon Updated",
+  coupon_deleted: "Coupon Deleted",
+  coupon_disabled: "Coupon Disabled",
+  coupon_enabled: "Coupon Enabled",
+  coupon_links_added: "Links Added",
+  coupon_granted: "Grants Issued",
+  coupon_unassigned: "Link Unassigned",
+  coupon_link_deleted: "Link Deleted",
+  grant_claimed: "Grant Claimed",
   email_sent: "Email Sent",
   email_resent: "Email Resent",
   email_failed: "Email Failed",
-  coupon_claimed: "Coupon Claimed",
-  coupon_disabled: "Coupon Disabled",
-  coupon_enabled: "Coupon Enabled",
-  attendee_blacklisted: "Attendee Blacklisted",
-  attendee_unblacklisted: "Attendee Unblacklisted",
   status_checked: "Status Checked",
 };
 
@@ -163,42 +171,56 @@ function getAuditMessage(log: AuditLog): string {
       ].filter(Boolean);
       return `${parts.join(", ")}.`;
     }
-    case "coupon_imported":
-      return formatImportMessage("Imported", "coupons", metadata);
-    case "coupon_added":
-      return formatImportMessage("Added", "coupons", metadata);
-    case "coupon_assigned":
-      return `Coupon ${couponId ?? "record"} was assigned${
-        attendeeId ? ` to attendee ${attendeeId}` : ""
-      }.`;
-    case "coupon_unassigned":
-      return `Coupon ${couponId ?? "record"} was unassigned${
-        attendeeId ? ` from attendee ${attendeeId}` : ""
-      }.`;
-    case "email_sent":
-      return `Coupon email was sent${email ? ` to ${email}` : ""}.`;
-    case "email_resent":
-      return `Coupon email was resent${email ? ` to ${email}` : ""}.`;
-    case "email_failed": {
-      const error = getMetadataString(metadata, "error");
-      return `Coupon email failed${email ? ` for ${email}` : ""}${
-        error ? `: ${error}` : ""
-      }.`;
-    }
-    case "coupon_claimed":
-      return `Coupon ${couponId ?? "record"} was claimed${
-        email ? ` by ${email}` : attendeeId ? ` by attendee ${attendeeId}` : ""
-      }.`;
+    case "event_hero_updated":
+      return "Claim page hero fields were updated.";
+    case "coupon_created":
+      return `Coupon ${couponId ? `"${couponId}" ` : ""}was created.`;
+    case "coupon_updated":
+      return `Coupon ${couponId ?? "record"} was updated.`;
+    case "coupon_deleted":
+      return `Coupon ${couponId ?? "record"} was deleted.`;
     case "coupon_disabled":
       return `Coupon ${couponId ?? "record"} was disabled.`;
     case "coupon_enabled":
       return `Coupon ${couponId ?? "record"} was enabled.`;
+    case "coupon_links_added": {
+      const imported = getMetadataNumber(metadata, "imported");
+      return `${imported ?? "?"} links added to coupon ${couponId ?? "pool"}.`;
+    }
+    case "coupon_granted": {
+      const newGrants = getMetadataNumber(metadata, "newGrants");
+      return `${newGrants ?? "?"} offers granted${attendeeId ? ` to ${attendeeId}` : ""}.`;
+    }
+    case "coupon_unassigned": {
+      const linkId = getMetadataString(metadata, "linkId");
+      return `Link${linkId ? ` ${linkId}` : ""} from coupon ${couponId ?? "record"} was unassigned${attendeeId ? ` from ${attendeeId}` : ""}.`;
+    }
+    case "coupon_link_deleted": {
+      const linkId = getMetadataString(metadata, "linkId");
+      return `Link${linkId ? ` ${linkId}` : ""} from coupon ${couponId ?? "record"} was deleted.`;
+    }
+    case "grant_claimed":
+      return `Offer ${couponId ?? "record"} was claimed${
+        email ? ` by ${email}` : attendeeId ? ` by ${attendeeId}` : ""
+      }.`;
+    case "email_sent":
+      return `Offer email was sent${email ? ` to ${email}` : ""}.`;
+    case "email_resent":
+      return `Offer email was resent${email ? ` to ${email}` : ""}.`;
+    case "email_failed": {
+      const error = getMetadataString(metadata, "error");
+      return `Offer email failed${email ? ` for ${email}` : ""}${
+        error ? `: ${error}` : ""
+      }.`;
+    }
     case "attendee_blacklisted":
       return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was blacklisted.`;
     case "attendee_unblacklisted":
       return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was unblacklisted.`;
     case "status_checked":
       return `Claim status was checked${email ? ` for ${email}` : ""}.`;
+    default:
+      return JSON.stringify(metadata);
   }
 }
 
@@ -227,9 +249,11 @@ function sortLogs(
     let cmp = 0;
     switch (key) {
       case "action":
-        cmp = actionLabels[a.action].localeCompare(actionLabels[b.action], undefined, {
-          sensitivity: "base",
-        });
+        cmp = (actionLabels[a.action] ?? a.action).localeCompare(
+          actionLabels[b.action] ?? b.action,
+          undefined,
+          { sensitivity: "base" }
+        );
         break;
       case "message":
         cmp = getAuditMessage(a).localeCompare(getAuditMessage(b), undefined, {
@@ -283,7 +307,7 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
   const visibleActions = useMemo(
     () =>
       (Object.keys(actionCounts) as AuditAction[]).sort((a, b) =>
-        actionLabels[a].localeCompare(actionLabels[b], undefined, {
+        (actionLabels[a] ?? a).localeCompare(actionLabels[b] ?? b, undefined, {
           sensitivity: "base",
         })
       ),
@@ -317,8 +341,9 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
       list = list.filter((log) => {
         const details = stringifyMetadata(log.metadata).toLowerCase();
         const message = getAuditMessage(log).toLowerCase();
+        const label = (actionLabels[log.action] ?? log.action).toLowerCase();
         return (
-          actionLabels[log.action].toLowerCase().includes(q) ||
+          label.includes(q) ||
           message.includes(q) ||
           log.action.toLowerCase().includes(q) ||
           (log.eventId ?? "").toLowerCase().includes(q) ||

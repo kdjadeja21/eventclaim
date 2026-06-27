@@ -3,46 +3,120 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
-import {
-  assignCouponToAttendee,
-  assignPendingForEvent,
-} from "@/lib/assignment";
-import { parseCouponCsv, couponDocId } from "@/lib/import";
-import { Attendee, Coupon } from "@/lib/types";
+import { assignPendingForEvent } from "@/lib/assignment";
+import { parseCouponCsv } from "@/lib/import";
+import { Coupon, CouponKind, CouponLink, Grant } from "@/lib/types";
+import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 
-// ─── Auto-assign next available coupon to an attendee ─────────────────────────
+// ─── Create a new coupon definition ───────────────────────────────────────────
 
-export async function autoAssignToAttendee(
+export async function createCoupon(
   eventId: string,
-  attendeeId: string,
+  data: {
+    name: string;
+    kind: CouponKind;
+    category: string;
+    logoUrl: string;
+    highlight: string;
+    description: string;
+    note?: string;
+    sharedValue?: string;
+    redeemUrl?: string;
+    sortOrder?: number;
+  },
   slug: string
-): Promise<{ success: boolean; error?: string }> {
-  await requireSession();
+): Promise<{ success: boolean; couponId?: string; error?: string }> {
+  const session = await requireSession();
 
-  try {
-    const assigned = await assignCouponToAttendee(eventId, attendeeId);
-    if (!assigned) {
-      return { success: false, error: "No available coupons to assign." };
+  if (!data.name.trim()) return { success: false, error: "Name is required." };
+  if (data.kind === "sharedCode" || data.kind === "sharedLink") {
+    if (!data.sharedValue?.trim()) {
+      return { success: false, error: "A value is required for this coupon type." };
     }
-    revalidatePath(`/events/${slug}/coupons`);
-    revalidatePath(`/events/${slug}/attendees`);
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Assignment failed.",
-    };
   }
+
+  const id = nanoid();
+  const snap = await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .orderBy("sortOrder", "desc")
+    .limit(1)
+    .get();
+
+  const maxOrder = snap.empty
+    ? 0
+    : (snap.docs[0].data() as Coupon).sortOrder ?? 0;
+
+  const trimOrNull = (v?: string) => v?.trim() || null;
+
+  const couponData: Record<string, unknown> = {
+    id,
+    eventId,
+    name: data.name.trim(),
+    kind: data.kind,
+    category: data.category.trim(),
+    logoUrl: data.logoUrl.trim(),
+    highlight: data.highlight.trim(),
+    description: data.description.trim(),
+    sortOrder: data.sortOrder ?? maxOrder + 1,
+    isDisabled: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Only include optional fields when they have a value — Firestore rejects `undefined`
+  const note = trimOrNull(data.note);
+  if (note) couponData.note = note;
+  const sharedValue = trimOrNull(data.sharedValue);
+  if (sharedValue) couponData.sharedValue = sharedValue;
+  const redeemUrl = trimOrNull(data.redeemUrl);
+  if (redeemUrl) couponData.redeemUrl = redeemUrl;
+  if (data.kind === "uniqueLink") {
+    couponData.linkTotal = 0;
+    couponData.linkAvailable = 0;
+  }
+
+  const coupon = couponData as unknown as Coupon;
+
+  await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .doc(id)
+    .set(coupon);
+
+  await writeAuditLog({
+    eventId,
+    action: "coupon_created",
+    metadata: { couponId: id, name: coupon.name, kind: coupon.kind },
+    userId: session.uid,
+  });
+
+  // Grant this new coupon to all existing eligible attendees
+  await assignPendingForEvent(eventId);
+
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true, couponId: id };
 }
 
-// ─── Manually pair a specific coupon to a specific attendee ───────────────────
+// ─── Update an existing coupon definition ─────────────────────────────────────
 
-export async function assignSpecificCoupon(
+export async function updateCoupon(
   eventId: string,
   couponId: string,
-  attendeeId: string,
+  data: Partial<{
+    name: string;
+    category: string;
+    logoUrl: string;
+    highlight: string;
+    description: string;
+    note: string;
+    sharedValue: string;
+    redeemUrl: string;
+    sortOrder: number;
+  }>,
   slug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
@@ -53,316 +127,39 @@ export async function assignSpecificCoupon(
     .collection("coupons")
     .doc(couponId);
 
-  const attendeeRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .doc(attendeeId);
+  const snap = await couponRef.get();
+  if (!snap.exists) return { success: false, error: "Coupon not found." };
 
-  try {
-    await adminDb.runTransaction(async (txn) => {
-      const [couponSnap, attendeeSnap] = await Promise.all([
-        txn.get(couponRef),
-        txn.get(attendeeRef),
-      ]);
+  const update: Record<string, unknown> = {};
+  if (data.name !== undefined) update.name = data.name.trim();
+  if (data.category !== undefined) update.category = data.category.trim();
+  if (data.logoUrl !== undefined) update.logoUrl = data.logoUrl.trim();
+  if (data.highlight !== undefined) update.highlight = data.highlight.trim();
+  if (data.description !== undefined) update.description = data.description.trim();
+  // For optional fields, omit the key entirely when the value is empty to avoid
+  // writing null/undefined to Firestore unintentionally — caller must pass the
+  // field explicitly when they want to clear it.
+  if (data.note !== undefined) update.note = data.note.trim() || null;
+  if (data.sharedValue !== undefined) update.sharedValue = data.sharedValue.trim() || null;
+  if (data.redeemUrl !== undefined) update.redeemUrl = data.redeemUrl.trim() || null;
+  if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
 
-      if (!couponSnap.exists) throw new Error("Coupon not found.");
-      if (!attendeeSnap.exists) throw new Error("Attendee not found.");
+  // Remove undefined / null keys that weren't explicitly cleared
+  Object.keys(update).forEach((k) => {
+    if (update[k] === undefined) delete update[k];
+  });
 
-      const coupon = couponSnap.data() as Coupon;
-      const attendee = attendeeSnap.data() as Attendee;
+  await couponRef.update(update);
 
-      if (coupon.status !== "available") {
-        throw new Error("Coupon is no longer available.");
-      }
-      if (coupon.isDisabled) {
-        throw new Error("Coupon is disabled.");
-      }
-      if (attendee.couponId) {
-        throw new Error("Attendee already has a coupon assigned.");
-      }
-      if (attendee.isBlacklisted) {
-        throw new Error("Blacklisted attendees cannot receive coupons.");
-      }
+  await writeAuditLog({
+    eventId,
+    action: "coupon_updated",
+    metadata: { couponId, ...update },
+    userId: session.uid,
+  });
 
-      const now = new Date().toISOString();
-      const claimToken = nanoid(32);
-
-      txn.update(couponRef, {
-        assignedTo: attendeeId,
-        status: "assigned",
-        assignedAt: now,
-      });
-
-      txn.update(attendeeRef, {
-        couponId,
-        couponLink: coupon.couponLink,
-        claimToken,
-        emailStatus: "pending",
-      });
-
-      const tokenRef = adminDb.collection("claimTokens").doc(claimToken);
-      txn.set(tokenRef, {
-        token: claimToken,
-        eventId,
-        attendeeId,
-        createdAt: now,
-      });
-    });
-
-    await writeAuditLog({
-      eventId,
-      action: "coupon_assigned",
-      metadata: { couponId, attendeeId, manual: true },
-      userId: session.uid,
-    });
-
-    revalidatePath(`/events/${slug}/coupons`);
-    revalidatePath(`/events/${slug}/attendees`);
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Assignment failed.",
-    };
-  }
-}
-
-// ─── Unassign a coupon (revert to available) ──────────────────────────────────
-
-export async function unassignCoupon(
-  eventId: string,
-  couponId: string,
-  slug: string
-): Promise<{ success: boolean; error?: string }> {
-  const session = await requireSession();
-
-  const couponRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(couponId);
-
-  try {
-    let unassignedAttendeeId: string | null = null;
-
-    await adminDb.runTransaction(async (txn) => {
-      const couponSnap = await txn.get(couponRef);
-      if (!couponSnap.exists) throw new Error("Coupon not found.");
-
-      const coupon = couponSnap.data() as Coupon;
-      if (coupon.status === "available") {
-        throw new Error("Coupon is already unassigned.");
-      }
-      if (coupon.status === "claimed") {
-        throw new Error("Claimed coupons cannot be unassigned.");
-      }
-
-      unassignedAttendeeId = coupon.assignedTo;
-
-      // Read attendee BEFORE any writes (Firestore requires all reads before writes)
-      let attendeeRef: FirebaseFirestore.DocumentReference | null = null;
-      let attendeeSnap: FirebaseFirestore.DocumentSnapshot | null = null;
-      if (coupon.assignedTo) {
-        attendeeRef = adminDb
-          .collection("events")
-          .doc(eventId)
-          .collection("attendees")
-          .doc(coupon.assignedTo);
-        attendeeSnap = await txn.get(attendeeRef);
-      }
-
-      // All writes follow
-      txn.update(couponRef, {
-        assignedTo: null,
-        status: "available",
-        assignedAt: null,
-        claimedAt: null,
-      });
-
-      if (attendeeRef && attendeeSnap?.exists) {
-        const attendee = attendeeSnap.data() as Attendee;
-
-        if (attendee.claimToken) {
-          const tokenRef = adminDb
-            .collection("claimTokens")
-            .doc(attendee.claimToken);
-          txn.delete(tokenRef);
-        }
-
-        txn.update(attendeeRef, {
-          couponId: null,
-          couponLink: null,
-          claimToken: null,
-          emailStatus: "pending",
-          claimed: false,
-          claimedAt: null,
-        });
-      }
-    });
-
-    await writeAuditLog({
-      eventId,
-      action: "coupon_unassigned",
-      metadata: { couponId, attendeeId: unassignedAttendeeId },
-      userId: session.uid,
-    });
-
-    revalidatePath(`/events/${slug}/coupons`);
-    revalidatePath(`/events/${slug}/attendees`);
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Unassign failed.",
-    };
-  }
-}
-
-// ─── Add new coupons by pasting raw links ─────────────────────────────────────
-
-export async function addCoupons(
-  eventId: string,
-  rawText: string,
-  slug: string
-): Promise<{
-  success: boolean;
-  imported: number;
-  duplicatesSkipped: number;
-  invalidSkipped: number;
-  autoAssigned: number;
-  errors: string[];
-  error?: string;
-}> {
-  const session = await requireSession();
-
-  try {
-    const { rows, duplicatesInFile, invalidCount, errors } =
-      parseCouponCsv(rawText);
-
-    let imported = 0;
-    let duplicatesSkipped = duplicatesInFile;
-
-    const couponsRef = adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("coupons");
-
-    for (const row of rows) {
-      const docId = couponDocId(eventId, row.couponLink);
-      const docRef = couponsRef.doc(docId);
-      const existing = await docRef.get();
-
-      if (existing.exists) {
-        duplicatesSkipped++;
-        continue;
-      }
-
-      const coupon: Coupon = {
-        id: docId,
-        eventId,
-        couponLink: row.couponLink,
-        assignedTo: null,
-        status: "available",
-        assignedAt: null,
-        claimedAt: null,
-      };
-
-      await docRef.set(coupon);
-      imported++;
-    }
-
-    await writeAuditLog({
-      eventId,
-      action: "coupon_added",
-      metadata: { imported, duplicatesSkipped, invalid: invalidCount },
-      userId: session.uid,
-    });
-
-    const autoAssigned = await assignPendingForEvent(eventId);
-
-    revalidatePath(`/events/${slug}/coupons`);
-    revalidatePath(`/events/${slug}/attendees`);
-
-    return {
-      success: true,
-      imported,
-      duplicatesSkipped,
-      invalidSkipped: invalidCount,
-      autoAssigned,
-      errors,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      imported: 0,
-      duplicatesSkipped: 0,
-      invalidSkipped: 0,
-      autoAssigned: 0,
-      errors: [],
-      error: err instanceof Error ? err.message : "Failed to add coupons.",
-    };
-  }
-}
-
-// ─── Delete an unassigned coupon ──────────────────────────────────────────────
-
-export async function deleteCoupon(
-  eventId: string,
-  couponId: string,
-  slug: string
-): Promise<{ success: boolean; error?: string }> {
-  await requireSession();
-
-  try {
-    const couponRef = adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("coupons")
-      .doc(couponId);
-
-    const snap = await couponRef.get();
-    if (!snap.exists) return { success: false, error: "Coupon not found." };
-
-    const coupon = snap.data() as Coupon;
-    if (coupon.status !== "available") {
-      return {
-        success: false,
-        error: "Only unassigned (available) coupons can be deleted.",
-      };
-    }
-
-    await couponRef.delete();
-    revalidatePath(`/events/${slug}/coupons`);
-    return { success: true };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Delete failed.",
-    };
-  }
-}
-
-// ─── Bulk assign all pending attendees ────────────────────────────────────────
-
-export async function bulkAutoAssignPending(
-  eventId: string,
-  slug: string
-): Promise<{ success: boolean; assigned: number; error?: string }> {
-  await requireSession();
-
-  try {
-    const assigned = await assignPendingForEvent(eventId);
-    revalidatePath(`/events/${slug}/coupons`);
-    revalidatePath(`/events/${slug}/attendees`);
-    return { success: true, assigned };
-  } catch (err) {
-    return {
-      success: false,
-      assigned: 0,
-      error: err instanceof Error ? err.message : "Bulk assign failed.",
-    };
-  }
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true };
 }
 
 // ─── Toggle coupon disabled state ─────────────────────────────────────────────
@@ -381,30 +178,216 @@ export async function toggleCouponDisabled(
     .collection("coupons")
     .doc(couponId);
 
-  try {
-    const snap = await couponRef.get();
-    if (!snap.exists) return { success: false, error: "Coupon not found." };
+  const snap = await couponRef.get();
+  if (!snap.exists) return { success: false, error: "Coupon not found." };
 
-    const coupon = snap.data() as Coupon;
-    if (coupon.status === "claimed") {
-      return { success: false, error: "Claimed coupons cannot be disabled." };
+  await couponRef.update({ isDisabled: disabled });
+
+  await writeAuditLog({
+    eventId,
+    action: disabled ? "coupon_disabled" : "coupon_enabled",
+    metadata: { couponId },
+    userId: session.uid,
+  });
+
+  // When re-enabling, grant to any attendees who didn't get it yet
+  if (!disabled) {
+    await assignPendingForEvent(eventId);
+  }
+
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true };
+}
+
+// ─── Delete a coupon definition ────────────────────────────────────────────────
+
+export async function deleteCoupon(
+  eventId: string,
+  couponId: string,
+  slug: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  const couponRef = adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .doc(couponId);
+
+  const snap = await couponRef.get();
+  if (!snap.exists) return { success: false, error: "Coupon not found." };
+
+  const coupon = snap.data() as Coupon;
+
+  // Release any assigned pool links back and delete them
+  if (coupon.kind === "uniqueLink") {
+    const linksSnap = await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(couponId)
+      .collection("links")
+      .get();
+
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < linksSnap.docs.length; i += BATCH_SIZE) {
+      const batch = adminDb.batch();
+      linksSnap.docs.slice(i, i + BATCH_SIZE).forEach((d) => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
     }
+  }
 
-    await couponRef.update({ isDisabled: disabled });
+  // Remove all grants for this coupon across all attendees
+  const grantsSnap = await adminDb
+    .collectionGroup("grants")
+    .where("couponId", "==", couponId)
+    .where("eventId", "==", eventId)
+    .get();
 
-    await writeAuditLog({
-      eventId,
-      action: disabled ? "coupon_disabled" : "coupon_enabled",
-      metadata: { couponId },
-      userId: session.uid,
-    });
+  if (!grantsSnap.empty) {
+    const BATCH_SIZE = 400;
+    for (let i = 0; i < grantsSnap.docs.length; i += BATCH_SIZE) {
+      const batch = adminDb.batch();
+      grantsSnap.docs.slice(i, i + BATCH_SIZE).forEach((d) => {
+        batch.delete(d.ref);
+        // Decrement grantCount on the attendee
+        const attendeeRef = adminDb
+          .collection("events")
+          .doc(eventId)
+          .collection("attendees")
+          .doc((d.data() as Grant).attendeeId);
+        batch.update(attendeeRef, {
+          grantCount: FieldValue.increment(-1),
+        });
+      });
+      await batch.commit();
+    }
+  }
 
-    revalidatePath(`/events/${slug}/coupons`);
-    return { success: true };
-  } catch (err) {
+  await couponRef.delete();
+
+  await writeAuditLog({
+    eventId,
+    action: "coupon_deleted",
+    metadata: { couponId, name: coupon.name },
+    userId: session.uid,
+  });
+
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true };
+}
+
+// ─── Add unique links to a coupon's pool ──────────────────────────────────────
+
+export async function addCouponLinks(
+  eventId: string,
+  couponId: string,
+  rawText: string,
+  slug: string
+): Promise<{
+  success: boolean;
+  imported: number;
+  duplicatesSkipped: number;
+  invalidSkipped: number;
+  autoGranted: number;
+  errors: string[];
+  error?: string;
+}> {
+  const session = await requireSession();
+
+  const couponRef = adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .doc(couponId);
+
+  const couponSnap = await couponRef.get();
+  if (!couponSnap.exists) {
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Update failed.",
+      imported: 0,
+      duplicatesSkipped: 0,
+      invalidSkipped: 0,
+      autoGranted: 0,
+      errors: [],
+      error: "Coupon not found.",
     };
   }
+
+  const coupon = couponSnap.data() as Coupon;
+  if (coupon.kind !== "uniqueLink") {
+    return {
+      success: false,
+      imported: 0,
+      duplicatesSkipped: 0,
+      invalidSkipped: 0,
+      autoGranted: 0,
+      errors: [],
+      error: "Only uniqueLink coupons have a link pool.",
+    };
+  }
+
+  const { rows, duplicatesInFile, invalidCount, errors } =
+    parseCouponCsv(rawText);
+
+  let imported = 0;
+  let duplicatesSkipped = duplicatesInFile;
+
+  const linksRef = couponRef.collection("links");
+
+  for (const row of rows) {
+    // Use a hash of the URL as the doc ID for dedup
+    const docId = Buffer.from(
+      `${couponId}:${row.couponLink}`
+    ).toString("base64url").slice(0, 40);
+
+    const existing = await linksRef.doc(docId).get();
+    if (existing.exists) {
+      duplicatesSkipped++;
+      continue;
+    }
+
+    const link: CouponLink = {
+      id: docId,
+      couponId,
+      eventId,
+      url: row.couponLink,
+      status: "available",
+      assignedTo: null,
+      assignedAt: null,
+      claimedAt: null,
+    };
+
+    await linksRef.doc(docId).set(link);
+    imported++;
+  }
+
+  if (imported > 0) {
+    await couponRef.update({
+      linkTotal: FieldValue.increment(imported),
+      linkAvailable: FieldValue.increment(imported),
+    });
+  }
+
+  await writeAuditLog({
+    eventId,
+    action: "coupon_links_added",
+    metadata: { couponId, imported, duplicatesSkipped, invalid: invalidCount },
+    userId: session.uid,
+  });
+
+  const autoGranted = imported > 0 ? await assignPendingForEvent(eventId) : 0;
+
+  revalidatePath(`/events/${slug}/coupons`);
+
+  return {
+    success: true,
+    imported,
+    duplicatesSkipped,
+    invalidSkipped: invalidCount,
+    autoGranted,
+    errors,
+  };
 }

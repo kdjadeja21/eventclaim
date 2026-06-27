@@ -12,12 +12,11 @@ export async function checkAttendeeStatus(email: string): Promise<{
   emailSent?: boolean;
   emailSentAt?: string | null;
   claimed?: boolean;
-  claimedAt?: string | null;
+  grantCount?: number;
   isBlacklisted?: boolean;
 }> {
   const normalizedEmail = normalizeEmail(email);
 
-  // Search across all events for this email
   const eventsSnap = await adminDb
     .collection("events")
     .where("status", "!=", "draft")
@@ -51,8 +50,8 @@ export async function checkAttendeeStatus(email: string): Promise<{
       eventDate: event.date,
       emailSent: attendee.emailStatus === "sent",
       emailSentAt: attendee.emailSentAt,
-      claimed: attendee.claimed,
-      claimedAt: attendee.claimedAt,
+      claimed: attendee.claimedAny,
+      grantCount: attendee.grantCount ?? 0,
       isBlacklisted: attendee.isBlacklisted ?? false,
     };
   }

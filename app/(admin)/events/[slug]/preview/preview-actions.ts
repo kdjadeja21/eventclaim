@@ -2,7 +2,7 @@
 
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
-import { isAssignableCoupon, Coupon } from "@/lib/types";
+import { Attendee, Coupon } from "@/lib/types";
 
 export async function getPreviewStats(slug: string) {
   await requireSession();
@@ -26,40 +26,50 @@ export async function getPreviewStats(slug: string) {
       .collection("events")
       .doc(eventId)
       .collection("coupons")
+      .where("isDisabled", "==", false)
       .get(),
   ]);
 
-  let couponsAssigned = 0;
-  let couponsAvailable = 0;
+  const enabledCouponCount = couponsSnap.size;
+
+  // For uniqueLink coupons, check if any have an empty pool
+  const uniqueLinkCoupons = couponsSnap.docs
+    .map((d) => d.data() as Coupon)
+    .filter((c) => c.kind === "uniqueLink");
+
+  const poolExhausted = uniqueLinkCoupons.some(
+    (c) => (c.linkAvailable ?? 0) === 0
+  );
+
   let emailsToSend = 0;
   let emailsFailed = 0;
+  let attendeesWithGrants = 0;
+  let attendeesWithoutGrants = 0;
 
-  for (const doc of couponsSnap.docs) {
-    const c = doc.data() as Coupon;
-    if (isAssignableCoupon(c)) couponsAvailable++;
-    if (c.status !== "available") couponsAssigned++;
-  }
-
-  let attendeesWithCoupon = 0;
   for (const doc of attendeesSnap.docs) {
-    const d = doc.data();
-    if (d.couponId) attendeesWithCoupon++;
-    if (d.emailStatus === "pending" && d.couponId) emailsToSend++;
-    if (d.emailStatus === "failed") emailsFailed++;
+    const d = doc.data() as Attendee;
+    if (d.isBlacklisted) continue;
+    if ((d.grantCount ?? 0) > 0) {
+      attendeesWithGrants++;
+      if (d.emailStatus === "pending") emailsToSend++;
+      if (d.emailStatus === "failed") emailsFailed++;
+    } else {
+      attendeesWithoutGrants++;
+    }
   }
 
   const totalAttendees = attendeesSnap.size;
-  const missingCoupons = totalAttendees - attendeesWithCoupon;
-  const canSend = missingCoupons === 0;
+  const canSend = attendeesWithoutGrants === 0 && enabledCouponCount > 0 && !poolExhausted;
 
   return {
     eventId,
     totalAttendees,
-    couponsAvailable,
-    couponsAssigned,
+    enabledCouponCount,
+    attendeesWithGrants,
+    attendeesWithoutGrants,
+    poolExhausted,
     emailsToSend,
     emailsFailed,
-    missingCoupons,
     canSend,
   };
 }

@@ -23,11 +23,12 @@ type Props = { params: Promise<{ slug: string }> };
 type Stats = {
   eventId: string;
   totalAttendees: number;
-  couponsAvailable: number;
-  couponsAssigned: number;
+  enabledCouponCount: number;
+  attendeesWithGrants: number;
+  attendeesWithoutGrants: number;
+  poolExhausted: boolean;
   emailsToSend: number;
   emailsFailed: number;
-  missingCoupons: number;
   canSend: boolean;
 };
 
@@ -67,7 +68,7 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
       if (result.failed > 0 || result.skipped > 0) {
         const parts = [`Resent: ${result.sent}`];
         if (result.failed > 0) parts.push(`Still failed: ${result.failed}`);
-        if (result.skipped > 0) parts.push(`Skipped (no coupon): ${result.skipped}`);
+        if (result.skipped > 0) parts.push(`Skipped (no offers): ${result.skipped}`);
         toast.warning(parts.join(" · "));
       } else {
         toast.success(`${result.sent} email${result.sent !== 1 ? "s" : ""} resent successfully`);
@@ -122,8 +123,11 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
               </div>
               {!stats.canSend && (
                 <CardDescription className="text-amber-600">
-                  {stats.missingCoupons} attendee(s) do not have coupons
-                  assigned. Upload more coupons or resolve before sending.
+                  {stats.attendeesWithoutGrants > 0
+                    ? `${stats.attendeesWithoutGrants} attendee(s) have no offers granted yet.`
+                    : stats.poolExhausted
+                    ? "One or more uniqueLink coupon pools are exhausted — add more links."
+                    : "No enabled coupons found — create at least one partner offer."}
                 </CardDescription>
               )}
             </CardHeader>
@@ -134,20 +138,27 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
               />
               <Separator />
               <StatRow
-                label="Coupons Available"
-                value={stats.couponsAvailable}
-                badge={stats.couponsAvailable > 0 ? "success" : "warning"}
+                label="Enabled Coupon Definitions"
+                value={stats.enabledCouponCount}
+                badge={stats.enabledCouponCount > 0 ? "success" : "warning"}
               />
               <StatRow
-                label="Coupons Assigned"
-                value={stats.couponsAssigned}
+                label="Attendees With Grants"
+                value={stats.attendeesWithGrants}
                 badge="success"
               />
               <StatRow
-                label="Attendees Missing Coupons"
-                value={stats.missingCoupons}
-                badge={stats.missingCoupons === 0 ? "success" : "warning"}
+                label="Attendees Missing Grants"
+                value={stats.attendeesWithoutGrants}
+                badge={stats.attendeesWithoutGrants === 0 ? "success" : "warning"}
               />
+              {stats.poolExhausted && (
+                <StatRow
+                  label="Pool Exhausted (uniqueLink)"
+                  value={1}
+                  badge="warning"
+                />
+              )}
               <Separator />
               <StatRow
                 label="Emails To Send (Pending)"

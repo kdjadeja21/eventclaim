@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   ClipboardList,
+  Wrench,
   LogOut,
   ChevronRight,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/events", label: "Events", icon: CalendarDays },
   { href: "/audit", label: "Audit Logs", icon: ClipboardList },
+  { href: "/tools", label: "Tools", icon: Wrench },
 ];
 
 export default function AdminNav({ userEmail }: { userEmail?: string }) {

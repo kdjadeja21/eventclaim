@@ -1,6 +1,7 @@
 "use server";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
 import { Attendee, Event } from "@/lib/types";
@@ -114,26 +115,46 @@ export async function deleteAttendee(
     }
 
     const attendee = snap.data() as Attendee;
-    if (attendee.couponId) {
-      return {
-        success: false,
-        error: "Cannot delete an attendee with an assigned coupon. Unassign the coupon first.",
-      };
-    }
 
-    const assignedCouponSnap = await adminDb
+    // Release any uniqueLink pool grants before deleting
+    const grantsSnap = await adminDb
       .collection("events")
       .doc(eventId)
-      .collection("coupons")
-      .where("assignedTo", "==", attendeeId)
-      .limit(1)
+      .collection("attendees")
+      .doc(attendeeId)
+      .collection("grants")
       .get();
 
-    if (!assignedCouponSnap.empty) {
-      return {
-        success: false,
-        error: "Cannot delete an attendee with an assigned coupon.",
-      };
+    if (!grantsSnap.empty) {
+      const batch = adminDb.batch();
+      for (const grantDoc of grantsSnap.docs) {
+        const grant = grantDoc.data();
+        if (grant.linkId) {
+          const linkRef = adminDb
+            .collection("events")
+            .doc(eventId)
+            .collection("coupons")
+            .doc(grant.couponId)
+            .collection("links")
+            .doc(grant.linkId);
+          batch.update(linkRef, {
+            status: "available",
+            assignedTo: null,
+            assignedAt: null,
+          });
+          // Increment linkAvailable back on the coupon definition
+          const couponRef = adminDb
+            .collection("events")
+            .doc(eventId)
+            .collection("coupons")
+            .doc(grant.couponId);
+          batch.update(couponRef, {
+            linkAvailable: FieldValue.increment(1),
+          });
+        }
+        batch.delete(grantDoc.ref);
+      }
+      await batch.commit();
     }
 
     const deletedEmailLogs = await deleteQueryInBatches(
@@ -289,12 +310,10 @@ export async function syncLumaGuests(
       eventId,
       name,
       email,
-      couponId: null,
-      couponLink: null,
+      grantCount: 0,
+      claimedAny: false,
       emailStatus: "pending",
       emailSentAt: null,
-      claimed: false,
-      claimedAt: null,
       claimToken: null,
       createdAt: now,
       registeredAt: guest.registered_at ?? null,

@@ -143,18 +143,21 @@ export default function CheckStatusPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <CheckCircle2 className="h-3.5 w-3.5" />
+                  Offers Granted
+                </span>
+                <Badge variant={(result.grantCount ?? 0) > 0 ? "success" : "secondary"}>
+                  {result.grantCount ?? 0}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
                   Claim Status
                 </span>
                 <Badge variant={result.claimed ? "success" : "secondary"}>
                   {result.claimed ? "Claimed" : "Not Yet Claimed"}
                 </Badge>
               </div>
-              {result.claimedAt && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Claimed At</span>
-                  <span className="text-xs">{formatDateTime(result.claimedAt)}</span>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}

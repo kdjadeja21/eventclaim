@@ -15,6 +15,10 @@ const EventSchema = z.object({
   date: z.string().min(1, "Date is required"),
   notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
   status: z.enum(["draft", "active", "completed"]),
+  tagline: z.string().optional(),
+  description: z.string().optional(),
+  timeLabel: z.string().optional(),
+  venue: z.string().optional(),
 });
 
 export async function createEvent(
@@ -28,6 +32,10 @@ export async function createEvent(
     date: formData.get("date") as string,
     notionGuideUrl: (formData.get("notionGuideUrl") as string) || "",
     status: (formData.get("status") as EventStatus) || "draft",
+    tagline: (formData.get("tagline") as string) || undefined,
+    description: (formData.get("description") as string) || undefined,
+    timeLabel: (formData.get("timeLabel") as string) || undefined,
+    venue: (formData.get("venue") as string) || undefined,
   };
 
   const parsed = EventSchema.safeParse(raw);
@@ -48,6 +56,10 @@ export async function createEvent(
     status: parsed.data.status,
     createdAt: now,
     updatedAt: now,
+    ...(parsed.data.tagline ? { tagline: parsed.data.tagline } : {}),
+    ...(parsed.data.description ? { description: parsed.data.description } : {}),
+    ...(parsed.data.timeLabel ? { timeLabel: parsed.data.timeLabel } : {}),
+    ...(parsed.data.venue ? { venue: parsed.data.venue } : {}),
   };
 
   await adminDb.collection("events").doc(id).set(event);
@@ -65,6 +77,41 @@ export async function createEvent(
 const EventSettingsSchema = z.object({
   notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
 });
+
+export async function updateEventHero(
+  eventId: string,
+  data: {
+    tagline?: string;
+    description?: string;
+    timeLabel?: string;
+    venue?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  const eventDoc = await adminDb.collection("events").doc(eventId).get();
+  if (!eventDoc.exists) return { success: false, error: "Event not found" };
+  const event = eventDoc.data() as Event;
+
+  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  if (data.tagline !== undefined) update.tagline = data.tagline || null;
+  if (data.description !== undefined) update.description = data.description || null;
+  if (data.timeLabel !== undefined) update.timeLabel = data.timeLabel || null;
+  if (data.venue !== undefined) update.venue = data.venue || null;
+
+  await adminDb.collection("events").doc(eventId).update(update);
+
+  await writeAuditLog({
+    eventId,
+    action: "event_hero_updated",
+    metadata: data,
+    userId: session.uid,
+  });
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${event.slug}`);
+  return { success: true };
+}
 
 export async function updateEventSettings(
   eventId: string,

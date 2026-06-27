@@ -40,14 +40,14 @@ export async function sendSingleEmail(
   console.log("[sendSingleEmail] attendee fetched", {
     attendeeEmail: attendee.email,
     emailStatus: attendee.emailStatus,
-    hasCoupon: !!attendee.couponId,
+    hasGrants: attendee.grantCount ?? 0,
     hasClaimToken: !!attendee.claimToken,
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
-  if (!attendee.couponId) {
-    return { success: false, error: "No coupon assigned — cannot send email" };
+  if (!attendee.grantCount) {
+    return { success: false, error: "No offers granted — cannot send email" };
   }
-  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", false);
+  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", false, event.name);
   console.log("[sendSingleEmail] result", result);
   revalidatePath(`/events`);
   return result;
@@ -63,14 +63,14 @@ export async function resendSingleEmail(
   console.log("[resendSingleEmail] attendee fetched", {
     attendeeEmail: attendee.email,
     emailStatus: attendee.emailStatus,
-    hasCoupon: !!attendee.couponId,
+    hasGrants: attendee.grantCount ?? 0,
     hasClaimToken: !!attendee.claimToken,
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
-  if (!attendee.couponId) {
-    return { success: false, error: "No coupon assigned — cannot resend email" };
+  if (!attendee.grantCount) {
+    return { success: false, error: "No offers granted — cannot resend email" };
   }
-  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", true);
+  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", true, event.name);
   console.log("[resendSingleEmail] result", result);
   revalidatePath(`/events`);
   return result;
@@ -156,11 +156,11 @@ export async function bulkSendSelected(
         continue;
       }
       const attendee = doc.data() as Attendee;
-      if (!attendee.couponId) {
+      if (!attendee.grantCount) {
         results.push({
           attendeeId: attendee.id,
           status: "skipped",
-          error: "No coupon assigned — cannot send email",
+          error: "No offers granted — cannot send email",
         });
         continue;
       }

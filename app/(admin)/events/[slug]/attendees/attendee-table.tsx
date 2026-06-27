@@ -76,15 +76,14 @@ type Filter =
   | "failed"
   | "claimed"
   | "unclaimed"
-  | "no-coupon"
+  | "no-grants"
   | "blacklisted";
 
 type SortKey =
   | "name"
   | "emailStatus"
-  | "claimed"
+  | "claimedAny"
   | "emailSentAt"
-  | "claimedAt"
   | "createdAt";
 type SortDir = "asc" | "desc";
 
@@ -124,13 +123,11 @@ function sortAttendees(
       case "emailStatus":
         cmp = a.emailStatus.localeCompare(b.emailStatus);
         break;
-      case "claimed":
-        cmp = Number(a.claimed) - Number(b.claimed);
+      case "claimedAny":
+        cmp = Number(a.claimedAny) - Number(b.claimedAny);
         break;
       case "emailSentAt":
         return compareNullableDate(a.emailSentAt, b.emailSentAt, dir);
-      case "claimedAt":
-        return compareNullableDate(a.claimedAt, b.claimedAt, dir);
       case "createdAt":
         return compareNullableDate(a.createdAt, b.createdAt, dir);
     }
@@ -295,15 +292,15 @@ export default function AttendeeTable({
     let list = attendees;
 
     if (filter === "pending")
-      list = list.filter((a) => a.emailStatus === "pending" && a.couponId);
+      list = list.filter((a) => a.emailStatus === "pending" && (a.grantCount ?? 0) > 0);
     else if (filter === "sent")
       list = list.filter((a) => a.emailStatus === "sent");
     else if (filter === "failed")
       list = list.filter((a) => a.emailStatus === "failed");
-    else if (filter === "claimed") list = list.filter((a) => a.claimed);
+    else if (filter === "claimed") list = list.filter((a) => a.claimedAny);
     else if (filter === "unclaimed")
-      list = list.filter((a) => !a.claimed && a.couponId);
-    else if (filter === "no-coupon") list = list.filter((a) => !a.couponId);
+      list = list.filter((a) => !a.claimedAny && (a.grantCount ?? 0) > 0);
+    else if (filter === "no-grants") list = list.filter((a) => !(a.grantCount ?? 0));
     else if (filter === "blacklisted")
       list = list.filter((a) => a.isBlacklisted);
 
@@ -312,8 +309,7 @@ export default function AttendeeTable({
       list = list.filter(
         (a) =>
           a.name.toLowerCase().includes(q) ||
-          a.email.toLowerCase().includes(q) ||
-          (a.couponId ?? "").toLowerCase().includes(q)
+          a.email.toLowerCase().includes(q)
       );
     }
 
@@ -425,7 +421,7 @@ export default function AttendeeTable({
 
   async function handleBulkToggleBlacklist(blacklisted: boolean) {
     const targets = selectedAttendees.filter((a) =>
-      blacklisted ? !a.isBlacklisted && !a.claimed : !!a.isBlacklisted
+      blacklisted ? !a.isBlacklisted && !a.claimedAny : !!a.isBlacklisted
     );
     if (targets.length === 0) return;
 
@@ -470,7 +466,7 @@ export default function AttendeeTable({
   }
 
   async function handleBulkDelete() {
-    const targets = selectedAttendees.filter((a) => !a.couponId);
+    const targets = selectedAttendees.filter((a) => !(a.grantCount ?? 0));
     if (targets.length === 0) return;
     setBulkDeletePending(true);
     setBulkDeleteConfirm(false);
@@ -622,22 +618,18 @@ export default function AttendeeTable({
     const headers = [
       "Name",
       "Email",
-      "Coupon Assigned",
+      "Grants",
       "Email Status",
-      "Claimed",
-      "Assigned At",
+      "Claimed Any",
       "Email Sent At",
-      "Claimed At",
     ];
     const csvRows = data.map((a) => [
       a.name,
       a.email,
-      a.couponId ? "Yes" : "No",
+      a.grantCount ?? 0,
       a.emailStatus,
-      a.claimed ? "Yes" : "No",
-      a.couponId ? (a.emailSentAt ?? "") : "",
+      a.claimedAny ? "Yes" : "No",
       a.emailSentAt ?? "",
-      a.claimedAt ?? "",
     ]);
     const csv = [headers, ...csvRows]
       .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
@@ -655,13 +647,13 @@ export default function AttendeeTable({
     return {
       all: attendees.length,
       pending: attendees.filter(
-        (a) => a.emailStatus === "pending" && a.couponId
+        (a) => a.emailStatus === "pending" && (a.grantCount ?? 0) > 0
       ).length,
       sent: attendees.filter((a) => a.emailStatus === "sent").length,
       failed: attendees.filter((a) => a.emailStatus === "failed").length,
-      claimed: attendees.filter((a) => a.claimed).length,
-      unclaimed: attendees.filter((a) => !a.claimed && a.couponId).length,
-      "no-coupon": attendees.filter((a) => !a.couponId).length,
+      claimed: attendees.filter((a) => a.claimedAny).length,
+      unclaimed: attendees.filter((a) => !a.claimedAny && (a.grantCount ?? 0) > 0).length,
+      "no-grants": attendees.filter((a) => !(a.grantCount ?? 0)).length,
       blacklisted: attendees.filter((a) => a.isBlacklisted).length,
     };
   }, [attendees]);
@@ -672,7 +664,7 @@ export default function AttendeeTable({
   );
 
   const bulkSendCount = selectedAttendees.filter(
-    (a) => a.couponId && a.emailStatus === "pending"
+    (a) => (a.grantCount ?? 0) > 0 && a.emailStatus === "pending"
   ).length;
   const bulkResendCount = selectedAttendees.filter(
     (a) => a.emailStatus === "sent"
@@ -681,10 +673,10 @@ export default function AttendeeTable({
     (a) => a.emailStatus === "failed"
   ).length;
   const bulkDeleteCount = selectedAttendees.filter(
-    (a) => !a.couponId
+    (a) => !(a.grantCount ?? 0)
   ).length;
   const bulkBlacklistCount = selectedAttendees.filter(
-    (a) => !a.isBlacklisted && !a.claimed
+    (a) => !a.isBlacklisted && !a.claimedAny
   ).length;
   const bulkUnblacklistCount = selectedAttendees.filter(
     (a) => a.isBlacklisted
@@ -801,8 +793,8 @@ export default function AttendeeTable({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All ({counts.all})</SelectItem>
-            <SelectItem value="no-coupon">
-              No Coupon ({counts["no-coupon"]})
+            <SelectItem value="no-grants">
+              No Offers ({counts["no-grants"]})
             </SelectItem>
             <SelectItem value="pending">Pending ({counts.pending})</SelectItem>
             <SelectItem value="sent">Sent ({counts.sent})</SelectItem>
@@ -850,20 +842,14 @@ export default function AttendeeTable({
                 onSort={toggleSort}
               />
               <SortableHead
-                label="Claim"
-                sortKey="claimed"
+                label="Claimed"
+                sortKey="claimedAny"
                 sortConfig={sortConfig}
                 onSort={toggleSort}
               />
               <SortableHead
                 label="Email Sent"
                 sortKey="emailSentAt"
-                sortConfig={sortConfig}
-                onSort={toggleSort}
-              />
-              <SortableHead
-                label="Claimed At"
-                sortKey="claimedAt"
                 sortConfig={sortConfig}
                 onSort={toggleSort}
               />
@@ -874,7 +860,7 @@ export default function AttendeeTable({
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={7}
                   className="text-center py-12 text-muted-foreground text-sm"
                 >
                   No attendees match this filter.
@@ -918,13 +904,13 @@ export default function AttendeeTable({
                   </TableCell>
 
                   <TableCell>
-                    {attendee.couponId ? (
+                    {(attendee.grantCount ?? 0) > 0 ? (
                       <Badge variant="success" className="gap-1">
                         <Ticket className="h-3 w-3" />
-                        Assigned
+                        {attendee.grantCount} offer{attendee.grantCount !== 1 ? "s" : ""}
                       </Badge>
                     ) : (
-                      <Badge variant="warning">Waiting</Badge>
+                      <Badge variant="warning">No offers</Badge>
                     )}
                   </TableCell>
 
@@ -942,7 +928,7 @@ export default function AttendeeTable({
                   </TableCell>
 
                   <TableCell>
-                    {attendee.claimed ? (
+                    {attendee.claimedAny ? (
                       <Badge variant="success" className="gap-1">
                         <CheckCheck className="h-3 w-3" />
                         Claimed
@@ -956,13 +942,9 @@ export default function AttendeeTable({
                     {formatDateTime(attendee.emailSentAt)}
                   </TableCell>
 
-                  <TableCell className="text-xs text-muted-foreground">
-                    {formatDateTime(attendee.claimedAt)}
-                  </TableCell>
-
                   <TableCell>
                     <div className="flex items-center justify-end gap-1.5">
-                      {attendee.couponId &&
+                      {(attendee.grantCount ?? 0) > 0 &&
                         attendee.emailStatus === "pending" && (
                           <Button
                             size="sm"
@@ -1046,7 +1028,7 @@ export default function AttendeeTable({
                         {attendee.isBlacklisted ? "Unblacklist" : "Blacklist"}
                       </Button>
 
-                      {!attendee.couponId && (
+                      {!(attendee.grantCount ?? 0) && (
                         <Button
                           size="sm"
                           variant="ghost"
@@ -1087,7 +1069,7 @@ export default function AttendeeTable({
               onClick={() =>
                 handleBulk(
                   "send",
-                  (a) => !!a.couponId && a.emailStatus === "pending"
+                  (a) => (a.grantCount ?? 0) > 0 && a.emailStatus === "pending"
                 )
               }
             >
@@ -1395,20 +1377,12 @@ export default function AttendeeTable({
 
               <DetailSection title="Coupon">
                 <DetailRow
-                  label="Assigned"
-                  value={detailData.attendee.couponId ? "Yes" : "No"}
+                  label="Grants"
+                  value={String(detailData.attendee.grantCount ?? 0)}
                 />
                 <DetailRow
-                  label="Coupon ID"
-                  value={detailData.attendee.couponId ?? "—"}
-                />
-                <DetailRow
-                  label="Claimed"
-                  value={detailData.attendee.claimed ? "Yes" : "No"}
-                />
-                <DetailRow
-                  label="Claimed At"
-                  value={formatDateTime(detailData.attendee.claimedAt)}
+                  label="Claimed Any"
+                  value={detailData.attendee.claimedAny ? "Yes" : "No"}
                 />
               </DetailSection>
 
