@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  MoreHorizontal,
 } from "lucide-react";
 import { CouponWithStats, CouponKind } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -47,13 +48,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
   createCoupon,
   updateCoupon,
   deleteCoupon,
   toggleCouponDisabled,
-  addCouponLinks,
 } from "./coupon-actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -61,7 +68,6 @@ import {
 type DialogMode =
   | { type: "create" }
   | { type: "edit"; coupon: CouponWithStats }
-  | { type: "addLinks"; coupon: CouponWithStats }
   | { type: "delete"; coupon: CouponWithStats }
   | null;
 
@@ -128,7 +134,6 @@ export default function CouponList({
   }, [initial]);
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
-  const [linksText, setLinksText] = useState("");
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
@@ -152,11 +157,6 @@ export default function CouponList({
       redeemUrl: coupon.redeemUrl ?? "",
     });
     setDialog({ type: "edit", coupon });
-  }
-
-  function openAddLinks(coupon: CouponWithStats) {
-    setLinksText("");
-    setDialog({ type: "addLinks", coupon });
   }
 
   function toggleExpand(id: string) {
@@ -197,32 +197,6 @@ export default function CouponList({
       } else {
         toast.error(res.error ?? "Failed to update coupon.");
       }
-    }
-  }
-
-  // ─── Add links ──────────────────────────────────────────────────────────────
-
-  async function handleAddLinks() {
-    if (dialog?.type !== "addLinks") return;
-    if (!linksText.trim()) return;
-    setSaving(true);
-    const res = await addCouponLinks(
-      eventId,
-      dialog.coupon.id,
-      linksText,
-      eventSlug
-    );
-    setSaving(false);
-    if (res.success) {
-      const parts: string[] = [];
-      if (res.imported > 0) parts.push(`${res.imported} links added`);
-      if (res.autoGranted > 0) parts.push(`${res.autoGranted} attendees granted`);
-      if (res.duplicatesSkipped > 0) parts.push(`${res.duplicatesSkipped} duplicates skipped`);
-      toast.success(parts.join(", ") || "No new links imported.");
-      setDialog(null);
-      router.refresh();
-    } else {
-      toast.error(res.error ?? "Failed to add links.");
     }
   }
 
@@ -348,7 +322,7 @@ export default function CouponList({
                       <Button size="sm" variant="outline" asChild title="View detail">
                         <Link href={`/events/${eventSlug}/coupons/${coupon.id}`}>
                           <Eye className="h-3.5 w-3.5" />
-                          View
+                          <span className="hidden sm:inline">View</span>
                         </Link>
                       </Button>
                       <Button
@@ -364,46 +338,35 @@ export default function CouponList({
                           <ChevronDown className="h-3 w-3" />
                         )}
                       </Button>
-                      {coupon.kind === "uniqueLink" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => openAddLinks(coupon)}
-                          title="Add links to pool"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          Links
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(coupon)}
-                        title="Edit"
-                      >
-                        <Edit className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleToggle(coupon)}
-                        title={coupon.isDisabled ? "Enable" : "Disable"}
-                      >
-                        {coupon.isDisabled ? (
-                          <CheckCircle className="h-3.5 w-3.5" />
-                        ) : (
-                          <Ban className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDialog({ type: "delete", coupon })}
-                        title="Delete"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant="ghost" title="More options">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(coupon)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggle(coupon)}>
+                            {coupon.isDisabled ? (
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                            ) : (
+                              <Ban className="h-4 w-4 mr-2" />
+                            )}
+                            {coupon.isDisabled ? "Enable" : "Disable"}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDialog({ type: "delete", coupon })}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </CardHeader>
@@ -597,39 +560,6 @@ export default function CouponList({
               Cancel
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ─── Add Links Dialog ─────────────────────────────────────────────────── */}
-      <Dialog
-        open={dialog?.type === "addLinks"}
-        onOpenChange={(open) => !open && setDialog(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Add Links — {dialog?.type === "addLinks" && dialog.coupon.name}
-            </DialogTitle>
-            <DialogDescription>
-              Paste one unique URL per line. Duplicates and invalid URLs are
-              skipped. Available links will be auto-granted to attendees.
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={linksText}
-            onChange={(e) => setLinksText(e.target.value)}
-            placeholder={"https://example.com/offer/abc\nhttps://example.com/offer/def"}
-            rows={8}
-            className="font-mono text-xs"
-          />
-          <Button
-            className="w-full"
-            disabled={saving || !linksText.trim()}
-            onClick={handleAddLinks}
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Import Links
-          </Button>
         </DialogContent>
       </Dialog>
 
