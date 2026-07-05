@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -11,13 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -26,7 +20,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, UserMinus, UserPlus, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  UserMinus,
+  UserPlus,
+  CheckCircle2,
+  AlertTriangle,
+  Search,
+} from "lucide-react";
 import {
   Registration,
   TeamIssue,
@@ -38,7 +39,7 @@ import {
   PRIMARY_ROLE_QUESTION_ID,
   getRegistrationField,
 } from "@/lib/registrations";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { getTeamDetail } from "./team-data-actions";
 import {
   assignMemberToTeam,
@@ -88,11 +89,14 @@ export default function TeamDetailDialog({
   const [team, setTeam] = useState<TeamWithMembers | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedRegId, setSelectedRegId] = useState<string>("");
+  const [memberSearch, setMemberSearch] = useState("");
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     if (!open || !teamId) {
       setTeam(null);
+      setSelectedRegId("");
+      setMemberSearch("");
       return;
     }
 
@@ -109,6 +113,19 @@ export default function TeamDetailDialog({
       !team?.memberRegistrationIds.includes(r.id)
   );
 
+  const filteredToAdd = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return availableToAdd;
+    return availableToAdd.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.email.toLowerCase().includes(q) ||
+        r.ticketName.toLowerCase().includes(q)
+    );
+  }, [availableToAdd, memberSearch]);
+
+  const selectedRegistration = availableToAdd.find((r) => r.id === selectedRegId);
+
   function handleAssign() {
     if (!teamId || !selectedRegId) return;
     startTransition(async () => {
@@ -116,6 +133,7 @@ export default function TeamDetailDialog({
       if (result.success) {
         toast.success("Member assigned");
         setSelectedRegId("");
+        setMemberSearch("");
         const detail = await getTeamDetail(slug, teamId);
         setTeam(detail);
         onUpdated();
@@ -275,25 +293,52 @@ export default function TeamDetailDialog({
                 Assign member manually
               </p>
               <div className="flex flex-col sm:flex-row gap-2">
-                <Select value={selectedRegId} onValueChange={setSelectedRegId}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Select registration to add..." />
-                  </SelectTrigger>
-                  <SelectContent>
+                <div className="flex-1 space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      placeholder="Search by name or email..."
+                      className="pl-9"
+                      disabled={availableToAdd.length === 0}
+                    />
+                  </div>
+                  <div className="rounded-md border max-h-48 overflow-y-auto">
                     {availableToAdd.length === 0 ? (
-                      <SelectItem value="_none" disabled>
+                      <p className="p-3 text-sm text-muted-foreground">
                         No available registrations
-                      </SelectItem>
+                      </p>
+                    ) : filteredToAdd.length === 0 ? (
+                      <p className="p-3 text-sm text-muted-foreground">
+                        No matches for &ldquo;{memberSearch.trim()}&rdquo;
+                      </p>
                     ) : (
-                      availableToAdd.map((r) => (
-                        <SelectItem key={r.id} value={r.id}>
-                          {r.name} ({r.email})
-                        </SelectItem>
+                      filteredToAdd.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => setSelectedRegId(r.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-sm border-b last:border-b-0 transition-colors hover:bg-muted/60",
+                            selectedRegId === r.id && "bg-primary/10 border-primary/20"
+                          )}
+                        >
+                          <p className="font-medium">{r.name}</p>
+                          <p className="text-xs text-muted-foreground">{r.email}</p>
+                        </button>
                       ))
                     )}
-                  </SelectContent>
-                </Select>
+                  </div>
+                  {selectedRegistration && (
+                    <p className="text-xs text-muted-foreground">
+                      Selected: {selectedRegistration.name} ({selectedRegistration.email})
+                    </p>
+                  )}
+                </div>
                 <Button
+                  className="sm:self-end"
                   onClick={handleAssign}
                   disabled={!selectedRegId || isPending || availableToAdd.length === 0}
                 >
