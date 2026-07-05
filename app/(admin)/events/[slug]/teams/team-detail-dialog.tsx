@@ -200,8 +200,8 @@ export default function TeamDetailDialog({
             </div>
 
             {team.suggestedLinks && team.suggestedLinks.length > 0 && (
-              <div className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-950/30">
-                <p className="text-sm font-medium mb-2">Suggested email matches</p>
+              <div className="rounded-lg border p-4 space-y-3">
+                <p className="text-sm font-semibold">Suggested email matches</p>
                 <ul className="space-y-2">
                   {team.suggestedLinks.map((link) => (
                     <li
@@ -274,12 +274,12 @@ export default function TeamDetailDialog({
             )}
 
             {team.issues.length > 0 && (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
-                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium text-sm mb-2">
-                  <AlertTriangle className="h-4 w-4" />
+              <div className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                   Issues
                 </div>
-                <ul className="text-sm text-amber-800 dark:text-amber-300 space-y-1 list-disc pl-5">
+                <ul className="text-sm space-y-1 list-disc pl-5 text-muted-foreground">
                   {team.issues.map((issue) => (
                     <li key={issue}>{issueLabels[issue] ?? issue}</li>
                   ))}
