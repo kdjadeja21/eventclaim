@@ -10,11 +10,21 @@ import {
   AlertTriangle,
   Settings2,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { Registration, Team, TicketCategory, TeamStatus } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -33,7 +43,20 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { formatDateTime } from "@/lib/utils";
 import TeamDetailDialog from "./team-detail-dialog";
-import { syncLumaRegistrations, rebuildTeams } from "./team-actions";
+import {
+  TeamSyncProgressDialog,
+  initialSyncProgress,
+  type SyncProgressState,
+} from "./team-sync-progress-dialog";
+import {
+  rebuildTeams,
+  deleteAllTeamData,
+  getSyncPrepData,
+  upsertRegistrationBatch,
+  finalizeLumaSync,
+  fetchLumaGuestsPageForSync,
+} from "./team-actions";
+import type { FetchAllGuestsParams } from "@/lib/luma";
 import LumaFetchDialog, {
   LumaFetchConfig,
   defaultConfig,
@@ -112,6 +135,10 @@ export default function TeamTable({
   const [lastSyncedAt, setLastSyncedAt] = useState(initialLumaLastSyncedAt);
   const [isSyncing, startSync] = useTransition();
   const [isRebuilding, startRebuild] = useTransition();
+  const [isDeleting, startDelete] = useTransition();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [syncProgress, setSyncProgress] = useState<SyncProgressState>(initialSyncProgress);
 
   const [lumaConfig, setLumaConfig] = useState<LumaFetchConfig>(() => ({
     ...defaultConfig,
@@ -193,6 +220,148 @@ export default function TeamTable({
     [registrations]
   );
 
+  function buildLumaParams(): FetchAllGuestsParams {
+    return {
+      event_id: lumaConfig.lumaEventId.trim(),
+      ...(lumaConfig.approvalStatus !== "any"
+        ? { approval_status: lumaConfig.approvalStatus }
+        : {}),
+      ...(lumaConfig.sortColumn !== "none"
+        ? { sort_column: lumaConfig.sortColumn }
+        : {}),
+      ...(lumaConfig.sortDirection !== "none"
+        ? { sort_direction: lumaConfig.sortDirection }
+        : {}),
+    };
+  }
+
+  async function runChunkedSync() {
+    saveStoredConfig(eventSlug, lumaConfig);
+    const lumaParams = buildLumaParams();
+
+    setSyncProgress({
+      open: true,
+      phase: "preparing",
+      processed: 0,
+      fetched: 0,
+      message: "Loading attendee data…",
+    });
+
+    const prep = await getSyncPrepData(eventSlug);
+    if (prep.error) {
+      setSyncProgress({
+        open: true,
+        phase: "error",
+        processed: 0,
+        fetched: 0,
+        message: prep.error,
+        error: prep.error,
+      });
+      return;
+    }
+
+    let cursor: string | undefined;
+    let totalFetched = 0;
+    let totalSaved = 0;
+    let pageIndex = 0;
+
+    try {
+      for (;;) {
+        setSyncProgress((prev) => ({
+          ...prev,
+          phase: "fetching",
+          message: `Fetching page ${pageIndex + 1} from Luma…`,
+        }));
+
+        const page = await fetchLumaGuestsPageForSync({
+          ...lumaParams,
+          pagination_cursor: cursor,
+        });
+
+        if (page.error) throw new Error(page.error);
+        if (page.entries.length === 0 && pageIndex === 0) break;
+
+        totalFetched += page.entries.length;
+
+        setSyncProgress({
+          open: true,
+          phase: "saving",
+          processed: totalSaved,
+          fetched: totalFetched,
+          message: `Saving batch ${pageIndex + 1} (${page.entries.length} records)…`,
+        });
+
+        const batchResult = await upsertRegistrationBatch(
+          eventSlug,
+          page.entries,
+          prep.attendeeEmails
+        );
+
+        if (batchResult.error) throw new Error(batchResult.error);
+        totalSaved += batchResult.saved;
+
+        setSyncProgress({
+          open: true,
+          phase: "saving",
+          processed: totalSaved,
+          fetched: totalFetched,
+          message: `Saved ${totalSaved} of ${totalFetched} registrations…`,
+        });
+
+        if (!page.has_more || !page.next_cursor) break;
+        cursor = page.next_cursor;
+        pageIndex++;
+      }
+
+      setSyncProgress({
+        open: true,
+        phase: "building",
+        processed: totalSaved,
+        fetched: totalFetched,
+        message: "Building teams from registrations…",
+      });
+
+      const final = await finalizeLumaSync(
+        eventSlug,
+        lumaParams.event_id,
+        totalFetched,
+        totalSaved
+      );
+
+      if (final.error) throw new Error(final.error);
+
+      setLastSyncedAt(final.syncedAt);
+      setSyncProgress({
+        open: true,
+        phase: "done",
+        processed: totalSaved,
+        fetched: totalFetched,
+        message: `Synced ${totalSaved} registrations. ${final.teamsCreated} teams created, ${final.teamsUpdated} updated.`,
+      });
+
+      toast.success(
+        `Synced ${totalSaved} registrations. ${final.teamsCreated} teams created, ${final.teamsUpdated} updated.`
+      );
+
+      setTimeout(() => {
+        setSyncProgress(initialSyncProgress);
+        window.location.reload();
+      }, 1200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Sync failed.";
+      setSyncProgress({
+        open: true,
+        phase: "error",
+        processed: totalSaved,
+        fetched: totalFetched,
+        message: msg,
+        error: msg,
+      });
+      toast.error(msg);
+      setTimeout(() => setSyncProgress(initialSyncProgress), 3000);
+    }
+  }
+
   function handleSync() {
     if (!lumaConfig.lumaEventId.trim()) {
       setLumaDialogOpen(true);
@@ -200,31 +369,24 @@ export default function TeamTable({
       return;
     }
 
-    startSync(async () => {
-      saveStoredConfig(eventSlug, lumaConfig);
-      const result = await syncLumaRegistrations(eventSlug, {
-        event_id: lumaConfig.lumaEventId.trim(),
-        ...(lumaConfig.approvalStatus !== "any"
-          ? { approval_status: lumaConfig.approvalStatus }
-          : {}),
-        ...(lumaConfig.sortColumn !== "none"
-          ? { sort_column: lumaConfig.sortColumn }
-          : {}),
-        ...(lumaConfig.sortDirection !== "none"
-          ? { sort_direction: lumaConfig.sortDirection }
-          : {}),
-      });
+    startSync(() => {
+      void runChunkedSync();
+    });
+  }
 
-      if (result.error) {
-        toast.error(result.error);
-        return;
+  function handleDeleteAll() {
+    startDelete(async () => {
+      const result = await deleteAllTeamData(eventSlug, deleteConfirmText);
+      if (result.success) {
+        toast.success(
+          `Deleted ${result.deletedRegistrations} registrations and ${result.deletedTeams} teams.`
+        );
+        setDeleteDialogOpen(false);
+        setDeleteConfirmText("");
+        window.location.reload();
+      } else {
+        toast.error(result.error ?? "Delete failed.");
       }
-
-      setLastSyncedAt(result.syncedAt);
-      toast.success(
-        `Synced ${result.syncedCount} registrations. ${result.teamsCreated} teams created, ${result.teamsUpdated} updated.`
-      );
-      window.location.reload();
     });
   }
 
@@ -300,11 +462,11 @@ export default function TeamTable({
           </Select>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             size="sm"
-            disabled={isRebuilding}
+            disabled={isRebuilding || isSyncing}
             onClick={handleRebuild}
           >
             {isRebuilding ? (
@@ -314,6 +476,18 @@ export default function TeamTable({
             )}
             Rebuild
           </Button>
+          {(teams.length > 0 || registrations.length > 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDeleting || isSyncing}
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete all
+            </Button>
+          )}
           {lumaApiEnabled && (
             <>
               <Button
@@ -324,7 +498,7 @@ export default function TeamTable({
                 <Settings2 className="h-4 w-4 mr-2" />
                 Luma config
               </Button>
-              <Button size="sm" disabled={isSyncing} onClick={handleSync}>
+              <Button size="sm" disabled={isSyncing || isDeleting} onClick={handleSync}>
                 {isSyncing ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : (
@@ -456,6 +630,48 @@ export default function TeamTable({
           onFetchNow={handleSync}
         />
       )}
+
+      <TeamSyncProgressDialog state={syncProgress} />
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete all team records?</DialogTitle>
+            <DialogDescription>
+              This permanently removes all registrations and teams for this event.
+              Attendee records are not affected. Type <strong>DELETE ALL</strong> to
+              confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="delete-confirm">Confirmation</Label>
+            <Input
+              id="delete-confirm"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="DELETE ALL"
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteConfirmText !== "DELETE ALL" || isDeleting}
+              onClick={handleDeleteAll}
+            >
+              {isDeleting ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete all records
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

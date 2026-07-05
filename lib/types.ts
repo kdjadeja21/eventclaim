@@ -27,6 +27,7 @@ export type AuditAction =
   | "team_deleted"
   | "team_member_assigned"
   | "team_member_removed"
+  | "teams_data_cleared"
   | "coupon_created"
   | "coupon_updated"
   | "coupon_deleted"

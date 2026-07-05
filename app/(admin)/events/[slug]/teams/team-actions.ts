@@ -3,7 +3,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { attendeeDocId } from "@/lib/import";
-import { fetchAllLumaGuests, FetchAllGuestsParams } from "@/lib/luma";
+import { fetchAllLumaGuests, fetchLumaGuestsPage, FetchAllGuestsParams, LumaGuest } from "@/lib/luma";
 import { lumaGuestToRegistration, registrationDocId } from "@/lib/registrations";
 import { applyTeamBuild, newManualTeamId } from "@/lib/team-mapping";
 import { requireSession } from "@/lib/session";
@@ -20,6 +20,285 @@ async function resolveEvent(slug: string): Promise<{ eventId: string; slug: stri
     .get();
   if (eventSnap.empty) throw new Error("Event not found");
   return { eventId: eventSnap.docs[0].id, slug };
+}
+
+async function deleteCollectionInBatches(
+  collectionRef: FirebaseFirestore.CollectionReference
+): Promise<number> {
+  let deleted = 0;
+  for (;;) {
+    const snap = await collectionRef.limit(500).get();
+    if (snap.empty) break;
+    const batch = adminDb.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    deleted += snap.size;
+    if (snap.size < 500) break;
+  }
+  return deleted;
+}
+
+const FIRESTORE_BATCH_LIMIT = 450;
+
+async function upsertGuestsToFirestore(
+  eventId: string,
+  guests: LumaGuest[],
+  attendeeEmailSet: Set<string>
+): Promise<{ saved: number; skipped: number }> {
+  const eventRef = adminDb.collection("events").doc(eventId);
+  const regsRef = eventRef.collection("registrations");
+
+  const validGuests: { guest: LumaGuest; email: string; regId: string }[] = [];
+  let skipped = 0;
+
+  for (const guest of guests) {
+    const email = normalizeEmail(guest.user_email ?? "");
+    if (!email || !z.string().email().safeParse(email).success) {
+      skipped++;
+      continue;
+    }
+    validGuests.push({
+      guest,
+      email,
+      regId: registrationDocId(eventId, guest.id, email),
+    });
+  }
+
+  if (validGuests.length === 0) return { saved: 0, skipped };
+
+  const existingSnaps = await adminDb.getAll(
+    ...validGuests.map(({ regId }) => regsRef.doc(regId))
+  );
+  const existingById = new Map(
+    existingSnaps.filter((s) => s.exists).map((s) => [s.id, s.data() as Registration])
+  );
+
+  let saved = 0;
+  for (let i = 0; i < validGuests.length; i += FIRESTORE_BATCH_LIMIT) {
+    const chunk = validGuests.slice(i, i + FIRESTORE_BATCH_LIMIT);
+    const batch = adminDb.batch();
+
+    for (const { guest, email, regId } of chunk) {
+      const existing = existingById.get(regId);
+      const attendeeId = attendeeDocId(eventId, email);
+      const registration = lumaGuestToRegistration(guest, eventId, {
+        ...existing,
+        attendeeId: attendeeEmailSet.has(email)
+          ? attendeeId
+          : existing?.attendeeId ?? null,
+        teamId: existing?.teamId ?? null,
+        isManualMapping: existing?.isManualMapping ?? false,
+      });
+      batch.set(regsRef.doc(registration.id), registration, { merge: true });
+      saved++;
+    }
+
+    await batch.commit();
+  }
+
+  return { saved, skipped };
+}
+
+export interface SyncPrepResult {
+  attendeeEmails: string[];
+  error?: string;
+}
+
+/** Load attendee emails once before chunked sync. */
+export async function getSyncPrepData(slug: string): Promise<SyncPrepResult> {
+  await requireSession();
+  try {
+    const { eventId } = await resolveEvent(slug);
+    const snap = await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("attendees")
+      .get();
+    return {
+      attendeeEmails: snap.docs.map((d) => normalizeEmail((d.data() as { email: string }).email)),
+    };
+  } catch (err) {
+    return {
+      attendeeEmails: [],
+      error: err instanceof Error ? err.message : "Failed to prepare sync.",
+    };
+  }
+}
+
+export interface UpsertBatchResult {
+  saved: number;
+  skipped: number;
+  error?: string;
+}
+
+export async function upsertRegistrationBatch(
+  slug: string,
+  guests: LumaGuest[],
+  attendeeEmails: string[]
+): Promise<UpsertBatchResult> {
+  await requireSession();
+  try {
+    const { eventId } = await resolveEvent(slug);
+    const attendeeEmailSet = new Set(attendeeEmails.map(normalizeEmail));
+    const result = await upsertGuestsToFirestore(eventId, guests, attendeeEmailSet);
+    return result;
+  } catch (err) {
+    return {
+      saved: 0,
+      skipped: 0,
+      error: err instanceof Error ? err.message : "Failed to save batch.",
+    };
+  }
+}
+
+export interface FinalizeSyncResult {
+  teamsCreated: number;
+  teamsUpdated: number;
+  registrationsLinked: number;
+  syncedAt: string;
+  error?: string;
+}
+
+export async function finalizeLumaSync(
+  slug: string,
+  lumaEventId: string,
+  totalFetched: number,
+  syncedCount: number
+): Promise<FinalizeSyncResult> {
+  const session = await requireSession();
+  const syncedAt = new Date().toISOString();
+
+  try {
+    const { eventId } = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(eventId);
+
+    const [allRegsSnap, allTeamsSnap] = await Promise.all([
+      eventRef.collection("registrations").get(),
+      eventRef.collection("teams").get(),
+    ]);
+
+    const registrations = allRegsSnap.docs.map((d) => d.data() as Registration);
+    const existingTeams = allTeamsSnap.docs.map((d) => d.data() as Team);
+    const buildResult = await applyTeamBuild(eventId, registrations, existingTeams);
+
+    await eventRef.update({
+      lumaEventId,
+      lumaLastSyncedAt: syncedAt,
+      updatedAt: syncedAt,
+    });
+
+    await writeAuditLog({
+      eventId,
+      action: "registrations_luma_synced",
+      metadata: {
+        lumaEventId,
+        totalFetched,
+        syncedCount,
+        ...buildResult,
+      },
+      userId: session.uid,
+    });
+
+    await writeAuditLog({
+      eventId,
+      action: "teams_auto_built",
+      metadata: { ...buildResult },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/teams`);
+
+    return {
+      ...buildResult,
+      syncedAt,
+    };
+  } catch (err) {
+    return {
+      teamsCreated: 0,
+      teamsUpdated: 0,
+      registrationsLinked: 0,
+      syncedAt: "",
+      error: err instanceof Error ? err.message : "Failed to finalize sync.",
+    };
+  }
+}
+
+export interface DeleteAllTeamDataResult {
+  success: boolean;
+  deletedRegistrations: number;
+  deletedTeams: number;
+  error?: string;
+}
+
+export async function deleteAllTeamData(
+  slug: string,
+  confirmText: string
+): Promise<DeleteAllTeamDataResult> {
+  const session = await requireSession();
+  if (confirmText !== "DELETE ALL") {
+    return {
+      success: false,
+      deletedRegistrations: 0,
+      deletedTeams: 0,
+      error: 'Type "DELETE ALL" to confirm.',
+    };
+  }
+
+  try {
+    const { eventId } = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(eventId);
+
+    const deletedTeams = await deleteCollectionInBatches(eventRef.collection("teams"));
+    const deletedRegistrations = await deleteCollectionInBatches(
+      eventRef.collection("registrations")
+    );
+
+    await eventRef.update({
+      lumaLastSyncedAt: null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await writeAuditLog({
+      eventId,
+      action: "teams_data_cleared",
+      metadata: { deletedRegistrations, deletedTeams },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/teams`);
+    return { success: true, deletedRegistrations, deletedTeams };
+  } catch (err) {
+    return {
+      success: false,
+      deletedRegistrations: 0,
+      deletedTeams: 0,
+      error: err instanceof Error ? err.message : "Failed to delete records.",
+    };
+  }
+}
+
+export async function fetchLumaGuestsPageForSync(
+  params: FetchAllGuestsParams & { pagination_cursor?: string }
+): Promise<{
+  entries: LumaGuest[];
+  has_more: boolean;
+  next_cursor?: string;
+  error?: string;
+}> {
+  await requireSession();
+  try {
+    return await fetchLumaGuestsPage({
+      ...params,
+      pagination_cursor: params.pagination_cursor,
+      pagination_limit: 50,
+    });
+  } catch (err) {
+    return {
+      entries: [],
+      has_more: false,
+      error: err instanceof Error ? err.message : "Luma fetch failed.",
+    };
+  }
 }
 
 export interface SyncRegistrationsResult {
@@ -52,37 +331,21 @@ export async function syncLumaRegistrations(
     return emptySyncResult(err instanceof Error ? err.message : "Luma API request failed.");
   }
 
+  const prep = await getSyncPrepData(slug);
+  if (prep.error) return emptySyncResult(prep.error);
+
+  const attendeeEmailSet = new Set(prep.attendeeEmails.map(normalizeEmail));
+  const { saved: syncedCount, skipped: invalid } = await upsertGuestsToFirestore(
+    eventId,
+    guests,
+    attendeeEmailSet
+  );
+
   const eventRef = adminDb.collection("events").doc(eventId);
-  const regsRef = eventRef.collection("registrations");
-  const attendeesRef = eventRef.collection("attendees");
   const syncedAt = new Date().toISOString();
 
-  let syncedCount = 0;
-
-  for (const guest of guests) {
-    const email = normalizeEmail(guest.user_email ?? "");
-    if (!email || !z.string().email().safeParse(email).success) continue;
-
-    const regId = registrationDocId(eventId, guest.id, email);
-    const existingSnap = await regsRef.doc(regId).get();
-    const existing = existingSnap.exists ? (existingSnap.data() as Registration) : undefined;
-
-    const attendeeId = attendeeDocId(eventId, email);
-    const attendeeSnap = await attendeesRef.doc(attendeeId).get();
-
-    const registration = lumaGuestToRegistration(guest, eventId, {
-      ...existing,
-      attendeeId: attendeeSnap.exists ? attendeeId : existing?.attendeeId ?? null,
-      teamId: existing?.teamId ?? null,
-      isManualMapping: existing?.isManualMapping ?? false,
-    });
-
-    await regsRef.doc(registration.id).set(registration, { merge: true });
-    syncedCount++;
-  }
-
   const [allRegsSnap, allTeamsSnap] = await Promise.all([
-    regsRef.get(),
+    eventRef.collection("registrations").get(),
     eventRef.collection("teams").get(),
   ]);
 
@@ -104,6 +367,7 @@ export async function syncLumaRegistrations(
       lumaEventId: lumaParams.event_id,
       totalFetched: guests.length,
       syncedCount,
+      invalid,
       ...buildResult,
     },
     userId: session.uid,

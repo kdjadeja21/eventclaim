@@ -10,6 +10,8 @@ import TeamTable from "./team-table";
 
 type Props = { params: Promise<{ slug: string }> };
 
+export const maxDuration = 300;
+
 export default async function TeamsPage({ params }: Props) {
   const { slug } = await params;
   const [event, pageData] = await Promise.all([
