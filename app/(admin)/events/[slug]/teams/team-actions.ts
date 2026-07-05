@@ -3,6 +3,24 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { attendeeDocId } from "@/lib/import";
+import { isDevDataMode } from "@/lib/dev-mode";
+import {
+  devAddTeamLink,
+  devApplyTeamBuild,
+  devAssignMemberToTeam,
+  devClearTeamData,
+  devCreateManualTeam,
+  devDeleteTeam,
+  devMoveRegistrationToPool,
+  devRejectFuzzyLink,
+  devRemoveMemberFromTeam,
+  devUpdateEvent,
+  devUpdateTeam,
+  devUpsertLumaGuests,
+  getDevEventBySlug,
+  getDevRegistrationById,
+  getDevTeamById,
+} from "@/lib/dev-store";
 import { fetchAllLumaGuests, fetchLumaGuestsPage, FetchAllGuestsParams, LumaGuest } from "@/lib/luma";
 import {
   DEFAULT_TICKET_TYPE_MAP,
@@ -25,6 +43,12 @@ interface EventContext {
 }
 
 async function resolveEvent(slug: string): Promise<EventContext> {
+  if (isDevDataMode()) {
+    const event = getDevEventBySlug(slug);
+    if (!event) throw new Error("Event not found");
+    return { eventId: event.id, slug, event };
+  }
+
   const eventSnap = await adminDb
     .collection("events")
     .where("slug", "==", slug)
@@ -44,6 +68,10 @@ function registrationParseOptions(event: Event) {
 }
 
 async function rebuildTeamsForEvent(ctx: EventContext) {
+  if (isDevDataMode()) {
+    return devApplyTeamBuild();
+  }
+
   const eventRef = adminDb.collection("events").doc(ctx.eventId);
   const [regsSnap, teamsSnap] = await Promise.all([
     eventRef.collection("registrations").get(),
@@ -141,6 +169,10 @@ export interface SyncPrepResult {
 export async function getSyncPrepData(slug: string): Promise<SyncPrepResult> {
   await requireSession();
   try {
+    if (isDevDataMode()) {
+      return { attendeeEmails: [] };
+    }
+
     const { eventId } = await resolveEvent(slug);
     const snap = await adminDb
       .collection("events")
@@ -171,6 +203,10 @@ export async function upsertRegistrationBatch(
 ): Promise<UpsertBatchResult> {
   await requireSession();
   try {
+    if (isDevDataMode()) {
+      return devUpsertLumaGuests(guests);
+    }
+
     const ctx = await resolveEvent(slug);
     const attendeeEmailSet = new Set(attendeeEmails.map(normalizeEmail));
     const result = await upsertGuestsToFirestore(ctx, guests, attendeeEmailSet);
@@ -203,6 +239,32 @@ export async function finalizeLumaSync(
 
   try {
     const ctx = await resolveEvent(slug);
+
+    if (isDevDataMode()) {
+      const buildResult = devApplyTeamBuild();
+      devUpdateEvent({
+        lumaEventId,
+        lumaLastSyncedAt: syncedAt,
+      });
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "registrations_luma_synced",
+        metadata: { lumaEventId, totalFetched, syncedCount, ...buildResult },
+        userId: session.uid,
+      });
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "teams_auto_built",
+        metadata: { ...buildResult },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { ...buildResult, syncedAt };
+    }
+
     const eventRef = adminDb.collection("events").doc(ctx.eventId);
 
     const [allRegsSnap, allTeamsSnap] = await Promise.all([
@@ -283,7 +345,21 @@ export async function deleteAllTeamData(
   }
 
   try {
-    const { eventId } = await resolveEvent(slug);
+    const ctx = await resolveEvent(slug);
+
+    if (isDevDataMode()) {
+      const { deletedRegistrations, deletedTeams } = devClearTeamData();
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "teams_data_cleared",
+        metadata: { deletedRegistrations, deletedTeams },
+        userId: session.uid,
+      });
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true, deletedRegistrations, deletedTeams };
+    }
+
+    const { eventId } = ctx;
     const eventRef = adminDb.collection("events").doc(eventId);
 
     const deletedTeams = await deleteCollectionInBatches(eventRef.collection("teams"));
@@ -371,6 +447,47 @@ export async function syncLumaRegistrations(
 
   const prep = await getSyncPrepData(slug);
   if (prep.error) return emptySyncResult(prep.error);
+
+  if (isDevDataMode()) {
+    const { saved: syncedCount, skipped: invalid } = devUpsertLumaGuests(guests);
+    const syncedAt = new Date().toISOString();
+    const buildResult = devApplyTeamBuild();
+    devUpdateEvent({
+      lumaEventId: lumaParams.event_id,
+      lumaLastSyncedAt: syncedAt,
+    });
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "registrations_luma_synced",
+      metadata: {
+        lumaEventId: lumaParams.event_id,
+        totalFetched: guests.length,
+        syncedCount,
+        invalid,
+        ...buildResult,
+      },
+      userId: session.uid,
+    });
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "teams_auto_built",
+      metadata: { ...buildResult },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/teams`);
+
+    return {
+      syncedCount,
+      totalFetched: guests.length,
+      teamsCreated: buildResult.teamsCreated,
+      teamsUpdated: buildResult.teamsUpdated,
+      registrationsLinked: buildResult.registrationsLinked,
+      syncedAt,
+    };
+  }
 
   const attendeeEmailSet = new Set(prep.attendeeEmails.map(normalizeEmail));
   const { saved: syncedCount, skipped: invalid } = await upsertGuestsToFirestore(
@@ -462,11 +579,28 @@ export async function assignMemberToTeam(
   const parsed = assignMemberSchema.safeParse({ slug, teamId, registrationId });
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { eventId } = await resolveEvent(slug);
+  const ctx = await resolveEvent(slug);
+
+  try {
+    if (isDevDataMode()) {
+      const result = devAssignMemberToTeam(teamId, registrationId);
+      if (!result.success) return result;
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "team_member_assigned",
+        metadata: { teamId, registrationId },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
+  const { eventId } = ctx;
   const eventRef = adminDb.collection("events").doc(eventId);
   const now = new Date().toISOString();
 
-  try {
     await adminDb.runTransaction(async (tx) => {
       const teamRef = eventRef.collection("teams").doc(teamId);
       const regRef = eventRef.collection("registrations").doc(registrationId);
@@ -546,11 +680,28 @@ export async function removeMemberFromTeam(
   const parsed = removeMemberSchema.safeParse({ slug, teamId, registrationId });
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { eventId } = await resolveEvent(slug);
+  const ctx = await resolveEvent(slug);
+
+  try {
+    if (isDevDataMode()) {
+      const result = devRemoveMemberFromTeam(teamId, registrationId);
+      if (!result.success) return result;
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "team_member_removed",
+        metadata: { teamId, registrationId },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
+  const { eventId } = ctx;
   const eventRef = adminDb.collection("events").doc(eventId);
   const now = new Date().toISOString();
 
-  try {
     await adminDb.runTransaction(async (tx) => {
       const teamRef = eventRef.collection("teams").doc(teamId);
       const regRef = eventRef.collection("registrations").doc(registrationId);
@@ -616,12 +767,52 @@ export async function createManualTeam(
   const parsed = createTeamSchema.safeParse({ slug, name, leadRegistrationId, memberRegistrationIds });
   if (!parsed.success) return { success: false, error: "Invalid input." };
 
-  const { eventId } = await resolveEvent(slug);
-  const eventRef = adminDb.collection("events").doc(eventId);
+  const ctx = await resolveEvent(slug);
+  const { eventId } = ctx;
   const teamId = newManualTeamId();
   const now = new Date().toISOString();
 
   try {
+    if (isDevDataMode()) {
+      const lead = getDevRegistrationById(leadRegistrationId);
+      if (!lead) return { success: false, error: "Lead registration not found." };
+
+      const memberRegs = memberRegistrationIds
+        .map((id) => getDevRegistrationById(id))
+        .filter((r): r is Registration => Boolean(r));
+
+      const team: Team = {
+        id: teamId,
+        eventId,
+        name: name.trim(),
+        leadRegistrationId,
+        leadEmail: lead.email,
+        memberRegistrationIds: memberRegs.map((r) => r.id),
+        memberEmails: memberRegs.map((r) => r.email),
+        expectedMemberEmails: [],
+        ticketCategory: lead.ticketCategory,
+        status: "manual",
+        source: "manual",
+        issues: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      devCreateManualTeam(team, [leadRegistrationId, ...memberRegs.map((r) => r.id)]);
+
+      await writeAuditLog({
+        eventId,
+        action: "team_created",
+        metadata: { teamId, name, leadRegistrationId, memberRegistrationIds },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true, teamId };
+    }
+
+  const eventRef = adminDb.collection("events").doc(eventId);
+
     const leadSnap = await eventRef.collection("registrations").doc(leadRegistrationId).get();
     if (!leadSnap.exists) return { success: false, error: "Lead registration not found." };
     const lead = leadSnap.data() as Registration;
@@ -690,11 +881,29 @@ export async function deleteTeam(
   teamId: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
-  const { eventId } = await resolveEvent(slug);
+  const ctx = await resolveEvent(slug);
+  const { eventId } = ctx;
+
+  try {
+    if (isDevDataMode()) {
+      const team = getDevTeamById(teamId);
+      if (!team) return { success: false, error: "Team not found." };
+      if (!devDeleteTeam(teamId)) return { success: false, error: "Team not found." };
+
+      await writeAuditLog({
+        eventId,
+        action: "team_deleted",
+        metadata: { teamId, name: team.name },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
   const eventRef = adminDb.collection("events").doc(eventId);
   const now = new Date().toISOString();
 
-  try {
     const teamSnap = await eventRef.collection("teams").doc(teamId).get();
     if (!teamSnap.exists) return { success: false, error: "Team not found." };
     const team = teamSnap.data() as Team;
@@ -738,10 +947,30 @@ export async function markTeamComplete(
   teamId: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
-  const { eventId } = await resolveEvent(slug);
+  const ctx = await resolveEvent(slug);
+  const { eventId } = ctx;
   const now = new Date().toISOString();
 
   try {
+    if (isDevDataMode()) {
+      const updated = devUpdateTeam(teamId, {
+        status: "complete",
+        issues: [],
+        source: "manual",
+      });
+      if (!updated) return { success: false, error: "Team not found." };
+
+      await writeAuditLog({
+        eventId,
+        action: "team_updated",
+        metadata: { teamId, action: "mark_complete" },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
     await adminDb
       .collection("events")
       .doc(eventId)
@@ -816,9 +1045,39 @@ export async function acceptFuzzyLink(
 
   try {
     const ctx = await resolveEvent(slug);
+    const normalizedFrom = normalizeEmail(fromEmail);
+
+    if (isDevDataMode()) {
+      const targetReg = getDevRegistrationById(toRegistrationId);
+      if (!targetReg) return { success: false, error: "Target registration not found." };
+
+      const link: TeamLink = {
+        id: nanoid(),
+        eventId: ctx.eventId,
+        fromRegistrationId: teamId,
+        toEmail: normalizedFrom,
+        toRegistrationId,
+        linkType: "confirmed_fuzzy",
+        createdAt: new Date().toISOString(),
+        createdBy: session.uid,
+      };
+
+      devAddTeamLink(link);
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "team_link_confirmed",
+        metadata: { teamId, fromEmail: normalizedFrom, toRegistrationId, toEmail: targetReg.email },
+        userId: session.uid,
+      });
+
+      await rebuildTeamsForEvent(ctx);
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
     const eventRef = adminDb.collection("events").doc(ctx.eventId);
     const now = new Date().toISOString();
-    const normalizedFrom = normalizeEmail(fromEmail);
 
     const regSnap = await eventRef.collection("registrations").doc(toRegistrationId).get();
     if (!regSnap.exists) return { success: false, error: "Target registration not found." };
@@ -867,6 +1126,22 @@ export async function rejectFuzzyLink(
 
   try {
     const ctx = await resolveEvent(slug);
+
+    if (isDevDataMode()) {
+      const result = devRejectFuzzyLink(teamId, fromEmail, toRegistrationId);
+      if (!result.success) return result;
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "team_link_rejected",
+        metadata: { teamId, fromEmail: normalizeEmail(fromEmail), toRegistrationId },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
     const eventRef = adminDb.collection("events").doc(ctx.eventId);
     const teamRef = eventRef.collection("teams").doc(teamId);
     const teamSnap = await teamRef.get();
@@ -915,6 +1190,25 @@ export async function moveRegistrationToPool(
   const session = await requireSession();
   try {
     const ctx = await resolveEvent(slug);
+
+    if (isDevDataMode()) {
+      const reg = getDevRegistrationById(registrationId);
+      if (!reg) return { success: false, error: "Registration not found." };
+
+      const result = devMoveRegistrationToPool(registrationId);
+      if (!result.success) return result;
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "team_registration_pooled",
+        metadata: { registrationId, email: reg.email },
+        userId: session.uid,
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      return { success: true };
+    }
+
     const eventRef = adminDb.collection("events").doc(ctx.eventId);
     const now = new Date().toISOString();
     const regRef = eventRef.collection("registrations").doc(registrationId);
@@ -1002,12 +1296,43 @@ export async function updateEventTeamSettings(
       find_team: [data.findTicketTypeId ?? DEFAULT_TICKET_TYPE_MAP.find_team![0]],
     };
 
+    const teamRules = {
+      minSize: data.minSize,
+      maxSize: data.maxSize,
+      allowOversized: data.allowOversized,
+    };
+
+    if (isDevDataMode()) {
+      devUpdateEvent({
+        teamRules,
+        teamQuestionId: data.teamQuestionId?.trim() || TEAM_QUESTION_ID,
+        ticketTypeMap,
+      });
+
+      await writeAuditLog({
+        eventId: ctx.eventId,
+        action: "event_updated",
+        metadata: { teamRules: data, ticketTypeMap },
+        userId: session.uid,
+      });
+
+      await rebuildTeamsForEvent({
+        ...ctx,
+        event: {
+          ...ctx.event,
+          teamRules,
+          teamQuestionId: data.teamQuestionId,
+          ticketTypeMap,
+        },
+      });
+
+      revalidatePath(`/events/${slug}/teams`);
+      revalidatePath(`/events/${slug}`);
+      return { success: true };
+    }
+
     await adminDb.collection("events").doc(ctx.eventId).update({
-      teamRules: {
-        minSize: data.minSize,
-        maxSize: data.maxSize,
-        allowOversized: data.allowOversized,
-      },
+      teamRules,
       teamQuestionId: data.teamQuestionId?.trim() || TEAM_QUESTION_ID,
       ticketTypeMap,
       updatedAt: new Date().toISOString(),

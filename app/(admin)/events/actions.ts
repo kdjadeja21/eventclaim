@@ -176,6 +176,10 @@ export async function updateEventStatus(
 
 export async function getEvents(): Promise<Event[]> {
   await requireSession();
+  if (process.env.USE_DEV_DATA === "true") {
+    const { listDevEvents } = await import("@/lib/dev-store");
+    return listDevEvents();
+  }
   const snap = await adminDb
     .collection("events")
     .orderBy("createdAt", "desc")
@@ -190,6 +194,10 @@ export async function getEventBySlug(slug: string): Promise<Event | null> {
 
 export async function getEventById(id: string): Promise<Event | null> {
   await requireSession();
+  if (process.env.USE_DEV_DATA === "true") {
+    const { getDevEventById } = await import("@/lib/dev-store");
+    return getDevEventById(id);
+  }
   const doc = await adminDb.collection("events").doc(id).get();
   if (!doc.exists) return null;
   return doc.data() as Event;

@@ -1,22 +1,41 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { hydrateRegistration } from "@/lib/registrations";
+import { computeFormationStats } from "@/lib/team-resolver";
+import { isDevDataMode } from "@/lib/dev-mode";
 import {
-  batchGetRegistrations,
-  collectTeamRegistrationIds,
-  getEventBySlugCached,
-  isFirestoreQuotaError,
-} from "@/lib/event-resolve";
+  devApplyTeamBuild,
+  getDevEventBySlug,
+  getDevPoolRegistrations,
+  getDevRegistrations,
+  getDevRegistrationsByIds,
+  getDevTeamById,
+  getDevTeams,
+  loadDevStore,
+  searchDevAssignableRegistrations,
+} from "@/lib/dev-store";
+import { adminDb } from "@/lib/firebase/admin";
+import { getEventBySlugCached, isFirestoreQuotaError } from "@/lib/event-resolve";
 import { requireSession } from "@/lib/session";
+import { TeamsDataError } from "@/lib/teams-data-error";
 import {
-  CachedTeamFormationStats,
   Event,
   Registration,
   Team,
   TeamFormationStats,
   TeamWithMembers,
 } from "@/lib/types";
+
+async function resolveEventId(slug: string): Promise<string> {
+  if (isDevDataMode()) {
+    const event = getDevEventBySlug(slug);
+    if (!event) throw new Error("Event not found");
+    return event.id;
+  }
+  const event = await getEventBySlugCached(slug);
+  if (!event) throw new Error("Event not found");
+  return event.id;
+}
 
 function statsFromTeams(teams: Team[]): TeamFormationStats & { totalRegistrations: number } {
   return {
@@ -52,23 +71,34 @@ export interface TeamsPageData {
   eventId: string;
   event: Event;
   teams: Team[];
-  /** Registrations linked to formed teams (not the full pool). */
   teamRegistrations: Registration[];
   stats: TeamFormationStats & { totalRegistrations: number };
 }
 
-export class TeamsDataError extends Error {
-  constructor(
-    message: string,
-    public readonly code: "quota_exceeded" | "not_found" | "unknown"
-  ) {
-    super(message);
-    this.name = "TeamsDataError";
-  }
-}
-
 export async function getTeamsPageData(slug: string): Promise<TeamsPageData> {
   await requireSession();
+
+  if (isDevDataMode()) {
+    const event = getDevEventBySlug(slug);
+    if (!event) throw new TeamsDataError("Event not found", "not_found");
+
+    const teams = getDevTeams();
+    const allRegs = getDevRegistrations();
+    const regIds = new Set<string>();
+    for (const team of teams) {
+      if (team.leadRegistrationId) regIds.add(team.leadRegistrationId);
+      for (const id of team.memberRegistrationIds) regIds.add(id);
+    }
+    const teamRegistrations = allRegs.filter((r) => regIds.has(r.id));
+
+    return {
+      eventId: event.id,
+      event,
+      teams,
+      teamRegistrations,
+      stats: resolveStats(event, teams),
+    };
+  }
 
   try {
     const event = await getEventBySlugCached(slug);
@@ -82,6 +112,9 @@ export async function getTeamsPageData(slug: string): Promise<TeamsPageData> {
       .get();
 
     const teams = teamsSnap.docs.map((d) => d.data() as Team);
+    const { collectTeamRegistrationIds, batchGetRegistrations } = await import(
+      "@/lib/event-resolve"
+    );
     const regIds = collectTeamRegistrationIds(teams);
     const teamRegistrations = await batchGetRegistrations(eventId, regIds);
 
@@ -115,6 +148,13 @@ export async function getPoolRegistrationsPage(
   options: { limit?: number; cursor?: string | null } = {}
 ): Promise<PoolRegistrationsPage> {
   await requireSession();
+
+  if (isDevDataMode()) {
+    const event = getDevEventBySlug(slug);
+    if (!event) throw new TeamsDataError("Event not found", "not_found");
+    return getDevPoolRegistrations(options);
+  }
+
   const limit = Math.min(options.limit ?? 50, 100);
   const event = await getEventBySlugCached(slug);
   if (!event) throw new TeamsDataError("Event not found", "not_found");
@@ -155,6 +195,11 @@ export async function searchAssignableRegistrations(
   limit = 40
 ): Promise<Registration[]> {
   await requireSession();
+
+  if (isDevDataMode()) {
+    return searchDevAssignableRegistrations(teamId, query, limit);
+  }
+
   const event = await getEventBySlugCached(slug);
   if (!event) return [];
 
@@ -176,10 +221,9 @@ export async function searchAssignableRegistrations(
     .get();
 
   const q = query.trim().toLowerCase();
-  const blocked = new Set([
-    team.leadRegistrationId,
-    ...team.memberRegistrationIds,
-  ].filter(Boolean) as string[]);
+  const blocked = new Set(
+    [team.leadRegistrationId, ...team.memberRegistrationIds].filter(Boolean) as string[]
+  );
 
   return snap.docs
     .map((d) => hydrateRegistration(d.data() as Registration))
@@ -200,6 +244,24 @@ export async function getTeamDetail(
   teamId: string
 ): Promise<TeamWithMembers | null> {
   await requireSession();
+
+  if (isDevDataMode()) {
+    const team = getDevTeamById(teamId);
+    if (!team) return null;
+    const regIds = [
+      ...(team.leadRegistrationId ? [team.leadRegistrationId] : []),
+      ...team.memberRegistrationIds,
+    ];
+    const regMap = new Map(getDevRegistrationsByIds(regIds).map((r) => [r.id, r]));
+    return {
+      ...team,
+      lead: team.leadRegistrationId ? regMap.get(team.leadRegistrationId) ?? null : null,
+      members: team.memberRegistrationIds
+        .map((id) => regMap.get(id))
+        .filter((r): r is Registration => Boolean(r)),
+    };
+  }
+
   const event = await getEventBySlugCached(slug);
   if (!event) return null;
 
@@ -218,6 +280,7 @@ export async function getTeamDetail(
     ...(team.leadRegistrationId ? [team.leadRegistrationId] : []),
     ...team.memberRegistrationIds,
   ];
+  const { batchGetRegistrations } = await import("@/lib/event-resolve");
   const registrations = await batchGetRegistrations(eventId, regIds);
   const regMap = new Map(registrations.map((r) => [r.id, r]));
 
@@ -228,4 +291,12 @@ export async function getTeamDetail(
       .map((id) => regMap.get(id))
       .filter((r): r is Registration => Boolean(r)),
   };
+}
+
+/** Dev-only: export current store snapshot for pushing to Firebase later. */
+export async function exportDevStoreSnapshot(): Promise<{ ok: boolean; path?: string }> {
+  await requireSession();
+  if (!isDevDataMode()) return { ok: false };
+  const store = loadDevStore();
+  return { ok: true, path: `data/dev/hackathon-ahmedabad.json (${store.registrations.length} regs)` };
 }

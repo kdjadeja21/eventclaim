@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:data:generate": "tsx scripts/csv-to-dev-json.ts",
+    "dev:data:push": "tsx scripts/push-dev-to-firebase.ts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -44,6 +46,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5",
     "vitest": "^4.1.9"
   }

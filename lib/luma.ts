@@ -87,12 +87,26 @@ const MAX_PAGES = 200; // safety cap: 200 × 50 = 10 000 guests max
 const DEFAULT_PAGE_SIZE = 50;
 
 export function isLumaApiConfigured(): boolean {
+  if (process.env.USE_DEV_DATA === "true") return true;
   return Boolean(process.env.LUMA_API_KEY?.trim());
 }
 
 export async function fetchLumaGuestsPage(
   params: FetchLumaGuestsPageParams
 ): Promise<FetchLumaGuestsPageResult> {
+  if (process.env.USE_DEV_DATA === "true") {
+    const { getDevLumaGuestsPage } = await import("@/lib/dev-store");
+    const page = getDevLumaGuestsPage({
+      cursor: params.pagination_cursor,
+      limit: params.pagination_limit ?? DEFAULT_PAGE_SIZE,
+    });
+    return {
+      entries: page.entries,
+      has_more: page.has_more,
+      next_cursor: page.next_cursor,
+    };
+  }
+
   const apiKey = process.env.LUMA_API_KEY?.trim();
   if (!apiKey) throw new Error("LUMA_API_KEY is not set in environment.");
 

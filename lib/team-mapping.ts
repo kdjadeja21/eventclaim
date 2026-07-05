@@ -50,6 +50,11 @@ export async function applyTeamBuild(
   existingTeams: Team[],
   event?: Pick<Event, "teamRules">
 ): Promise<TeamBuildResult> {
+  if (process.env.USE_DEV_DATA === "true") {
+    const { devApplyTeamBuild } = await import("@/lib/dev-store");
+    return devApplyTeamBuild();
+  }
+
   const confirmedAliases = await loadConfirmedAliases(eventId);
   const hydrated = registrations.map(hydrateRegistration);
 

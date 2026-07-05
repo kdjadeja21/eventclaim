@@ -2,8 +2,6 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { auth } from "@/lib/firebase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,13 +25,32 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/dashboard";
+  const devMode = process.env.NEXT_PUBLIC_USE_DEV_DATA === "true";
 
   const [loading, setLoading] = useState(false);
+  const [devLoading, setDevLoading] = useState(false);
+
+  async function handleDevSignIn() {
+    setDevLoading(true);
+    try {
+      const res = await fetch("/api/auth/dev-session", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to create dev session");
+      router.push(redirect);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Dev sign-in failed");
+    } finally {
+      setDevLoading(false);
+    }
+  }
 
   async function handleGoogleSignIn() {
     setLoading(true);
 
     try {
+      const [{ signInWithPopup, GoogleAuthProvider }, { auth }] = await Promise.all([
+        import("firebase/auth"),
+        import("@/lib/firebase/client"),
+      ]);
       const provider = new GoogleAuthProvider();
       const credential = await signInWithPopup(auth, provider);
       const idToken = await credential.user.getIdToken();
@@ -73,6 +90,32 @@ function LoginForm() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {devMode && (
+            <>
+              <Button
+                className="w-full bg-emerald-600 text-white border-0 hover:bg-emerald-500 shadow-md"
+                onClick={handleDevSignIn}
+                disabled={devLoading || loading}
+              >
+                {devLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Starting dev session…
+                  </>
+                ) : (
+                  "Continue as Dev Admin (no Firebase)"
+                )}
+              </Button>
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-white/20" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-transparent px-2 text-white/50">or</span>
+                </div>
+              </div>
+            </>
+          )}
           <Button
             variant="outline"
             className="w-full bg-white text-primary border-0 hover:bg-white/90 shadow-md"

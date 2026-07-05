@@ -1,4 +1,6 @@
 import { cache } from "react";
+import { isDevDataMode } from "@/lib/dev-mode";
+import { getDevEventBySlug } from "@/lib/dev-store";
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { Event } from "@/lib/types";
@@ -18,6 +20,9 @@ export function isFirestoreQuotaError(err: unknown): boolean {
 
 export const getEventBySlugCached = cache(async (slug: string): Promise<Event | null> => {
   await requireSession();
+  if (isDevDataMode()) {
+    return getDevEventBySlug(slug);
+  }
   const snap = await adminDb
     .collection("events")
     .where("slug", "==", slug)

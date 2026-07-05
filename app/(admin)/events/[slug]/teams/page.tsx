@@ -4,7 +4,8 @@ import { ArrowLeft, AlertCircle } from "lucide-react";
 import { isLumaApiConfigured } from "@/lib/luma";
 import { Button } from "@/components/ui/button";
 import { EventSectionNav } from "../event-section-nav";
-import { getTeamsPageData, TeamsDataError } from "./team-data-actions";
+import { TeamsDataError } from "@/lib/teams-data-error";
+import { getTeamsPageData } from "./team-data-actions";
 import TeamTable from "./team-table";
 
 type Props = { params: Promise<{ slug: string }> };
