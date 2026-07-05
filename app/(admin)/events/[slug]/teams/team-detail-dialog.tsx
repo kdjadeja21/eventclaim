@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type ElementType } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -27,26 +27,15 @@ import {
   CheckCircle2,
   AlertTriangle,
   Search,
-  Mail,
-  UserX,
-  Link2,
-  Users,
-  Ticket,
-  Crown,
-  MessageSquareWarning,
-  Check,
-  X,
 } from "lucide-react";
 import {
   Registration,
   TeamIssue,
   TeamWithMembers,
-  SuggestedLink,
 } from "@/lib/types";
 import {
   COMPANY_QUESTION_ID,
   ISSUE_LABELS,
-  ISSUE_PRIORITY,
   LINKEDIN_QUESTION_ID,
   PRIMARY_ROLE_QUESTION_ID,
   getRegistrationField,
@@ -62,244 +51,6 @@ import {
 } from "./team-actions";
 
 const issueLabels = ISSUE_LABELS;
-
-const ISSUE_META: Record<
-  TeamIssue,
-  { icon: ElementType; tone: "destructive" | "warning" | "info" }
-> = {
-  duplicate_member: { icon: Users, tone: "destructive" },
-  fuzzy_match_pending: { icon: Link2, tone: "info" },
-  no_lead: { icon: Crown, tone: "warning" },
-  unmatched_lead: { icon: UserX, tone: "destructive" },
-  missing_member: { icon: Mail, tone: "warning" },
-  size_under: { icon: Users, tone: "warning" },
-  size_over: { icon: Users, tone: "warning" },
-  invalid_team_answer: { icon: MessageSquareWarning, tone: "warning" },
-  ticket_mismatch: { icon: Ticket, tone: "info" },
-};
-
-function sortIssues(issues: TeamIssue[]): TeamIssue[] {
-  return [...issues].sort((a, b) => (ISSUE_PRIORITY[a] ?? 99) - (ISSUE_PRIORITY[b] ?? 99));
-}
-
-function missingExpectedEmails(team: TeamWithMembers): string[] {
-  const registered = new Set([
-    ...(team.lead ? [team.lead.email.toLowerCase()] : []),
-    ...team.members.map((m) => m.email.toLowerCase()),
-  ]);
-  return team.expectedMemberEmails.filter((e) => !registered.has(e.toLowerCase()));
-}
-
-function TeamIssuesPanel({ team }: { team: TeamWithMembers }) {
-  const missingEmails = missingExpectedEmails(team);
-  const sortedIssues = sortIssues(team.issues).filter(
-    (issue) => !(issue === "missing_member" && missingEmails.length > 0)
-  );
-  const hasIssues = sortedIssues.length > 0 || missingEmails.length > 0;
-
-  if (!hasIssues) return null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-amber-200/90 bg-card shadow-sm dark:border-amber-900/50">
-      <div className="flex items-start gap-3 border-b border-amber-200/70 bg-amber-50/90 px-4 py-3.5 dark:border-amber-900/40 dark:bg-amber-950/40">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
-          <AlertTriangle className="h-5 w-5" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
-              Attention needed
-            </h3>
-            <Badge variant="warning" className="tabular-nums">
-              {sortedIssues.length + (missingEmails.length > 0 ? 1 : 0)} item
-              {sortedIssues.length + (missingEmails.length > 0 ? 1 : 0) !== 1 ? "s" : ""}
-            </Badge>
-          </div>
-          {team.reviewSummary ? (
-            <p className="text-sm leading-relaxed text-amber-900/80 dark:text-amber-200/80">
-              {team.reviewSummary}
-            </p>
-          ) : (
-            <p className="text-sm text-amber-900/70 dark:text-amber-200/70">
-              Review the items below before marking this team complete.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-3 p-4">
-        {sortedIssues.map((issue) => {
-          const meta = ISSUE_META[issue];
-          const Icon = meta.icon;
-          return (
-            <div
-              key={issue}
-              className="flex items-start gap-3 rounded-lg border bg-muted/30 px-3 py-2.5"
-            >
-              <div
-                className={cn(
-                  "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-                  meta.tone === "destructive" &&
-                    "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300",
-                  meta.tone === "warning" &&
-                    "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
-                  meta.tone === "info" &&
-                    "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="text-sm font-medium leading-snug">
-                  {issueLabels[issue] ?? issue}
-                </p>
-                <p className="text-xs text-muted-foreground">{issueHint(issue)}</p>
-              </div>
-            </div>
-          );
-        })}
-
-        {missingEmails.length > 0 && (
-          <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Expected slots
-            </p>
-            <ul className="space-y-1.5">
-              {team.expectedMemberEmails.map((email) => {
-                const isMissing = missingEmails.some(
-                  (m) => m.toLowerCase() === email.toLowerCase()
-                );
-                const member = team.members.find(
-                  (m) => m.email.toLowerCase() === email.toLowerCase()
-                );
-                return (
-                  <li
-                    key={email}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm",
-                      isMissing
-                        ? "border-amber-200/80 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20"
-                        : "border-emerald-200/80 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20"
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate font-mono text-xs sm:text-sm">{email}</span>
-                    </span>
-                    {isMissing ? (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                        <X className="h-3.5 w-3.5" />
-                        Not registered
-                      </span>
-                    ) : (
-                      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                        <Check className="h-3.5 w-3.5" />
-                        {member?.name ?? "Registered"}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function issueHint(issue: TeamIssue): string {
-  switch (issue) {
-    case "missing_member":
-      return "Someone listed on the team answer has not registered yet.";
-    case "unmatched_lead":
-      return "A member's lead email does not match any registration.";
-    case "fuzzy_match_pending":
-      return "A close email match was found — confirm or reject below.";
-    case "no_lead":
-      return "Pick a lead manually or fix conflicting registrations.";
-    case "duplicate_member":
-      return "This person appears on more than one team.";
-    case "size_under":
-      return "Add members from the pool or wait for registrations.";
-    case "size_over":
-      return "Remove a member or approve the larger team size.";
-    case "invalid_team_answer":
-      return "The team answer could not be parsed — consider moving to pool.";
-    case "ticket_mismatch":
-      return "Ticket type and team answer shape disagree (often still OK).";
-    default:
-      return "";
-  }
-}
-
-function SuggestedLinksPanel({
-  links,
-  isPending,
-  onAcceptLink,
-  onRejectLink,
-}: {
-  links: SuggestedLink[];
-  isPending: boolean;
-  onAcceptLink: (link: SuggestedLink) => void;
-  onRejectLink: (link: SuggestedLink) => void;
-}) {
-  if (links.length === 0) return null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-sky-200/90 bg-card shadow-sm dark:border-sky-900/50">
-      <div className="flex items-start gap-3 border-b border-sky-200/70 bg-sky-50/90 px-4 py-3.5 dark:border-sky-900/40 dark:bg-sky-950/40">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/60 dark:text-sky-300">
-          <Link2 className="h-5 w-5" />
-        </div>
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-sky-950 dark:text-sky-100">
-            Suggested email matches
-          </h3>
-          <p className="text-sm text-sky-900/70 dark:text-sky-200/70">
-            These look like typos. Confirm to link them permanently on rebuild.
-          </p>
-        </div>
-      </div>
-      <ul className="divide-y">
-        {links.map((link) => (
-          <li
-            key={`${link.fromEmail}-${link.toRegistrationId}`}
-            className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{link.fromEmail}</code>
-                <span className="text-muted-foreground">→</span>
-                <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground">
-                  {link.toEmail}
-                </code>
-              </div>
-              <p className="text-xs text-muted-foreground">{link.reason}</p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button
-                size="sm"
-                disabled={isPending}
-                onClick={() => onAcceptLink(link)}
-              >
-                Accept
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isPending}
-                onClick={() => onRejectLink(link)}
-              >
-                Reject
-              </Button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 interface TeamDetailDialogProps {
   open: boolean;
@@ -448,47 +199,98 @@ export default function TeamDetailDialog({
               {team.source === "manual" && <Badge variant="secondary">Manual</Badge>}
             </div>
 
-            {team.suggestedLinks && team.suggestedLinks.length > 0 && teamId && (
-              <SuggestedLinksPanel
-                links={team.suggestedLinks}
-                isPending={isPending}
-                onAcceptLink={(link) => {
-                  startTransition(async () => {
-                    const result = await acceptFuzzyLink(
-                      slug,
-                      teamId,
-                      link.fromEmail,
-                      link.toRegistrationId
-                    );
-                    if (result.success) {
-                      toast.success("Link confirmed — rebuilding teams");
-                      onUpdated();
-                    } else {
-                      toast.error(result.error ?? "Failed to accept");
-                    }
-                  });
-                }}
-                onRejectLink={(link) => {
-                  startTransition(async () => {
-                    const result = await rejectFuzzyLink(
-                      slug,
-                      teamId,
-                      link.fromEmail,
-                      link.toRegistrationId
-                    );
-                    if (result.success) {
-                      toast.success("Suggestion dismissed");
-                      const detail = await getTeamDetail(slug, teamId);
-                      setTeam(detail);
-                    } else {
-                      toast.error(result.error ?? "Failed to reject");
-                    }
-                  });
-                }}
-              />
+            {team.suggestedLinks && team.suggestedLinks.length > 0 && (
+              <div className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-950/30">
+                <p className="text-sm font-medium mb-2">Suggested email matches</p>
+                <ul className="space-y-2">
+                  {team.suggestedLinks.map((link) => (
+                    <li
+                      key={`${link.fromEmail}-${link.toRegistrationId}`}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        {link.fromEmail} → {link.toEmail}{" "}
+                        <span className="text-muted-foreground">({link.reason})</span>
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isPending}
+                          onClick={() => {
+                            if (!teamId) return;
+                            startTransition(async () => {
+                              const result = await acceptFuzzyLink(
+                                slug,
+                                teamId,
+                                link.fromEmail,
+                                link.toRegistrationId
+                              );
+                              if (result.success) {
+                                toast.success("Link confirmed — rebuilding teams");
+                                onUpdated();
+                              } else {
+                                toast.error(result.error ?? "Failed to accept");
+                              }
+                            });
+                          }}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isPending}
+                          onClick={() => {
+                            if (!teamId) return;
+                            startTransition(async () => {
+                              const result = await rejectFuzzyLink(
+                                slug,
+                                teamId,
+                                link.fromEmail,
+                                link.toRegistrationId
+                              );
+                              if (result.success) {
+                                toast.success("Suggestion dismissed");
+                                const detail = await getTeamDetail(slug, teamId);
+                                setTeam(detail);
+                              } else {
+                                toast.error(result.error ?? "Failed to reject");
+                              }
+                            });
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
-            <TeamIssuesPanel team={team} />
+            {team.reviewSummary && (
+              <p className="text-sm text-muted-foreground">{team.reviewSummary}</p>
+            )}
+
+            {team.issues.length > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
+                <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium text-sm mb-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Issues
+                </div>
+                <ul className="text-sm text-amber-800 dark:text-amber-300 space-y-1 list-disc pl-5">
+                  {team.issues.map((issue) => (
+                    <li key={issue}>{issueLabels[issue] ?? issue}</li>
+                  ))}
+                  {team.expectedMemberEmails
+                    .filter((e) => !team.members.some((m) => m.email === e))
+                    .map((email) => (
+                      <li key={email}>Missing registration: {email}</li>
+                    ))}
+                </ul>
+              </div>
+            )}
 
             {team.lead && (
               <div className="rounded-lg border p-4 space-y-2">
