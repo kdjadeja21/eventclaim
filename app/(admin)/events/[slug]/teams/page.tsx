@@ -32,10 +32,11 @@ export default async function TeamsPage({ params }: Props) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Teams</h1>
           <p className="text-sm text-muted-foreground">
-            {event.name} &middot; {pageData.stats.totalTeams} team
-            {pageData.stats.totalTeams !== 1 ? "s" : ""} &middot;{" "}
-            {pageData.registrations.length} registration
-            {pageData.registrations.length !== 1 ? "s" : ""}
+            {event.name} &middot; {pageData.stats.formedTeams} formed team
+            {pageData.stats.formedTeams !== 1 ? "s" : ""} &middot;{" "}
+            {pageData.stats.poolCount} in pool &middot;{" "}
+            {pageData.stats.totalRegistrations} registration
+            {pageData.stats.totalRegistrations !== 1 ? "s" : ""}
           </p>
         </div>
       </div>
@@ -47,6 +48,7 @@ export default async function TeamsPage({ params }: Props) {
         registrations={pageData.registrations}
         eventSlug={slug}
         eventId={pageData.eventId}
+        event={pageData.event}
         lumaApiEnabled={isLumaApiConfigured()}
         lumaEventId={event.lumaEventId ?? null}
         initialLumaLastSyncedAt={event.lumaLastSyncedAt ?? null}

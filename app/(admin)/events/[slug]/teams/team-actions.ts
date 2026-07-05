@@ -4,22 +4,54 @@ import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { attendeeDocId } from "@/lib/import";
 import { fetchAllLumaGuests, fetchLumaGuestsPage, FetchAllGuestsParams, LumaGuest } from "@/lib/luma";
-import { lumaGuestToRegistration, registrationDocId } from "@/lib/registrations";
+import {
+  DEFAULT_TICKET_TYPE_MAP,
+  lumaGuestToRegistration,
+  registrationDocId,
+  TEAM_QUESTION_ID,
+} from "@/lib/registrations";
 import { applyTeamBuild, newManualTeamId } from "@/lib/team-mapping";
 import { requireSession } from "@/lib/session";
-import { Registration, Team, TeamStatus } from "@/lib/types";
+import { Event, Registration, Team, TeamIssue, TeamLink, TeamStatus } from "@/lib/types";
 import { normalizeEmail } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
+import { nanoid } from "nanoid";
 import { z } from "zod";
 
-async function resolveEvent(slug: string): Promise<{ eventId: string; slug: string }> {
+interface EventContext {
+  eventId: string;
+  slug: string;
+  event: Event;
+}
+
+async function resolveEvent(slug: string): Promise<EventContext> {
   const eventSnap = await adminDb
     .collection("events")
     .where("slug", "==", slug)
     .limit(1)
     .get();
   if (eventSnap.empty) throw new Error("Event not found");
-  return { eventId: eventSnap.docs[0].id, slug };
+  const doc = eventSnap.docs[0];
+  const event = { ...(doc.data() as Event), id: doc.id };
+  return { eventId: doc.id, slug, event };
+}
+
+function registrationParseOptions(event: Event) {
+  return {
+    ticketTypeMap: event.ticketTypeMap ?? DEFAULT_TICKET_TYPE_MAP,
+    teamQuestionId: event.teamQuestionId ?? TEAM_QUESTION_ID,
+  };
+}
+
+async function rebuildTeamsForEvent(ctx: EventContext) {
+  const eventRef = adminDb.collection("events").doc(ctx.eventId);
+  const [regsSnap, teamsSnap] = await Promise.all([
+    eventRef.collection("registrations").get(),
+    eventRef.collection("teams").get(),
+  ]);
+  const registrations = regsSnap.docs.map((d) => d.data() as Registration);
+  const existingTeams = teamsSnap.docs.map((d) => d.data() as Team);
+  return applyTeamBuild(ctx.eventId, registrations, existingTeams, ctx.event);
 }
 
 async function deleteCollectionInBatches(
@@ -41,12 +73,13 @@ async function deleteCollectionInBatches(
 const FIRESTORE_BATCH_LIMIT = 450;
 
 async function upsertGuestsToFirestore(
-  eventId: string,
+  ctx: EventContext,
   guests: LumaGuest[],
   attendeeEmailSet: Set<string>
 ): Promise<{ saved: number; skipped: number }> {
-  const eventRef = adminDb.collection("events").doc(eventId);
+  const eventRef = adminDb.collection("events").doc(ctx.eventId);
   const regsRef = eventRef.collection("registrations");
+  const parseOptions = registrationParseOptions(ctx.event);
 
   const validGuests: { guest: LumaGuest; email: string; regId: string }[] = [];
   let skipped = 0;
@@ -60,7 +93,7 @@ async function upsertGuestsToFirestore(
     validGuests.push({
       guest,
       email,
-      regId: registrationDocId(eventId, guest.id, email),
+      regId: registrationDocId(ctx.eventId, guest.id, email),
     });
   }
 
@@ -80,15 +113,15 @@ async function upsertGuestsToFirestore(
 
     for (const { guest, email, regId } of chunk) {
       const existing = existingById.get(regId);
-      const attendeeId = attendeeDocId(eventId, email);
-      const registration = lumaGuestToRegistration(guest, eventId, {
+      const attendeeId = attendeeDocId(ctx.eventId, email);
+      const registration = lumaGuestToRegistration(guest, ctx.eventId, {
         ...existing,
         attendeeId: attendeeEmailSet.has(email)
           ? attendeeId
           : existing?.attendeeId ?? null,
         teamId: existing?.teamId ?? null,
         isManualMapping: existing?.isManualMapping ?? false,
-      });
+      }, parseOptions);
       batch.set(regsRef.doc(registration.id), registration, { merge: true });
       saved++;
     }
@@ -138,9 +171,9 @@ export async function upsertRegistrationBatch(
 ): Promise<UpsertBatchResult> {
   await requireSession();
   try {
-    const { eventId } = await resolveEvent(slug);
+    const ctx = await resolveEvent(slug);
     const attendeeEmailSet = new Set(attendeeEmails.map(normalizeEmail));
-    const result = await upsertGuestsToFirestore(eventId, guests, attendeeEmailSet);
+    const result = await upsertGuestsToFirestore(ctx, guests, attendeeEmailSet);
     return result;
   } catch (err) {
     return {
@@ -169,8 +202,8 @@ export async function finalizeLumaSync(
   const syncedAt = new Date().toISOString();
 
   try {
-    const { eventId } = await resolveEvent(slug);
-    const eventRef = adminDb.collection("events").doc(eventId);
+    const ctx = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(ctx.eventId);
 
     const [allRegsSnap, allTeamsSnap] = await Promise.all([
       eventRef.collection("registrations").get(),
@@ -179,7 +212,12 @@ export async function finalizeLumaSync(
 
     const registrations = allRegsSnap.docs.map((d) => d.data() as Registration);
     const existingTeams = allTeamsSnap.docs.map((d) => d.data() as Team);
-    const buildResult = await applyTeamBuild(eventId, registrations, existingTeams);
+    const buildResult = await applyTeamBuild(
+      ctx.eventId,
+      registrations,
+      existingTeams,
+      ctx.event
+    );
 
     await eventRef.update({
       lumaEventId,
@@ -188,7 +226,7 @@ export async function finalizeLumaSync(
     });
 
     await writeAuditLog({
-      eventId,
+      eventId: ctx.eventId,
       action: "registrations_luma_synced",
       metadata: {
         lumaEventId,
@@ -200,7 +238,7 @@ export async function finalizeLumaSync(
     });
 
     await writeAuditLog({
-      eventId,
+      eventId: ctx.eventId,
       action: "teams_auto_built",
       metadata: { ...buildResult },
       userId: session.uid,
@@ -317,9 +355,9 @@ export async function syncLumaRegistrations(
 ): Promise<SyncRegistrationsResult> {
   const session = await requireSession();
 
-  let eventId: string;
+  let ctx: EventContext;
   try {
-    ({ eventId } = await resolveEvent(slug));
+    ctx = await resolveEvent(slug);
   } catch {
     return emptySyncResult("Event not found.");
   }
@@ -336,12 +374,12 @@ export async function syncLumaRegistrations(
 
   const attendeeEmailSet = new Set(prep.attendeeEmails.map(normalizeEmail));
   const { saved: syncedCount, skipped: invalid } = await upsertGuestsToFirestore(
-    eventId,
+    ctx,
     guests,
     attendeeEmailSet
   );
 
-  const eventRef = adminDb.collection("events").doc(eventId);
+  const eventRef = adminDb.collection("events").doc(ctx.eventId);
   const syncedAt = new Date().toISOString();
 
   const [allRegsSnap, allTeamsSnap] = await Promise.all([
@@ -352,7 +390,12 @@ export async function syncLumaRegistrations(
   const registrations = allRegsSnap.docs.map((d) => d.data() as Registration);
   const existingTeams = allTeamsSnap.docs.map((d) => d.data() as Team);
 
-  const buildResult = await applyTeamBuild(eventId, registrations, existingTeams);
+  const buildResult = await applyTeamBuild(
+    ctx.eventId,
+    registrations,
+    existingTeams,
+    ctx.event
+  );
 
   await eventRef.update({
     lumaEventId: lumaParams.event_id,
@@ -361,7 +404,7 @@ export async function syncLumaRegistrations(
   });
 
   await writeAuditLog({
-    eventId,
+    eventId: ctx.eventId,
     action: "registrations_luma_synced",
     metadata: {
       lumaEventId: lumaParams.event_id,
@@ -374,7 +417,7 @@ export async function syncLumaRegistrations(
   });
 
   await writeAuditLog({
-    eventId,
+    eventId: ctx.eventId,
     action: "teams_auto_built",
     metadata: { ...buildResult },
     userId: session.uid,
@@ -466,6 +509,7 @@ export async function assignMemberToTeam(
       tx.update(regRef, {
         teamId,
         isManualMapping: true,
+        inPool: false,
         updatedAt: now,
       });
     });
@@ -533,6 +577,7 @@ export async function removeMemberFromTeam(
       tx.update(regRef, {
         teamId: null,
         isManualMapping: true,
+        inPool: true,
         updatedAt: now,
       });
     });
@@ -730,21 +775,13 @@ export async function rebuildTeams(
   slug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
-  const { eventId } = await resolveEvent(slug);
 
   try {
-    const eventRef = adminDb.collection("events").doc(eventId);
-    const [regsSnap, teamsSnap] = await Promise.all([
-      eventRef.collection("registrations").get(),
-      eventRef.collection("teams").get(),
-    ]);
-
-    const registrations = regsSnap.docs.map((d) => d.data() as Registration);
-    const existingTeams = teamsSnap.docs.map((d) => d.data() as Team);
-    const result = await applyTeamBuild(eventId, registrations, existingTeams);
+    const ctx = await resolveEvent(slug);
+    const result = await rebuildTeamsForEvent(ctx);
 
     await writeAuditLog({
-      eventId,
+      eventId: ctx.eventId,
       action: "teams_auto_built",
       metadata: { ...result },
       userId: session.uid,
@@ -756,6 +793,246 @@ export async function rebuildTeams(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to rebuild teams.",
+    };
+  }
+}
+
+const fuzzyLinkSchema = z.object({
+  slug: z.string().min(1),
+  teamId: z.string().min(1),
+  fromEmail: z.string().email(),
+  toRegistrationId: z.string().min(1),
+});
+
+export async function acceptFuzzyLink(
+  slug: string,
+  teamId: string,
+  fromEmail: string,
+  toRegistrationId: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+  const parsed = fuzzyLinkSchema.safeParse({ slug, teamId, fromEmail, toRegistrationId });
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  try {
+    const ctx = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(ctx.eventId);
+    const now = new Date().toISOString();
+    const normalizedFrom = normalizeEmail(fromEmail);
+
+    const regSnap = await eventRef.collection("registrations").doc(toRegistrationId).get();
+    if (!regSnap.exists) return { success: false, error: "Target registration not found." };
+    const targetReg = regSnap.data() as Registration;
+
+    const link: TeamLink = {
+      id: nanoid(),
+      eventId: ctx.eventId,
+      fromRegistrationId: teamId,
+      toEmail: normalizedFrom,
+      toRegistrationId,
+      linkType: "confirmed_fuzzy",
+      createdAt: now,
+      createdBy: session.uid,
+    };
+
+    await eventRef.collection("teamLinks").doc(link.id).set(link);
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "team_link_confirmed",
+      metadata: { teamId, fromEmail: normalizedFrom, toRegistrationId, toEmail: targetReg.email },
+      userId: session.uid,
+    });
+
+    await rebuildTeamsForEvent(ctx);
+    revalidatePath(`/events/${slug}/teams`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to confirm link.",
+    };
+  }
+}
+
+export async function rejectFuzzyLink(
+  slug: string,
+  teamId: string,
+  fromEmail: string,
+  toRegistrationId: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+  const parsed = fuzzyLinkSchema.safeParse({ slug, teamId, fromEmail, toRegistrationId });
+  if (!parsed.success) return { success: false, error: "Invalid input." };
+
+  try {
+    const ctx = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(ctx.eventId);
+    const teamRef = eventRef.collection("teams").doc(teamId);
+    const teamSnap = await teamRef.get();
+    if (!teamSnap.exists) return { success: false, error: "Team not found." };
+
+    const team = teamSnap.data() as Team;
+    const normalizedFrom = normalizeEmail(fromEmail);
+    const remainingLinks = (team.suggestedLinks ?? []).filter(
+      (l) =>
+        !(
+          normalizeEmail(l.fromEmail) === normalizedFrom &&
+          l.toRegistrationId === toRegistrationId
+        )
+    );
+
+    const issues: TeamIssue[] = team.issues.filter((i) => i !== "fuzzy_match_pending");
+    if (remainingLinks.length > 0) issues.push("fuzzy_match_pending");
+
+    await teamRef.update({
+      suggestedLinks: remainingLinks,
+      issues,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "team_link_rejected",
+      metadata: { teamId, fromEmail: normalizedFrom, toRegistrationId },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/teams`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to reject suggestion.",
+    };
+  }
+}
+
+export async function moveRegistrationToPool(
+  slug: string,
+  registrationId: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+  try {
+    const ctx = await resolveEvent(slug);
+    const eventRef = adminDb.collection("events").doc(ctx.eventId);
+    const now = new Date().toISOString();
+    const regRef = eventRef.collection("registrations").doc(registrationId);
+    const regSnap = await regRef.get();
+    if (!regSnap.exists) return { success: false, error: "Registration not found." };
+    const reg = regSnap.data() as Registration;
+
+    if (reg.teamId) {
+      const teamRef = eventRef.collection("teams").doc(reg.teamId);
+      const teamSnap = await teamRef.get();
+      if (teamSnap.exists) {
+        const team = teamSnap.data() as Team;
+        const updates: Partial<Team> = { updatedAt: now };
+        if (team.leadRegistrationId === registrationId) {
+          return { success: false, error: "Cannot move team lead to pool. Reassign lead first." };
+        }
+        updates.memberRegistrationIds = team.memberRegistrationIds.filter(
+          (id) => id !== registrationId
+        );
+        updates.memberEmails = team.memberEmails.filter((e) => e !== reg.email);
+        await teamRef.update(updates);
+      }
+    }
+
+    await regRef.update({
+      teamId: null,
+      inPool: true,
+      isManualMapping: true,
+      updatedAt: now,
+    });
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "team_registration_pooled",
+      metadata: { registrationId, email: reg.email },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/teams`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to move to pool.",
+    };
+  }
+}
+
+export async function bulkAssignToTeam(
+  slug: string,
+  teamId: string,
+  registrationIds: string[]
+): Promise<{ success: boolean; assigned: number; error?: string }> {
+  let assigned = 0;
+  for (const registrationId of registrationIds) {
+    const result = await assignMemberToTeam(slug, teamId, registrationId);
+    if (result.success) assigned++;
+  }
+  return { success: assigned > 0, assigned };
+}
+
+export async function updateEventTeamSettings(
+  slug: string,
+  data: {
+    minSize: number;
+    maxSize: number;
+    allowOversized: boolean;
+    teamQuestionId?: string;
+    createTicketTypeId?: string;
+    joinTicketTypeId?: string;
+    findTicketTypeId?: string;
+  }
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  if (data.minSize < 1 || data.maxSize < data.minSize) {
+    return { success: false, error: "Invalid team size rules." };
+  }
+
+  try {
+    const ctx = await resolveEvent(slug);
+    const ticketTypeMap = {
+      create_team: [data.createTicketTypeId ?? DEFAULT_TICKET_TYPE_MAP.create_team![0]],
+      join_team: [data.joinTicketTypeId ?? DEFAULT_TICKET_TYPE_MAP.join_team![0]],
+      find_team: [data.findTicketTypeId ?? DEFAULT_TICKET_TYPE_MAP.find_team![0]],
+    };
+
+    await adminDb.collection("events").doc(ctx.eventId).update({
+      teamRules: {
+        minSize: data.minSize,
+        maxSize: data.maxSize,
+        allowOversized: data.allowOversized,
+      },
+      teamQuestionId: data.teamQuestionId?.trim() || TEAM_QUESTION_ID,
+      ticketTypeMap,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await writeAuditLog({
+      eventId: ctx.eventId,
+      action: "event_updated",
+      metadata: { teamRules: data, ticketTypeMap },
+      userId: session.uid,
+    });
+
+    await rebuildTeamsForEvent({ ...ctx, event: { ...ctx.event, teamRules: {
+      minSize: data.minSize,
+      maxSize: data.maxSize,
+      allowOversized: data.allowOversized,
+    }, teamQuestionId: data.teamQuestionId, ticketTypeMap } });
+
+    revalidatePath(`/events/${slug}/teams`);
+    revalidatePath(`/events/${slug}`);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to update team settings.",
     };
   }
 }

@@ -35,6 +35,7 @@ import {
 } from "@/lib/types";
 import {
   COMPANY_QUESTION_ID,
+  ISSUE_LABELS,
   LINKEDIN_QUESTION_ID,
   PRIMARY_ROLE_QUESTION_ID,
   getRegistrationField,
@@ -43,16 +44,13 @@ import { cn, formatDateTime } from "@/lib/utils";
 import { getTeamDetail } from "./team-data-actions";
 import {
   assignMemberToTeam,
+  acceptFuzzyLink,
+  rejectFuzzyLink,
   markTeamComplete,
   removeMemberFromTeam,
 } from "./team-actions";
 
-const issueLabels: Record<TeamIssue, string> = {
-  missing_member: "Expected member not registered",
-  unmatched_lead: "Team lead not found",
-  invalid_team_answer: "Invalid team answer",
-  no_lead: "No team lead assigned",
-};
+const issueLabels = ISSUE_LABELS;
 
 interface TeamDetailDialogProps {
   open: boolean;
@@ -200,6 +198,80 @@ export default function TeamDetailDialog({
               </Badge>
               {team.source === "manual" && <Badge variant="secondary">Manual</Badge>}
             </div>
+
+            {team.suggestedLinks && team.suggestedLinks.length > 0 && (
+              <div className="rounded-md border border-blue-300 bg-blue-50 p-3 dark:border-blue-700 dark:bg-blue-950/30">
+                <p className="text-sm font-medium mb-2">Suggested email matches</p>
+                <ul className="space-y-2">
+                  {team.suggestedLinks.map((link) => (
+                    <li
+                      key={`${link.fromEmail}-${link.toRegistrationId}`}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        {link.fromEmail} → {link.toEmail}{" "}
+                        <span className="text-muted-foreground">({link.reason})</span>
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={isPending}
+                          onClick={() => {
+                            if (!teamId) return;
+                            startTransition(async () => {
+                              const result = await acceptFuzzyLink(
+                                slug,
+                                teamId,
+                                link.fromEmail,
+                                link.toRegistrationId
+                              );
+                              if (result.success) {
+                                toast.success("Link confirmed — rebuilding teams");
+                                onUpdated();
+                              } else {
+                                toast.error(result.error ?? "Failed to accept");
+                              }
+                            });
+                          }}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={isPending}
+                          onClick={() => {
+                            if (!teamId) return;
+                            startTransition(async () => {
+                              const result = await rejectFuzzyLink(
+                                slug,
+                                teamId,
+                                link.fromEmail,
+                                link.toRegistrationId
+                              );
+                              if (result.success) {
+                                toast.success("Suggestion dismissed");
+                                const detail = await getTeamDetail(slug, teamId);
+                                setTeam(detail);
+                              } else {
+                                toast.error(result.error ?? "Failed to reject");
+                              }
+                            });
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {team.reviewSummary && (
+              <p className="text-sm text-muted-foreground">{team.reviewSummary}</p>
+            )}
 
             {team.issues.length > 0 && (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">

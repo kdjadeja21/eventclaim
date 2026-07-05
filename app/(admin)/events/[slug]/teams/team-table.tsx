@@ -11,11 +11,27 @@ import {
   Settings2,
   RotateCcw,
   Trash2,
+  UserPlus,
 } from "lucide-react";
-import { Registration, Team, TicketCategory, TeamStatus } from "@/lib/types";
+import {
+  Event,
+  Registration,
+  Team,
+  TeamFormationStats,
+  TeamIssue,
+  TicketCategory,
+  TeamStatus,
+} from "@/lib/types";
+import {
+  ISSUE_LABELS,
+  ISSUE_PRIORITY,
+  PRIMARY_ROLE_QUESTION_ID,
+  getRegistrationField,
+} from "@/lib/registrations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +59,7 @@ import {
 import { TablePagination } from "@/components/ui/table-pagination";
 import { formatDateTime } from "@/lib/utils";
 import TeamDetailDialog from "./team-detail-dialog";
+import TeamRulesEditor from "./team-rules-editor";
 import {
   TeamSyncProgressDialog,
   initialSyncProgress,
@@ -55,6 +72,10 @@ import {
   upsertRegistrationBatch,
   finalizeLumaSync,
   fetchLumaGuestsPageForSync,
+  bulkAssignToTeam,
+  moveRegistrationToPool,
+  acceptFuzzyLink,
+  rejectFuzzyLink,
 } from "./team-actions";
 import type { FetchAllGuestsParams } from "@/lib/luma";
 import LumaFetchDialog, {
@@ -64,29 +85,18 @@ import LumaFetchDialog, {
   saveStoredConfig,
 } from "../attendees/luma-fetch-dialog";
 
-type TicketFilter =
-  | "all"
-  | "create_team"
-  | "join_team"
-  | "find_team"
-  | "incomplete";
+type TeamStatusFilter = "all" | TeamStatus;
 
 interface TeamTableProps {
   teams: Team[];
   registrations: Registration[];
   eventSlug: string;
   eventId: string;
+  event: Event;
   lumaApiEnabled: boolean;
   lumaEventId: string | null;
   initialLumaLastSyncedAt: string | null;
-  stats: {
-    totalTeams: number;
-    createTeam: number;
-    joinTeam: number;
-    findTeam: number;
-    incomplete: number;
-    unassigned: number;
-  };
+  stats: TeamFormationStats & { totalRegistrations: number };
 }
 
 function ticketLabel(category: TicketCategory, ticketName?: string): string {
@@ -107,17 +117,39 @@ function ticketBadgeVariant(
 
 function statusBadgeVariant(
   status: TeamStatus
-): "success" | "warning" | "secondary" | "info" {
+): "success" | "warning" | "secondary" | "info" | "destructive" {
   if (status === "complete") return "success";
   if (status === "incomplete") return "warning";
+  if (status === "needs_review") return "destructive";
   if (status === "manual") return "info";
   return "secondary";
+}
+
+function teamRoles(team: Team, regById: Map<string, Registration>): string[] {
+  const ids = [
+    ...(team.leadRegistrationId ? [team.leadRegistrationId] : []),
+    ...team.memberRegistrationIds,
+  ];
+  const roles = new Set<string>();
+  for (const id of ids) {
+    const reg = regById.get(id);
+    if (!reg) continue;
+    const role = getRegistrationField(reg, PRIMARY_ROLE_QUESTION_ID) ?? reg.role;
+    if (role) roles.add(role);
+  }
+  return [...roles];
+}
+
+function reviewPriority(team: Team): number {
+  if (team.issues.length === 0) return 99;
+  return Math.min(...team.issues.map((i) => ISSUE_PRIORITY[i] ?? 99));
 }
 
 export default function TeamTable({
   teams: initialTeams,
   registrations: initialRegistrations,
   eventSlug,
+  event,
   lumaApiEnabled,
   lumaEventId,
   initialLumaLastSyncedAt,
@@ -125,9 +157,12 @@ export default function TeamTable({
 }: TeamTableProps) {
   const [teams, setTeams] = useState(initialTeams);
   const [registrations, setRegistrations] = useState(initialRegistrations);
+  const [activeTab, setActiveTab] = useState("teams");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<TicketFilter>("all");
+  const [teamStatusFilter, setTeamStatusFilter] = useState<TeamStatusFilter>("all");
+  const [poolSearch, setPoolSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [poolPage, setPoolPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -136,9 +171,12 @@ export default function TeamTable({
   const [isSyncing, startSync] = useTransition();
   const [isRebuilding, startRebuild] = useTransition();
   const [isDeleting, startDelete] = useTransition();
+  const [isBulkAssigning, startBulkAssign] = useTransition();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [syncProgress, setSyncProgress] = useState<SyncProgressState>(initialSyncProgress);
+  const [selectedPoolIds, setSelectedPoolIds] = useState<Set<string>>(new Set());
+  const [bulkTeamId, setBulkTeamId] = useState<string>("");
 
   const [lumaConfig, setLumaConfig] = useState<LumaFetchConfig>(() => ({
     ...defaultConfig,
@@ -170,55 +208,72 @@ export default function TeamTable({
     [registrations]
   );
 
-  const filtered = useMemo(() => {
-    let list = teams;
+  const formedTeams = useMemo(
+    () => teams.filter((t) => t.status !== "needs_review"),
+    [teams]
+  );
 
-    if (filter === "create_team") list = list.filter((t) => t.ticketCategory === "create_team");
-    else if (filter === "join_team") list = list.filter((t) => t.ticketCategory === "join_team");
-    else if (filter === "find_team") list = list.filter((t) => t.ticketCategory === "find_team");
-    else if (filter === "incomplete")
-      list = list.filter((t) => t.status === "incomplete" || t.status === "unassigned");
+  const reviewTeams = useMemo(
+    () =>
+      [...teams.filter((t) => t.status === "needs_review")].sort(
+        (a, b) => reviewPriority(a) - reviewPriority(b)
+      ),
+    [teams]
+  );
 
+  const poolList = useMemo(
+    () => registrations.filter((r) => !r.teamId && (r.inPool ?? r.ticketCategory === "find_team")),
+    [registrations]
+  );
+
+  const filteredTeams = useMemo(() => {
+    let list = formedTeams;
+    if (teamStatusFilter !== "all") {
+      list = list.filter((t) => t.status === teamStatusFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter((t) => {
         const lead = t.leadRegistrationId ? regById.get(t.leadRegistrationId) : null;
-        const leadMatch =
+        return (
           t.name.toLowerCase().includes(q) ||
           (t.leadEmail?.toLowerCase().includes(q) ?? false) ||
-          (lead?.name.toLowerCase().includes(q) ?? false);
-        const memberMatch =
-          t.memberEmails.some((e) => e.toLowerCase().includes(q)) ||
-          t.memberRegistrationIds.some((id) => {
-            const m = regById.get(id);
-            return m?.name.toLowerCase().includes(q) ?? false;
-          });
-        return leadMatch || memberMatch;
+          (lead?.name.toLowerCase().includes(q) ?? false) ||
+          t.memberEmails.some((e) => e.toLowerCase().includes(q))
+        );
       });
     }
-
     return list;
-  }, [teams, filter, search, regById]);
+  }, [formedTeams, teamStatusFilter, search, regById]);
 
-  const paginated = useMemo(() => {
+  const filteredPool = useMemo(() => {
+    if (!poolSearch.trim()) return poolList;
+    const q = poolSearch.trim().toLowerCase();
+    return poolList.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.email.toLowerCase().includes(q) ||
+        r.ticketName.toLowerCase().includes(q)
+    );
+  }, [poolList, poolSearch]);
+
+  const paginatedTeams = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, currentPage, pageSize]);
+    return filteredTeams.slice(start, start + pageSize);
+  }, [filteredTeams, currentPage, pageSize]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, search, pageSize]);
+  const paginatedPool = useMemo(() => {
+    const start = (poolPage - 1) * pageSize;
+    return filteredPool.slice(start, start + pageSize);
+  }, [filteredPool, poolPage, pageSize]);
 
-  const unassignedRegistrations = useMemo(
-    () =>
-      registrations.filter(
-        (r) =>
-          !r.teamId ||
-          r.ticketCategory === "find_team" ||
-          r.role === "individual"
-      ),
-    [registrations]
+  const assignableTeams = useMemo(
+    () => teams.filter((t) => t.status !== "complete" || t.source === "manual"),
+    [teams]
   );
+
+  useEffect(() => setCurrentPage(1), [teamStatusFilter, search, pageSize]);
+  useEffect(() => setPoolPage(1), [poolSearch, pageSize]);
 
   function buildLumaParams(): FetchAllGuestsParams {
     return {
@@ -226,9 +281,7 @@ export default function TeamTable({
       ...(lumaConfig.approvalStatus !== "any"
         ? { approval_status: lumaConfig.approvalStatus }
         : {}),
-      ...(lumaConfig.sortColumn !== "none"
-        ? { sort_column: lumaConfig.sortColumn }
-        : {}),
+      ...(lumaConfig.sortColumn !== "none" ? { sort_column: lumaConfig.sortColumn } : {}),
       ...(lumaConfig.sortDirection !== "none"
         ? { sort_direction: lumaConfig.sortDirection }
         : {}),
@@ -300,14 +353,6 @@ export default function TeamTable({
         if (batchResult.error) throw new Error(batchResult.error);
         totalSaved += batchResult.saved;
 
-        setSyncProgress({
-          open: true,
-          phase: "saving",
-          processed: totalSaved,
-          fetched: totalFetched,
-          message: `Saved ${totalSaved} of ${totalFetched} registrations…`,
-        });
-
         if (!page.has_more || !page.next_cursor) break;
         cursor = page.next_cursor;
         pageIndex++;
@@ -368,10 +413,7 @@ export default function TeamTable({
       toast.error("Set a Luma event ID first.");
       return;
     }
-
-    startSync(() => {
-      void runChunkedSync();
-    });
+    startSync(() => void runChunkedSync());
   }
 
   function handleDeleteAll() {
@@ -407,6 +449,32 @@ export default function TeamTable({
     setDetailOpen(true);
   }
 
+  function togglePoolSelection(id: string) {
+    setSelectedPoolIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleBulkAssign() {
+    if (!bulkTeamId || selectedPoolIds.size === 0) return;
+    startBulkAssign(async () => {
+      const result = await bulkAssignToTeam(
+        eventSlug,
+        bulkTeamId,
+        [...selectedPoolIds]
+      );
+      if (result.success) {
+        toast.success(`Assigned ${result.assigned} member(s)`);
+        window.location.reload();
+      } else {
+        toast.error(result.error ?? "Bulk assign failed");
+      }
+    });
+  }
+
   function memberPreview(team: Team): string {
     const names = team.memberRegistrationIds
       .slice(0, 3)
@@ -423,12 +491,12 @@ export default function TeamTable({
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: "Total teams", value: stats.totalTeams },
-          { label: "Create a Team", value: stats.createTeam },
-          { label: "Join a Team", value: stats.joinTeam },
-          { label: "Find Me a Team", value: stats.findTeam },
-          { label: "Incomplete", value: stats.incomplete },
-          { label: "Unassigned", value: stats.unassigned },
+          { label: "Formed teams", value: stats.formedTeams },
+          { label: "Complete", value: stats.completeTeams },
+          { label: "Incomplete", value: stats.incompleteTeams },
+          { label: "Needs review", value: stats.needsReviewTeams },
+          { label: "Unassigned pool", value: stats.poolCount },
+          { label: "Auto-resolved", value: `${stats.autoResolvedPercent}%` },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg border bg-card p-3">
             <p className="text-xs text-muted-foreground">{label}</p>
@@ -437,180 +505,234 @@ export default function TeamTable({
         ))}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col sm:flex-row gap-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search team, lead, or member..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <Select value={filter} onValueChange={(v) => setFilter(v as TicketFilter)}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Filter by ticket" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All ticket types</SelectItem>
-              <SelectItem value="create_team">Create a Team</SelectItem>
-              <SelectItem value="join_team">Join a Team</SelectItem>
-              <SelectItem value="find_team">Find Me a Team</SelectItem>
-              <SelectItem value="incomplete">Incomplete / Unassigned</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 justify-end">
+        <TeamRulesEditor eventSlug={eventSlug} event={event} />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isRebuilding || isSyncing}
+          onClick={handleRebuild}
+        >
+          {isRebuilding ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RotateCcw className="h-4 w-4 mr-2" />
+          )}
+          Rebuild
+        </Button>
+        {(teams.length > 0 || registrations.length > 0) && (
           <Button
             variant="outline"
             size="sm"
-            disabled={isRebuilding || isSyncing}
-            onClick={handleRebuild}
+            disabled={isDeleting || isSyncing}
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteDialogOpen(true)}
           >
-            {isRebuilding ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RotateCcw className="h-4 w-4 mr-2" />
-            )}
-            Rebuild
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete all
           </Button>
-          {(teams.length > 0 || registrations.length > 0) && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isDeleting || isSyncing}
-              className="text-destructive hover:text-destructive"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete all
+        )}
+        {lumaApiEnabled && (
+          <>
+            <Button variant="outline" size="sm" onClick={() => setLumaDialogOpen(true)}>
+              <Settings2 className="h-4 w-4 mr-2" />
+              Luma config
             </Button>
-          )}
-          {lumaApiEnabled && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLumaDialogOpen(true)}
-              >
-                <Settings2 className="h-4 w-4 mr-2" />
-                Luma config
-              </Button>
-              <Button size="sm" disabled={isSyncing || isDeleting} onClick={handleSync}>
-                {isSyncing ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Sync from Luma
-              </Button>
-            </>
-          )}
-        </div>
+            <Button size="sm" disabled={isSyncing || isDeleting} onClick={handleSync}>
+              {isSyncing ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Sync from Luma
+            </Button>
+          </>
+        )}
       </div>
 
       {lastSyncedAt && (
         <p className="text-xs text-muted-foreground">
           Last synced: {formatDateTime(lastSyncedAt)}
           {lumaEventId && ` · Luma event ${lumaEventId}`}
+          {` · ${stats.totalRegistrations} registrations`}
         </p>
       )}
 
-      <div className="rounded-lg border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Team / Lead</TableHead>
-              <TableHead>Members</TableHead>
-              <TableHead>Ticket type</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Issues</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginated.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                  {teams.length === 0
-                    ? "No teams yet. Sync registrations from Luma to get started."
-                    : "No teams match your filters."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginated.map((team) => {
-                const lead = team.leadRegistrationId
-                  ? regById.get(team.leadRegistrationId)
-                  : null;
-                const memberCount = team.memberRegistrationIds.length + (lead ? 1 : 0);
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="teams">Teams ({formedTeams.length})</TabsTrigger>
+          <TabsTrigger value="pool">Unassigned Pool ({poolList.length})</TabsTrigger>
+          <TabsTrigger value="review">Review Queue ({reviewTeams.length})</TabsTrigger>
+        </TabsList>
 
-                return (
-                  <TableRow
-                    key={team.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => openTeamDetail(team.id)}
-                  >
-                    <TableCell>
-                      <div>
-                        <p className="font-medium">{team.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {lead?.email ?? team.leadEmail ?? "No lead"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-sm">{memberCount}</span>
-                        <span className="text-xs text-muted-foreground truncate max-w-[180px]">
-                          {memberPreview(team)}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={ticketBadgeVariant(team.ticketCategory)}>
-                        {ticketLabel(team.ticketCategory, lead?.ticketName)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadgeVariant(team.status)}>
-                        {team.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {team.issues.length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-amber-600 text-xs">
-                          <AlertTriangle className="h-3.5 w-3.5" />
-                          {team.issues.length}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+        <TabsContent value="teams" className="space-y-4 mt-4">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search team, lead, or member..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select
+              value={teamStatusFilter}
+              onValueChange={(v) => setTeamStatusFilter(v as TeamStatusFilter)}
+            >
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="complete">Complete</SelectItem>
+                <SelectItem value="incomplete">Incomplete</SelectItem>
+                <SelectItem value="manual">Manual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <TeamsTableBody
+            rows={paginatedTeams}
+            regById={regById}
+            emptyMessage={
+              teams.length === 0
+                ? "No teams yet. Sync registrations from Luma to get started."
+                : "No teams match your filters."
+            }
+            onRowClick={openTeamDetail}
+            memberPreview={memberPreview}
+            showConfidence
+          />
+
+          <TablePagination
+            total={filteredTeams.length}
+            page={currentPage}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="teams"
+          />
+        </TabsContent>
+
+        <TabsContent value="pool" className="space-y-4 mt-4">
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search pool by name or email..."
+                value={poolSearch}
+                onChange={(e) => setPoolSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            {selectedPoolIds.size > 0 && (
+              <div className="flex flex-wrap gap-2 items-center">
+                <Select value={bulkTeamId} onValueChange={setBulkTeamId}>
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue placeholder="Assign to team..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignableTeams.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  disabled={!bulkTeamId || isBulkAssigning}
+                  onClick={handleBulkAssign}
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Assign {selectedPoolIds.size} selected
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Ticket</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedPool.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                      No unassigned registrations in the pool.
                     </TableCell>
                   </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                ) : (
+                  paginatedPool.map((reg) => (
+                    <TableRow key={reg.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedPoolIds.has(reg.id)}
+                          onChange={() => togglePoolSelection(reg.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium">{reg.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{reg.email}</TableCell>
+                      <TableCell className="text-xs">
+                        {getRegistrationField(reg, PRIMARY_ROLE_QUESTION_ID) ?? reg.role}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={ticketBadgeVariant(reg.ticketCategory)}>
+                          {ticketLabel(reg.ticketCategory, reg.ticketName)}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
 
-      <TablePagination
-        total={filtered.length}
-        page={currentPage}
-        pageSize={pageSize}
-        onPageChange={setCurrentPage}
-        onPageSizeChange={setPageSize}
-        itemLabel="teams"
-      />
+          <TablePagination
+            total={filteredPool.length}
+            page={poolPage}
+            pageSize={pageSize}
+            onPageChange={setPoolPage}
+            onPageSizeChange={setPageSize}
+            itemLabel="registrations"
+          />
+        </TabsContent>
+
+        <TabsContent value="review" className="space-y-4 mt-4">
+          {reviewTeams.length === 0 ? (
+            <div className="rounded-lg border bg-card p-12 text-center text-muted-foreground">
+              No items need review. Great job!
+            </div>
+          ) : (
+            reviewTeams.map((team) => (
+              <ReviewCard
+                key={team.id}
+                team={team}
+                regById={regById}
+                eventSlug={eventSlug}
+                onOpen={() => openTeamDetail(team.id)}
+                onUpdated={() => window.location.reload()}
+              />
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
 
       <TeamDetailDialog
         open={detailOpen}
         onOpenChange={setDetailOpen}
         slug={eventSlug}
         teamId={selectedTeamId}
-        unassignedRegistrations={unassignedRegistrations}
+        unassignedRegistrations={poolList}
         onUpdated={() => window.location.reload()}
       />
 
@@ -639,8 +761,7 @@ export default function TeamTable({
             <DialogTitle>Delete all team records?</DialogTitle>
             <DialogDescription>
               This permanently removes all registrations and teams for this event.
-              Attendee records are not affected. Type <strong>DELETE ALL</strong> to
-              confirm.
+              Attendee records are not affected. Type <strong>DELETE ALL</strong> to confirm.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-2">
@@ -672,6 +793,254 @@ export default function TeamTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function TeamsTableBody({
+  rows,
+  regById,
+  emptyMessage,
+  onRowClick,
+  memberPreview,
+  showConfidence,
+}: {
+  rows: Team[];
+  regById: Map<string, Registration>;
+  emptyMessage: string;
+  onRowClick: (id: string) => void;
+  memberPreview: (team: Team) => string;
+  showConfidence?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border bg-card">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Team / Lead</TableHead>
+            <TableHead>Size</TableHead>
+            <TableHead>Roles</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Issues</TableHead>
+            {showConfidence && <TableHead>Confidence</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.length === 0 ? (
+            <TableRow>
+              <TableCell
+                colSpan={showConfidence ? 6 : 5}
+                className="text-center py-12 text-muted-foreground"
+              >
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          ) : (
+            rows.map((team) => {
+              const lead = team.leadRegistrationId
+                ? regById.get(team.leadRegistrationId)
+                : null;
+              const memberCount =
+                team.memberRegistrationIds.length + (team.leadRegistrationId ? 1 : 0);
+              const roles = teamRoles(team, regById);
+
+              return (
+                <TableRow
+                  key={team.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => onRowClick(team.id)}
+                >
+                  <TableCell>
+                    <div>
+                      <p className="font-medium">{team.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {lead?.email ?? team.leadEmail ?? "No lead"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate max-w-[220px]">
+                        {memberPreview(team)}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1 text-sm">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                      {team.sizeActual ?? memberCount}
+                      {team.sizeExpected ? ` / ${team.sizeExpected}` : ""}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {roles.slice(0, 3).map((role) => (
+                        <Badge key={role} variant="secondary" className="text-xs">
+                          {role}
+                        </Badge>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusBadgeVariant(team.status)}>{team.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {team.issues.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-amber-600 text-xs">
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {team.issues.length}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  {showConfidence && (
+                    <TableCell className="text-xs text-muted-foreground">
+                      {team.confidence != null
+                        ? `${Math.round(team.confidence * 100)}%`
+                        : "—"}
+                    </TableCell>
+                  )}
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ReviewCard({
+  team,
+  regById,
+  eventSlug,
+  onOpen,
+  onUpdated,
+}: {
+  team: Team;
+  regById: Map<string, Registration>;
+  eventSlug: string;
+  onOpen: () => void;
+  onUpdated: () => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const lead = team.leadRegistrationId ? regById.get(team.leadRegistrationId) : null;
+  const topIssue = team.issues[0];
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-medium">{team.name}</p>
+          <p className="text-sm text-muted-foreground">
+            {team.reviewSummary ?? (topIssue ? ISSUE_LABELS[topIssue] : "Needs review")}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onOpen}>
+          Open team
+        </Button>
+      </div>
+
+      {lead?.teamAnswerRaw && (
+        <p className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
+          Answer: {lead.teamAnswerRaw.slice(0, 200)}
+          {lead.teamAnswerRaw.length > 200 ? "…" : ""}
+        </p>
+      )}
+
+      {team.suggestedLinks && team.suggestedLinks.length > 0 && (
+        <div className="space-y-2">
+          {team.suggestedLinks.map((link) => (
+            <div
+              key={`${link.fromEmail}-${link.toRegistrationId}`}
+              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm border rounded-md p-2"
+            >
+              <span>
+                Did you mean <strong>{link.toEmail}</strong> for{" "}
+                <code className="text-xs">{link.fromEmail}</code>?
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={isPending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const result = await acceptFuzzyLink(
+                        eventSlug,
+                        team.id,
+                        link.fromEmail,
+                        link.toRegistrationId
+                      );
+                      if (result.success) {
+                        toast.success("Link confirmed");
+                        onUpdated();
+                      } else {
+                        toast.error(result.error ?? "Failed");
+                      }
+                    })
+                  }
+                >
+                  Accept
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={isPending}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const result = await rejectFuzzyLink(
+                        eventSlug,
+                        team.id,
+                        link.fromEmail,
+                        link.toRegistrationId
+                      );
+                      if (result.success) {
+                        toast.success("Dismissed");
+                        onUpdated();
+                      } else {
+                        toast.error(result.error ?? "Failed");
+                      }
+                    })
+                  }
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {team.issues.map((issue: TeamIssue) => (
+          <Badge key={issue} variant="warning" className="text-xs">
+            {ISSUE_LABELS[issue]}
+          </Badge>
+        ))}
+        {team.memberRegistrationIds.map((id) => {
+          const reg = regById.get(id);
+          if (!reg) return null;
+          return (
+            <Button
+              key={id}
+              size="sm"
+              variant="ghost"
+              className="text-xs h-7"
+              disabled={isPending}
+              onClick={() =>
+                startTransition(async () => {
+                  const result = await moveRegistrationToPool(eventSlug, id);
+                  if (result.success) {
+                    toast.success("Moved to pool");
+                    onUpdated();
+                  } else {
+                    toast.error(result.error ?? "Failed");
+                  }
+                })
+              }
+            >
+              Move {reg.name} to pool
+            </Button>
+          );
+        })}
+      </div>
     </div>
   );
 }

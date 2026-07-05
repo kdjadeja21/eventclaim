@@ -1,8 +1,16 @@
 "use server";
 
 import { adminDb } from "@/lib/firebase/admin";
+import { hydrateRegistration } from "@/lib/registrations";
+import { computeFormationStats } from "@/lib/team-resolver";
 import { requireSession } from "@/lib/session";
-import { Registration, Team, TeamWithMembers } from "@/lib/types";
+import {
+  Event,
+  Registration,
+  Team,
+  TeamFormationStats,
+  TeamWithMembers,
+} from "@/lib/types";
 
 async function resolveEventId(slug: string): Promise<string> {
   const eventSnap = await adminDb
@@ -14,23 +22,29 @@ async function resolveEventId(slug: string): Promise<string> {
   return eventSnap.docs[0].id;
 }
 
+async function resolveEvent(slug: string): Promise<Event> {
+  const eventSnap = await adminDb
+    .collection("events")
+    .where("slug", "==", slug)
+    .limit(1)
+    .get();
+  if (eventSnap.empty) throw new Error("Event not found");
+  const doc = eventSnap.docs[0];
+  return { ...(doc.data() as Event), id: doc.id };
+}
+
 export interface TeamsPageData {
   eventId: string;
+  event: Event;
   teams: Team[];
   registrations: Registration[];
-  stats: {
-    totalTeams: number;
-    createTeam: number;
-    joinTeam: number;
-    findTeam: number;
-    incomplete: number;
-    unassigned: number;
-  };
+  stats: TeamFormationStats & { totalRegistrations: number };
 }
 
 export async function getTeamsPageData(slug: string): Promise<TeamsPageData> {
   await requireSession();
-  const eventId = await resolveEventId(slug);
+  const event = await resolveEvent(slug);
+  const eventId = event.id;
 
   const [teamsSnap, regsSnap] = await Promise.all([
     adminDb.collection("events").doc(eventId).collection("teams").get(),
@@ -38,18 +52,22 @@ export async function getTeamsPageData(slug: string): Promise<TeamsPageData> {
   ]);
 
   const teams = teamsSnap.docs.map((d) => d.data() as Team);
-  const registrations = regsSnap.docs.map((d) => d.data() as Registration);
+  const registrations = regsSnap.docs.map((d) => hydrateRegistration(d.data() as Registration));
+  const poolIds = new Set(
+    registrations.filter((r) => r.inPool && !r.teamId).map((r) => r.id)
+  );
+  const formationStats = computeFormationStats(teams, registrations, poolIds);
 
-  const stats = {
-    totalTeams: teams.length,
-    createTeam: teams.filter((t) => t.ticketCategory === "create_team").length,
-    joinTeam: teams.filter((t) => t.ticketCategory === "join_team").length,
-    findTeam: teams.filter((t) => t.ticketCategory === "find_team").length,
-    incomplete: teams.filter((t) => t.status === "incomplete").length,
-    unassigned: teams.filter((t) => t.status === "unassigned").length,
+  return {
+    eventId,
+    event,
+    teams,
+    registrations,
+    stats: {
+      ...formationStats,
+      totalRegistrations: registrations.length,
+    },
   };
-
-  return { eventId, teams, registrations, stats };
 }
 
 export async function getTeamDetail(
@@ -79,7 +97,7 @@ export async function getTeamDetail(
   const regSnaps = await Promise.all(regIds.map((id) => regsRef.doc(id).get()));
   const regMap = new Map<string, Registration>();
   for (const snap of regSnaps) {
-    if (snap.exists) regMap.set(snap.id, snap.data() as Registration);
+    if (snap.exists) regMap.set(snap.id, hydrateRegistration(snap.data() as Registration));
   }
 
   return {
@@ -104,6 +122,6 @@ export async function getUnassignedRegistrations(
     .get();
 
   return regsSnap.docs
-    .map((d) => d.data() as Registration)
-    .filter((r) => !r.teamId || r.ticketCategory === "find_team");
+    .map((d) => hydrateRegistration(d.data() as Registration))
+    .filter((r) => r.inPool || !r.teamId);
 }
