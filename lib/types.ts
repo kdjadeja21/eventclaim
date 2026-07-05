@@ -141,6 +141,7 @@ export interface Event {
   teamRules?: TeamRules;
   teamQuestionId?: string;
   ticketTypeMap?: TicketTypeMap;
+  teamFormationStats?: CachedTeamFormationStats;
   // Hero fields for claim landing page
   tagline?: string;
   description?: string;
@@ -213,6 +214,11 @@ export interface TeamFormationStats {
   needsReviewTeams: number;
   poolCount: number;
   autoResolvedPercent: number;
+}
+
+export interface CachedTeamFormationStats extends TeamFormationStats {
+  totalRegistrations: number;
+  updatedAt: string;
 }
 
 export interface TeamWithMembers extends Team {

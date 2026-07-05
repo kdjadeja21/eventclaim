@@ -11,6 +11,7 @@ import {
   Team,
   TeamLink,
   TeamRules,
+  CachedTeamFormationStats,
 } from "@/lib/types";
 import { normalizeEmail } from "@/lib/utils";
 import { nanoid } from "nanoid";
@@ -114,6 +115,24 @@ export async function applyTeamBuild(
   }
 
   if (registrationsLinked > 0) await regBatch.commit();
+
+  const builtTeams = drafts.map((draft) =>
+    draftToTeam(draft, existingById.get(draft.id), now)
+  );
+  const formationStats = computeFormationStats(
+    builtTeams,
+    hydrated,
+    poolRegistrationIds
+  );
+  const cachedStats: CachedTeamFormationStats = {
+    ...formationStats,
+    totalRegistrations: hydrated.length,
+    updatedAt: now,
+  };
+  await adminDb.collection("events").doc(eventId).update({
+    teamFormationStats: cachedStats,
+    updatedAt: now,
+  });
 
   return {
     teamsCreated,

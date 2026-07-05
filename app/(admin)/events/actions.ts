@@ -184,14 +184,8 @@ export async function getEvents(): Promise<Event[]> {
 }
 
 export async function getEventBySlug(slug: string): Promise<Event | null> {
-  await requireSession();
-  const snap = await adminDb
-    .collection("events")
-    .where("slug", "==", slug)
-    .limit(1)
-    .get();
-  if (snap.empty) return null;
-  return snap.docs[0].data() as Event;
+  const { getEventBySlugCached } = await import("@/lib/event-resolve");
+  return getEventBySlugCached(slug);
 }
 
 export async function getEventById(id: string): Promise<Event | null> {

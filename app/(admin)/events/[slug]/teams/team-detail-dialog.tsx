@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -41,7 +41,7 @@ import {
   getRegistrationField,
 } from "@/lib/registrations";
 import { cn, formatDateTime } from "@/lib/utils";
-import { getTeamDetail } from "./team-data-actions";
+import { getTeamDetail, searchAssignableRegistrations } from "./team-data-actions";
 import {
   assignMemberToTeam,
   acceptFuzzyLink,
@@ -57,7 +57,6 @@ interface TeamDetailDialogProps {
   onOpenChange: (open: boolean) => void;
   slug: string;
   teamId: string | null;
-  unassignedRegistrations: Registration[];
   onUpdated: () => void;
 }
 
@@ -81,13 +80,14 @@ export default function TeamDetailDialog({
   onOpenChange,
   slug,
   teamId,
-  unassignedRegistrations,
   onUpdated,
 }: TeamDetailDialogProps) {
   const [team, setTeam] = useState<TeamWithMembers | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedRegId, setSelectedRegId] = useState<string>("");
   const [memberSearch, setMemberSearch] = useState("");
+  const [assignableResults, setAssignableResults] = useState<Registration[]>([]);
+  const [searchingAssignable, setSearchingAssignable] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -95,6 +95,7 @@ export default function TeamDetailDialog({
       setTeam(null);
       setSelectedRegId("");
       setMemberSearch("");
+      setAssignableResults([]);
       return;
     }
 
@@ -105,24 +106,33 @@ export default function TeamDetailDialog({
       .finally(() => setLoading(false));
   }, [open, teamId, slug]);
 
-  const availableToAdd = unassignedRegistrations.filter(
-    (r) =>
-      r.id !== team?.leadRegistrationId &&
-      !team?.memberRegistrationIds.includes(r.id)
-  );
+  useEffect(() => {
+    if (!open || !teamId) return;
 
-  const filteredToAdd = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return availableToAdd;
-    return availableToAdd.filter(
-      (r) =>
-        r.name.toLowerCase().includes(q) ||
-        r.email.toLowerCase().includes(q) ||
-        r.ticketName.toLowerCase().includes(q)
-    );
-  }, [availableToAdd, memberSearch]);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearchingAssignable(true);
+      searchAssignableRegistrations(slug, teamId, memberSearch)
+        .then((results) => {
+          if (!cancelled) setAssignableResults(results);
+        })
+        .catch(() => {
+          if (!cancelled) toast.error("Failed to search pool");
+        })
+        .finally(() => {
+          if (!cancelled) setSearchingAssignable(false);
+        });
+    }, memberSearch.trim() ? 250 : 0);
 
-  const selectedRegistration = availableToAdd.find((r) => r.id === selectedRegId);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, teamId, slug, memberSearch]);
+
+  const filteredToAdd = assignableResults;
+
+  const selectedRegistration = assignableResults.find((r) => r.id === selectedRegId);
 
   function handleAssign() {
     if (!teamId || !selectedRegId) return;
@@ -373,17 +383,20 @@ export default function TeamDetailDialog({
                       onChange={(e) => setMemberSearch(e.target.value)}
                       placeholder="Search by name or email..."
                       className="pl-9"
-                      disabled={availableToAdd.length === 0}
+                      disabled={searchingAssignable && assignableResults.length === 0}
                     />
                   </div>
                   <div className="rounded-md border max-h-48 overflow-y-auto">
-                    {availableToAdd.length === 0 ? (
-                      <p className="p-3 text-sm text-muted-foreground">
-                        No available registrations
+                    {searchingAssignable ? (
+                      <p className="p-3 text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Searching pool…
                       </p>
                     ) : filteredToAdd.length === 0 ? (
                       <p className="p-3 text-sm text-muted-foreground">
-                        No matches for &ldquo;{memberSearch.trim()}&rdquo;
+                        {memberSearch.trim()
+                          ? `No matches for "${memberSearch.trim()}" in the pool`
+                          : "No available registrations in the pool"}
                       </p>
                     ) : (
                       filteredToAdd.map((r) => (
@@ -412,7 +425,7 @@ export default function TeamDetailDialog({
                 <Button
                   className="sm:self-end"
                   onClick={handleAssign}
-                  disabled={!selectedRegId || isPending || availableToAdd.length === 0}
+                  disabled={!selectedRegId || isPending || searchingAssignable}
                 >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Assign"}
                 </Button>

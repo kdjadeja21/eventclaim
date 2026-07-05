@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, useEffect } from "react";
+import { useMemo, useState, useTransition, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import {
   Search,
@@ -77,6 +77,7 @@ import {
   acceptFuzzyLink,
   rejectFuzzyLink,
 } from "./team-actions";
+import { getPoolRegistrationsPage } from "./team-data-actions";
 import type { FetchAllGuestsParams } from "@/lib/luma";
 import LumaFetchDialog, {
   LumaFetchConfig,
@@ -89,7 +90,7 @@ type TeamStatusFilter = "all" | TeamStatus;
 
 interface TeamTableProps {
   teams: Team[];
-  registrations: Registration[];
+  teamRegistrations: Registration[];
   eventSlug: string;
   eventId: string;
   event: Event;
@@ -147,7 +148,7 @@ function reviewPriority(team: Team): number {
 
 export default function TeamTable({
   teams: initialTeams,
-  registrations: initialRegistrations,
+  teamRegistrations: initialTeamRegistrations,
   eventSlug,
   event,
   lumaApiEnabled,
@@ -156,7 +157,11 @@ export default function TeamTable({
   stats,
 }: TeamTableProps) {
   const [teams, setTeams] = useState(initialTeams);
-  const [registrations, setRegistrations] = useState(initialRegistrations);
+  const [teamRegistrations, setTeamRegistrations] = useState(initialTeamRegistrations);
+  const [poolRegistrations, setPoolRegistrations] = useState<Registration[]>([]);
+  const [poolLoading, setPoolLoading] = useState(false);
+  const [poolHasMore, setPoolHasMore] = useState(false);
+  const poolCursorsRef = useRef<(string | null)[]>([null]);
   const [activeTab, setActiveTab] = useState("teams");
   const [search, setSearch] = useState("");
   const [teamStatusFilter, setTeamStatusFilter] = useState<TeamStatusFilter>("all");
@@ -187,8 +192,8 @@ export default function TeamTable({
 
   useEffect(() => {
     setTeams(initialTeams);
-    setRegistrations(initialRegistrations);
-  }, [initialTeams, initialRegistrations]);
+    setTeamRegistrations(initialTeamRegistrations);
+  }, [initialTeams, initialTeamRegistrations]);
 
   useEffect(() => {
     const stored = getStoredConfig(eventSlug);
@@ -203,10 +208,12 @@ export default function TeamTable({
     }
   }, [eventSlug, lumaEventId]);
 
-  const regById = useMemo(
-    () => new Map(registrations.map((r) => [r.id, r])),
-    [registrations]
-  );
+  const regById = useMemo(() => {
+    const map = new Map<string, Registration>();
+    for (const reg of teamRegistrations) map.set(reg.id, reg);
+    for (const reg of poolRegistrations) map.set(reg.id, reg);
+    return map;
+  }, [teamRegistrations, poolRegistrations]);
 
   const formedTeams = useMemo(
     () => teams.filter((t) => t.status !== "needs_review"),
@@ -221,10 +228,37 @@ export default function TeamTable({
     [teams]
   );
 
-  const poolList = useMemo(
-    () => registrations.filter((r) => !r.teamId && (r.inPool ?? r.ticketCategory === "find_team")),
-    [registrations]
-  );
+  useEffect(() => {
+    if (activeTab !== "pool") return;
+
+    let cancelled = false;
+    setPoolLoading(true);
+    const cursor = poolPage === 1 ? null : poolCursorsRef.current[poolPage - 1] ?? null;
+
+    getPoolRegistrationsPage(eventSlug, { limit: pageSize, cursor })
+      .then((result) => {
+        if (cancelled) return;
+        setPoolRegistrations(result.registrations);
+        setPoolHasMore(result.hasMore);
+        poolCursorsRef.current[poolPage] = result.nextCursor;
+      })
+      .catch(() => toast.error("Failed to load pool registrations"))
+      .finally(() => {
+        if (!cancelled) setPoolLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, eventSlug, pageSize, poolPage]);
+
+  useEffect(() => {
+    setPoolPage(1);
+    poolCursorsRef.current = [null];
+    setPoolRegistrations([]);
+  }, [poolSearch, pageSize, eventSlug]);
+
+  const poolList = poolRegistrations;
 
   const filteredTeams = useMemo(() => {
     let list = formedTeams;
@@ -262,18 +296,12 @@ export default function TeamTable({
     return filteredTeams.slice(start, start + pageSize);
   }, [filteredTeams, currentPage, pageSize]);
 
-  const paginatedPool = useMemo(() => {
-    const start = (poolPage - 1) * pageSize;
-    return filteredPool.slice(start, start + pageSize);
-  }, [filteredPool, poolPage, pageSize]);
-
   const assignableTeams = useMemo(
     () => teams.filter((t) => t.status !== "complete" || t.source === "manual"),
     [teams]
   );
 
   useEffect(() => setCurrentPage(1), [teamStatusFilter, search, pageSize]);
-  useEffect(() => setPoolPage(1), [poolSearch, pageSize]);
 
   function buildLumaParams(): FetchAllGuestsParams {
     return {
@@ -520,7 +548,7 @@ export default function TeamTable({
           )}
           Rebuild
         </Button>
-        {(teams.length > 0 || registrations.length > 0) && (
+        {(teams.length > 0 || stats.totalRegistrations > 0) && (
           <Button
             variant="outline"
             size="sm"
@@ -561,7 +589,7 @@ export default function TeamTable({
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="teams">Teams ({formedTeams.length})</TabsTrigger>
-          <TabsTrigger value="pool">Unassigned Pool ({poolList.length})</TabsTrigger>
+          <TabsTrigger value="pool">Unassigned Pool ({stats.poolCount})</TabsTrigger>
           <TabsTrigger value="review">Review Queue ({reviewTeams.length})</TabsTrigger>
         </TabsList>
 
@@ -664,14 +692,21 @@ export default function TeamTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedPool.length === 0 ? (
+                {poolLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
+                      <Loader2 className="h-5 w-5 animate-spin inline mr-2" />
+                      Loading pool…
+                    </TableCell>
+                  </TableRow>
+                ) : filteredPool.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                       No unassigned registrations in the pool.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedPool.map((reg) => (
+                  filteredPool.map((reg) => (
                     <TableRow key={reg.id}>
                       <TableCell>
                         <input
@@ -698,13 +733,18 @@ export default function TeamTable({
           </div>
 
           <TablePagination
-            total={filteredPool.length}
+            total={stats.poolCount}
             page={poolPage}
             pageSize={pageSize}
             onPageChange={setPoolPage}
             onPageSizeChange={setPageSize}
             itemLabel="registrations"
           />
+          {poolHasMore && (
+            <p className="text-xs text-muted-foreground">
+              More pool entries available — go to the next page to load more.
+            </p>
+          )}
         </TabsContent>
 
         <TabsContent value="review" className="space-y-4 mt-4">
@@ -732,7 +772,6 @@ export default function TeamTable({
         onOpenChange={setDetailOpen}
         slug={eventSlug}
         teamId={selectedTeamId}
-        unassignedRegistrations={poolList}
         onUpdated={() => window.location.reload()}
       />
 
