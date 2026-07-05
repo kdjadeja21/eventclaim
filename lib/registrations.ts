@@ -116,6 +116,19 @@ export function deriveRegistrationRole(
   return "individual";
 }
 
+/** Create-a-Team with no member emails (or only own email) → Find Me a Team. */
+export function resolveEffectiveTicketCategory(
+  rawCategory: TicketCategory,
+  parsed: ReturnType<typeof parseTeamAnswer>
+): TicketCategory {
+  if (rawCategory === "create_team" && parsed.isIndividual) {
+    return "find_team";
+  }
+  return rawCategory;
+}
+
+const FIND_TEAM_TICKET_NAME = "🎯 Find Me a Team";
+
 export function lumaGuestToRegistration(
   guest: LumaGuest,
   eventId: string,
@@ -127,7 +140,7 @@ export function lumaGuestToRegistration(
     `${(guest.user_first_name ?? "").trim()} ${(guest.user_last_name ?? "").trim()}`.trim() ||
     email;
 
-  const { ticketTypeId, ticketName, ticketCategory } = ticketCategoryFromGuest(guest);
+  const rawTicket = ticketCategoryFromGuest(guest);
   const teamAnswer = guest.registration_answers?.find((a) => a.question_id === TEAM_QUESTION_ID);
   const teamAnswerRaw =
     typeof teamAnswer?.value === "string"
@@ -137,6 +150,12 @@ export function lumaGuestToRegistration(
         : "";
 
   const parsed = parseTeamAnswer(teamAnswerRaw, email);
+  const ticketCategory = resolveEffectiveTicketCategory(rawTicket.ticketCategory, parsed);
+  const ticketName =
+    rawTicket.ticketCategory === "create_team" && ticketCategory === "find_team"
+      ? FIND_TEAM_TICKET_NAME
+      : rawTicket.ticketName;
+  const ticketTypeId = rawTicket.ticketTypeId;
   const role = deriveRegistrationRole(ticketCategory, parsed);
   const now = new Date().toISOString();
   const id = registrationDocId(eventId, guest.id, email);
