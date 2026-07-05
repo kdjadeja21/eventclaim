@@ -102,6 +102,12 @@ export interface TeamRules {
   allowOversized: boolean;
 }
 
+export const DEFAULT_TEAM_RULES: TeamRules = {
+  minSize: 3,
+  maxSize: 4,
+  allowOversized: false,
+};
+
 export interface TicketTypeMap {
   create_team?: string[];
   join_team?: string[];

@@ -148,9 +148,3 @@ function draftToTeam(draft: TeamDraft, existing: Team | undefined, now: string):
 }
 
 export { computeFormationStats, resolveTeamsFromRegistrations };
-
-export const DEFAULT_TEAM_RULES: TeamRules = {
-  minSize: 3,
-  maxSize: 4,
-  allowOversized: false,
-};
