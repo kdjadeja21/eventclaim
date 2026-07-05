@@ -1,3 +1,4 @@
+import { isDevDataMode } from "@/lib/dev-mode";
 import { adminDb } from "@/lib/firebase/admin";
 import { AuditAction, AuditLog } from "@/lib/types";
 import { nanoid } from "nanoid";
@@ -17,5 +18,11 @@ export async function writeAuditLog(params: {
     userId,
     timestamp: new Date().toISOString(),
   };
+
+  if (isDevDataMode()) {
+    console.info("[dev-audit]", log.action, log.eventId, log.metadata);
+    return;
+  }
+
   await adminDb.collection("auditLogs").doc(log.id).set(log);
 }

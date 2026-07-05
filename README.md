@@ -40,6 +40,52 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000). The home page redirects to `/dashboard`; unauthenticated users are sent to `/login`.
 
+### Local dev data mode (teams, no Firebase / Luma)
+
+For team formation work you can run entirely from a local JSON file generated from a Luma CSV export — no Firestore reads, Luma API calls, or Firebase sign-in required.
+
+1. Copy `.env.local.example` to `.env.local` and set:
+
+   ```bash
+   USE_DEV_DATA=true
+   NEXT_PUBLIC_USE_DEV_DATA=true
+   ```
+
+2. Generate (or regenerate) the dev store from CSV:
+
+   ```bash
+   npm run dev:data:generate
+   # optional custom CSV path:
+   npm run dev:data:generate -- path/to/guests.csv
+   ```
+
+   Default output: `data/dev/hackathon-ahmedabad.json` (467 registrations, pre-built teams).
+
+3. Start the app:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Sign in at `/login` with **Continue as Dev Admin (no Firebase)**.
+
+5. Open the seeded event teams page:
+
+   `/events/cursor-hackathon-ahmedabad/teams`
+
+All team mutations (assign, pool, rebuild, sync from local Luma guests, fuzzy links, etc.) persist back to the JSON file on disk.
+
+When development is done, push the local store to Firebase:
+
+```bash
+# requires FIREBASE_SERVICE_ACCOUNT in .env.local
+npm run dev:data:push
+# preview only:
+npm run dev:data:push -- --dry-run
+```
+
+Other admin areas (dashboard stats, attendees, coupons, audit) still use Firebase unless separately wired.
+
 ### Environment variables
 
 Create a `.env.local` in the project root:
@@ -59,6 +105,10 @@ Create a `.env.local` in the project root:
 | `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
 | `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
 | `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
+| `USE_DEV_DATA` | No | When `true`, teams/events use local JSON instead of Firestore and Luma |
+| `NEXT_PUBLIC_USE_DEV_DATA` | No | Shows dev login button on `/login` (must match `USE_DEV_DATA`) |
+| `DEV_DATA_FILE` | No | Path to dev JSON store (default: `data/dev/hackathon-ahmedabad.json`) |
+| `LUMA_API_KEY` | Yes (prod) | Luma public API key for guest sync (not needed when `USE_DEV_DATA=true`) |
 
 ## Scripts
 
@@ -68,6 +118,9 @@ Create a `.env.local` in the project root:
 | `npm run build` | Production build |
 | `npm run start` | Run the production server (after `build`) |
 | `npm run lint` | Run ESLint |
+| `npm run test` | Run Vitest unit tests |
+| `npm run dev:data:generate` | Convert Luma CSV → local dev JSON store |
+| `npm run dev:data:push` | Push dev JSON store to Firebase (after local development) |
 
 ## Routes
 

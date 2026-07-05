@@ -20,6 +20,17 @@ export type AuditAction =
   | "attendee_luma_synced"
   | "attendee_blacklisted"
   | "attendee_unblacklisted"
+  | "registrations_luma_synced"
+  | "teams_auto_built"
+  | "team_created"
+  | "team_updated"
+  | "team_deleted"
+  | "team_member_assigned"
+  | "team_member_removed"
+  | "teams_data_cleared"
+  | "team_link_confirmed"
+  | "team_link_rejected"
+  | "team_registration_pooled"
   | "coupon_created"
   | "coupon_updated"
   | "coupon_deleted"
@@ -35,6 +46,85 @@ export type AuditAction =
   | "email_failed"
   | "status_checked";
 
+// ─── Team / Registration Enums ──────────────────────────────────────────────
+
+export type TicketCategory = "create_team" | "join_team" | "find_team" | "unknown";
+
+export type RegistrationRole = "lead" | "member" | "individual";
+
+export type TeamStatus =
+  | "complete"
+  | "incomplete"
+  | "unassigned"
+  | "manual"
+  | "needs_review";
+
+export type TeamSource = "auto" | "manual";
+
+export type TeamIssue =
+  | "missing_member"
+  | "unmatched_lead"
+  | "invalid_team_answer"
+  | "no_lead"
+  | "duplicate_member"
+  | "size_under"
+  | "size_over"
+  | "fuzzy_match_pending"
+  | "ticket_mismatch";
+
+export type TeamIntentKind = "lead" | "member" | "individual" | "ambiguous";
+
+export type TeamAnswerQuality =
+  | "valid"
+  | "empty"
+  | "individual_keyword"
+  | "garbage"
+  | "self_only";
+
+export interface TeamIntent {
+  kind: TeamIntentKind;
+  referencedEmails: string[];
+  rawQuality: TeamAnswerQuality;
+  confidence: number;
+}
+
+export interface SuggestedLink {
+  fromEmail: string;
+  toRegistrationId: string;
+  toEmail: string;
+  score: number;
+  reason: string;
+}
+
+export interface TeamRules {
+  minSize: number;
+  maxSize: number;
+  allowOversized: boolean;
+}
+
+export const DEFAULT_TEAM_RULES: TeamRules = {
+  minSize: 3,
+  maxSize: 4,
+  allowOversized: false,
+};
+
+export interface TicketTypeMap {
+  create_team?: string[];
+  join_team?: string[];
+  find_team?: string[];
+}
+
+export interface TeamLink {
+  id: string;
+  eventId: string;
+  fromRegistrationId: string;
+  toEmail: string;
+  toRegistrationId: string | null;
+  linkType: "expects_member" | "expects_lead" | "confirmed_fuzzy";
+  createdAt: string;
+  createdBy: string;
+}
+
 // ─── Firestore Document Types ─────────────────────────────────────────────────
 
 export interface Event {
@@ -47,11 +137,93 @@ export interface Event {
   createdAt: string;
   updatedAt: string;
   lumaLastSyncedAt?: string | null;
+  lumaEventId?: string | null;
+  teamRules?: TeamRules;
+  teamQuestionId?: string;
+  ticketTypeMap?: TicketTypeMap;
+  teamFormationStats?: CachedTeamFormationStats;
   // Hero fields for claim landing page
   tagline?: string;
   description?: string;
   timeLabel?: string; // e.g. "10:00 – 14:00"
   venue?: string;     // e.g. "Trekanten, Oslo"
+}
+
+export interface RegistrationAnswerSnapshot {
+  label: string;
+  questionId: string;
+  answer: string;
+}
+
+export interface Registration {
+  id: string;
+  eventId: string;
+  lumaGuestId: string;
+  email: string;
+  name: string;
+  phone?: string | null;
+  ticketTypeId: string;
+  ticketName: string;
+  ticketCategory: TicketCategory;
+  rawTicketCategory?: TicketCategory;
+  teamAnswerRaw: string;
+  parsedTeamEmails: string[];
+  parsedTeamLeadEmail: string | null;
+  teamIntent?: TeamIntent;
+  reviewFlags?: TeamIssue[];
+  role: RegistrationRole;
+  teamId: string | null;
+  inPool?: boolean;
+  registrationAnswers: RegistrationAnswerSnapshot[];
+  registeredAt: string | null;
+  approvalStatus: string;
+  checkedInAt: string | null;
+  attendeeId: string | null;
+  isManualMapping: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt: string;
+}
+
+export interface Team {
+  id: string;
+  eventId: string;
+  name: string;
+  leadRegistrationId: string | null;
+  leadEmail: string | null;
+  memberRegistrationIds: string[];
+  memberEmails: string[];
+  expectedMemberEmails: string[];
+  ticketCategory: TicketCategory;
+  status: TeamStatus;
+  source: TeamSource;
+  issues: TeamIssue[];
+  confidence?: number;
+  suggestedLinks?: SuggestedLink[];
+  sizeExpected?: number;
+  sizeActual?: number;
+  reviewSummary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamFormationStats {
+  formedTeams: number;
+  completeTeams: number;
+  incompleteTeams: number;
+  needsReviewTeams: number;
+  poolCount: number;
+  autoResolvedPercent: number;
+}
+
+export interface CachedTeamFormationStats extends TeamFormationStats {
+  totalRegistrations: number;
+  updatedAt: string;
+}
+
+export interface TeamWithMembers extends Team {
+  lead: Registration | null;
+  members: Registration[];
 }
 
 export interface Attendee {
