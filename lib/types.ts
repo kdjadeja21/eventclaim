@@ -20,6 +20,13 @@ export type AuditAction =
   | "attendee_luma_synced"
   | "attendee_blacklisted"
   | "attendee_unblacklisted"
+  | "registrations_luma_synced"
+  | "teams_auto_built"
+  | "team_created"
+  | "team_updated"
+  | "team_deleted"
+  | "team_member_assigned"
+  | "team_member_removed"
   | "coupon_created"
   | "coupon_updated"
   | "coupon_deleted"
@@ -35,6 +42,22 @@ export type AuditAction =
   | "email_failed"
   | "status_checked";
 
+// ─── Team / Registration Enums ──────────────────────────────────────────────
+
+export type TicketCategory = "create_team" | "join_team" | "find_team" | "unknown";
+
+export type RegistrationRole = "lead" | "member" | "individual";
+
+export type TeamStatus = "complete" | "incomplete" | "unassigned" | "manual";
+
+export type TeamSource = "auto" | "manual";
+
+export type TeamIssue =
+  | "missing_member"
+  | "unmatched_lead"
+  | "invalid_team_answer"
+  | "no_lead";
+
 // ─── Firestore Document Types ─────────────────────────────────────────────────
 
 export interface Event {
@@ -47,11 +70,66 @@ export interface Event {
   createdAt: string;
   updatedAt: string;
   lumaLastSyncedAt?: string | null;
+  lumaEventId?: string | null;
   // Hero fields for claim landing page
   tagline?: string;
   description?: string;
   timeLabel?: string; // e.g. "10:00 – 14:00"
   venue?: string;     // e.g. "Trekanten, Oslo"
+}
+
+export interface RegistrationAnswerSnapshot {
+  label: string;
+  questionId: string;
+  answer: string;
+}
+
+export interface Registration {
+  id: string;
+  eventId: string;
+  lumaGuestId: string;
+  email: string;
+  name: string;
+  phone?: string | null;
+  ticketTypeId: string;
+  ticketName: string;
+  ticketCategory: TicketCategory;
+  teamAnswerRaw: string;
+  parsedTeamEmails: string[];
+  parsedTeamLeadEmail: string | null;
+  role: RegistrationRole;
+  teamId: string | null;
+  registrationAnswers: RegistrationAnswerSnapshot[];
+  registeredAt: string | null;
+  approvalStatus: string;
+  checkedInAt: string | null;
+  attendeeId: string | null;
+  isManualMapping: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt: string;
+}
+
+export interface Team {
+  id: string;
+  eventId: string;
+  name: string;
+  leadRegistrationId: string | null;
+  leadEmail: string | null;
+  memberRegistrationIds: string[];
+  memberEmails: string[];
+  expectedMemberEmails: string[];
+  ticketCategory: TicketCategory;
+  status: TeamStatus;
+  source: TeamSource;
+  issues: TeamIssue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamWithMembers extends Team {
+  lead: Registration | null;
+  members: Registration[];
 }
 
 export interface Attendee {

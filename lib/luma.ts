@@ -21,6 +21,28 @@ export type LumaSortDirection =
   | "asc nulls last"
   | "desc nulls last";
 
+export interface LumaRegistrationAnswer {
+  label: string;
+  question_id: string;
+  value: unknown;
+  question_type: string;
+  answer?: string;
+  answer_company?: string;
+  answer_job_title?: string;
+}
+
+export interface LumaEventTicket {
+  id: string;
+  amount: number;
+  amount_discount: number;
+  amount_tax: number;
+  currency: string | null;
+  checked_in_at: string | null;
+  event_ticket_type_id: string;
+  is_captured: boolean;
+  name: string;
+}
+
 export interface LumaGuest {
   id: string;
   user_id: string;
@@ -31,6 +53,9 @@ export interface LumaGuest {
   approval_status: LumaApprovalStatus;
   registered_at: string | null;
   checked_in_at: string | null;
+  phone_number?: string | null;
+  registration_answers?: LumaRegistrationAnswer[];
+  event_tickets?: LumaEventTicket[];
 }
 
 interface LumaGetGuestsResponse {

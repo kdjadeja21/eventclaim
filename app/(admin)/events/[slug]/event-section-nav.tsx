@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart2, Send, Ticket, Upload, Users } from "lucide-react";
+import { BarChart2, Send, Ticket, Upload, Users, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type EventSection = "overview" | "import" | "attendees" | "coupons" | "preview";
+type EventSection = "overview" | "import" | "attendees" | "teams" | "coupons" | "preview";
 
 const eventSections: {
   key: EventSection;
@@ -29,6 +29,12 @@ const eventSections: {
     href: (slug) => `/events/${slug}/attendees`,
     label: "Attendees",
     icon: Users,
+  },
+  {
+    key: "teams",
+    href: (slug) => `/events/${slug}/teams`,
+    label: "Teams",
+    icon: UsersRound,
   },
   {
     key: "coupons",
