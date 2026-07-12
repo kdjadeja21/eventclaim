@@ -52,9 +52,45 @@ function findTeamColumnHeader(rawHeaders: string[]): string | null {
 
 function detectTeamRole(ticketName: string): ConfirmationTeamRole {
   const lower = ticketName.toLowerCase();
-  if (lower.includes("create a team")) return "lead";
-  if (lower.includes("join a team")) return "member";
+  if (lower.includes("create a team") || lower.includes("team lead")) return "lead";
+  if (lower.includes("join a team") || lower.includes("teammate")) return "member";
   return "individual";
+}
+
+/**
+ * Minimal union-find (disjoint-set) over email strings, used to group
+ * attendees into teams purely from the actual cross-referenced emails in the
+ * CSV — not just from ticket_name wording, which can vary between forms.
+ */
+class EmailUnionFind {
+  private parent = new Map<string, string>();
+
+  private ensure(email: string): string {
+    if (!this.parent.has(email)) this.parent.set(email, email);
+    return email;
+  }
+
+  find(email: string): string {
+    this.ensure(email);
+    let root = email;
+    while (this.parent.get(root) !== root) {
+      root = this.parent.get(root)!;
+    }
+    // Path compression.
+    let cur = email;
+    while (this.parent.get(cur) !== root) {
+      const next = this.parent.get(cur)!;
+      this.parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  }
+
+  union(a: string, b: string): void {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra !== rb) this.parent.set(ra, rb);
+  }
 }
 
 export function parseConfirmationAttendeeCsv(
@@ -86,8 +122,20 @@ export function parseConfirmationAttendeeCsv(
     return (raw[rawKey] ?? "").trim();
   }
 
+  // ─── Pass 1: validate + extract per-row fields, without team grouping yet ──
+  interface RowDraft {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    extra: Record<string, string>;
+    ticketName: string | null;
+    teamRole: ConfirmationTeamRole | null;
+    teamEmails: string[]; // other emails this row references (lead or teammates)
+  }
+
   const seenEmails = new Set<string>();
-  const rows: ParsedConfirmationAttendee[] = [];
+  const drafts: RowDraft[] = [];
   let invalidCount = 0;
   let skippedCount = 0;
   const errors: string[] = [];
@@ -130,29 +178,83 @@ export function parseConfirmationAttendeeCsv(
     const ticketName = getNormalized(raw, "ticket_name") || null;
     const teamRole = ticketName ? detectTeamRole(ticketName) : null;
     const teamFieldValue = teamColumnHeader ? (raw[teamColumnHeader] ?? "").trim() : "";
-    const teamEmails = teamFieldValue.match(EMAIL_REGEX)?.map(normalizeEmail) ?? [];
-
-    let teamKey: string | null = null;
-    if (teamRole === "lead") {
-      // The lead is the anchor of their own team.
-      teamKey = email;
-    } else if (teamRole === "member" && teamEmails.length > 0) {
-      // Teammates reference their lead's email — use it as the shared key.
-      teamKey = teamEmails[0];
-    }
+    const teamEmails = [
+      ...new Set(teamFieldValue.match(EMAIL_REGEX)?.map(normalizeEmail) ?? []),
+    ].filter((e) => e !== email);
 
     seenEmails.add(email);
-    rows.push({
+    drafts.push({
       id: hashString(email),
       name,
       email,
       phone,
       extra,
-      teamKey,
-      teamRole,
       ticketName,
+      teamRole,
+      teamEmails,
     });
   }
+
+  // ─── Pass 2: group into teams by connected components ──────────────────────
+  // Teams are derived directly from the actual email cross-references in the
+  // CSV (whoever a row lists as lead/teammates), not just ticket_name wording
+  // — e.g. a "Create a Team" lead listing 3 teammates' emails, and each of
+  // those teammates listing the lead's email back, all end up in one
+  // connected component regardless of exact ticket_name phrasing.
+  const uf = new EmailUnionFind();
+  for (const row of drafts) {
+    uf.find(row.email); // ensure every attendee's own email is a node
+    for (const other of row.teamEmails) {
+      uf.union(row.email, other);
+    }
+  }
+
+  const componentSize = new Map<string, number>();
+  for (const row of drafts) {
+    const root = uf.find(row.email);
+    componentSize.set(root, (componentSize.get(root) ?? 0) + 1);
+  }
+
+  // Canonicalize each component's key to its lexicographically smallest email
+  // so the same team gets the same teamKey across re-uploads/incremental CSVs,
+  // regardless of row order or which member happened to anchor the union.
+  const canonicalKey = new Map<string, string>();
+  function getCanonicalKey(root: string): string {
+    const existing = canonicalKey.get(root);
+    if (existing) return existing;
+    // Find the smallest email among all rows currently sharing this root.
+    let smallest = root;
+    for (const row of drafts) {
+      if (uf.find(row.email) === root && row.email < smallest) smallest = row.email;
+    }
+    for (const other of drafts) {
+      // Also consider referenced-but-not-yet-seen emails (e.g. a member whose
+      // lead wasn't in this batch) so the key stays stable if the lead shows
+      // up in this same batch under a different row order.
+      for (const ref of other.teamEmails) {
+        if (uf.find(ref) === root && ref < smallest) smallest = ref;
+      }
+    }
+    canonicalKey.set(root, smallest);
+    return smallest;
+  }
+
+  const rows: ParsedConfirmationAttendee[] = drafts.map((row) => {
+    const root = uf.find(row.email);
+    const isConnected = (componentSize.get(root) ?? 1) > 1;
+    const teamKey = isConnected ? getCanonicalKey(root) : null;
+
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      extra: row.extra,
+      teamKey,
+      teamRole: row.teamRole,
+      ticketName: row.ticketName,
+    };
+  });
 
   return { rows, invalidCount, skippedCount, errors };
 }

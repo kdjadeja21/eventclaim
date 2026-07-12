@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Search, Eye, Crown, Users, User } from "lucide-react";
@@ -247,13 +247,27 @@ export function AttendeeTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                paginated.map((attendee) => {
+                paginated.map((attendee, i) => {
                   const RoleIcon = attendee.teamRole
                     ? teamRoleIcon[attendee.teamRole]
                     : User;
+                  const prev = paginated[i - 1];
+                  const isNewTeamGroup =
+                    attendee.teamKey && attendee.teamKey !== prev?.teamKey;
                   return (
-                    <TableRow key={attendee.id}>
-                      <TableCell className="font-medium">{attendee.name}</TableCell>
+                    <Fragment key={attendee.id}>
+                      {isNewTeamGroup && (
+                        <TableRow key={`team-${attendee.teamKey}`} className="hover:bg-transparent">
+                          <TableCell colSpan={7} className="py-1.5 bg-muted/40">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                              <Users className="h-3.5 w-3.5" />
+                              {teamLabelFor(attendee.teamKey!)}&apos;s team
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow>
+                        <TableCell className="font-medium">{attendee.name}</TableCell>
                       <TableCell className="text-xs">
                         <p>{attendee.email}</p>
                         {attendee.phone && (
@@ -301,6 +315,7 @@ export function AttendeeTable({
                         </Button>
                       </TableCell>
                     </TableRow>
+                    </Fragment>
                   );
                 })
               )}
