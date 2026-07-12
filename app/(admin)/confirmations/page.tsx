@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/lib/utils";
 import { UploadForm } from "./upload-form";
 import { AssignButton } from "./assign-button";
+import { ConfirmationSectionNav } from "./confirmation-section-nav";
 
 async function getDashboardData() {
   await requireSession();
@@ -93,18 +94,23 @@ export default async function ConfirmationsPage() {
         <AssignButton volunteerCount={activeVolunteerCount} />
       </div>
 
+      <ConfirmationSectionNav active="dashboard" />
+
       {/* Stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-        <StatCard icon={CheckCheck} label="Total Attendees" value={globalStats.total} />
+        <Link href="/confirmations/attendees">
+          <StatCard icon={CheckCheck} label="Total Attendees" value={globalStats.total} />
+        </Link>
         {(Object.keys(CONFIRMATION_STATUS_LABELS) as Array<
           keyof typeof CONFIRMATION_STATUS_LABELS
         >).map((status) => (
-          <StatCard
-            key={status}
-            icon={statusIcons[status] ?? Clock}
-            label={CONFIRMATION_STATUS_LABELS[status]}
-            value={globalStats.byStatus[status]}
-          />
+          <Link key={status} href={`/confirmations/attendees?status=${status}`}>
+            <StatCard
+              icon={statusIcons[status] ?? Clock}
+              label={CONFIRMATION_STATUS_LABELS[status]}
+              value={globalStats.byStatus[status]}
+            />
+          </Link>
         ))}
       </div>
 
@@ -232,7 +238,7 @@ function StatCard({
   value: number;
 }) {
   return (
-    <Card>
+    <Card className="hover:border-primary/40 hover:shadow-sm transition-colors cursor-pointer">
       <CardHeader className="pb-2">
         <CardDescription className="flex items-center gap-2 text-xs">
           <span className="flex h-7 w-7 items-center justify-center rounded-md gradient-brand shadow-sm">

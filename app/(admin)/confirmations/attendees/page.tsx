@@ -1,7 +1,13 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
-import { ConfirmationAttendee, ConfirmationVolunteer } from "@/lib/confirmation/types";
+import {
+  ConfirmationAttendee,
+  ConfirmationStatus,
+  ConfirmationVolunteer,
+  CONFIRMATION_STATUSES,
+} from "@/lib/confirmation/types";
 import { AttendeeTable } from "./attendee-table";
+import { ConfirmationSectionNav } from "../confirmation-section-nav";
 
 async function getAttendeesData() {
   await requireSession();
@@ -17,8 +23,14 @@ async function getAttendeesData() {
   return { attendees, volunteers };
 }
 
-export default async function AttendeesPage() {
+type Props = { searchParams: Promise<{ status?: string }> };
+
+export default async function AttendeesPage({ searchParams }: Props) {
   const { attendees, volunteers } = await getAttendeesData();
+  const { status } = await searchParams;
+  const initialStatus = CONFIRMATION_STATUSES.includes(status as ConfirmationStatus)
+    ? (status as ConfirmationStatus)
+    : "all";
 
   return (
     <div className="space-y-6">
@@ -27,11 +39,18 @@ export default async function AttendeesPage() {
           Attendees
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          All uploaded attendees, their confirmation status, and volunteer assignment
+          All approved attendees, their confirmation status, team, and volunteer
+          assignment
         </p>
       </div>
 
-      <AttendeeTable attendees={attendees} volunteers={volunteers} />
+      <ConfirmationSectionNav active="attendees" />
+
+      <AttendeeTable
+        attendees={attendees}
+        volunteers={volunteers}
+        initialStatus={initialStatus}
+      />
     </div>
   );
 }

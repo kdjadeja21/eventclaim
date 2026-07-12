@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/session";
 import { ConfirmationVolunteer } from "@/lib/confirmation/types";
 import { getConfirmationVolunteerStats } from "@/lib/confirmation/stats";
 import { VolunteersTable } from "./volunteers-table";
+import { ConfirmationSectionNav } from "../confirmation-section-nav";
 
 async function getVolunteersData() {
   await requireSession();
@@ -32,6 +33,8 @@ export default async function VolunteersPage() {
           Create volunteers and share their unique call-list link + PIN.
         </p>
       </div>
+
+      <ConfirmationSectionNav active="volunteers" />
 
       <VolunteersTable volunteerStats={volunteerStats} baseUrl={baseUrl} />
     </div>

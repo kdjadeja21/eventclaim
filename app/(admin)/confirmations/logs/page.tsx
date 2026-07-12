@@ -2,6 +2,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { ConfirmationAuditLog } from "@/lib/confirmation/types";
 import { LogTable } from "./log-table";
+import { ConfirmationSectionNav } from "../confirmation-section-nav";
 
 async function getConfirmationLogs(): Promise<ConfirmationAuditLog[]> {
   await requireSession();
@@ -26,6 +27,8 @@ export default async function ConfirmationLogsPage() {
           Every import, assignment, and status change — last 200 entries
         </p>
       </div>
+
+      <ConfirmationSectionNav active="logs" />
 
       <LogTable logs={logs} />
     </div>
