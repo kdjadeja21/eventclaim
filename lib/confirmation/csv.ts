@@ -1,6 +1,7 @@
 import Papa from "papaparse";
 import { normalizeEmail, hashString } from "@/lib/utils";
 import { z } from "zod";
+import { ConfirmationTeamRole } from "@/lib/confirmation/types";
 
 // ─── Confirmation Attendee CSV Parsing ─────────────────────────────────────────
 // Tolerant of arbitrary columns (e.g. a Luma "approved attendees" export).
@@ -14,6 +15,9 @@ export interface ParsedConfirmationAttendee {
   email: string;
   phone?: string;
   extra: Record<string, string>;
+  teamKey: string | null;
+  teamRole: ConfirmationTeamRole | null;
+  ticketName: string | null;
 }
 
 export interface ConfirmationCsvParseResult {
@@ -32,6 +36,26 @@ const KNOWN_HEADER_KEYS = new Set([
   "phone_number",
   "approval_status",
 ]);
+
+const EMAIL_REGEX = /[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g;
+
+/**
+ * Finds the CSV column that holds team lead / teammate email(s) — e.g. the
+ * long Luma custom question: "If you're a Team Lead, enter your team
+ * members' email(s)... If you're registering individually, enter
+ * 'Individual'." Matched generically by any raw header containing "team"
+ * (case-insensitive), so it survives minor rewording between event forms.
+ */
+function findTeamColumnHeader(rawHeaders: string[]): string | null {
+  return rawHeaders.find((h) => h.toLowerCase().includes("team")) ?? null;
+}
+
+function detectTeamRole(ticketName: string): ConfirmationTeamRole {
+  const lower = ticketName.toLowerCase();
+  if (lower.includes("create a team")) return "lead";
+  if (lower.includes("join a team")) return "member";
+  return "individual";
+}
 
 export function parseConfirmationAttendeeCsv(
   csv: string,
@@ -53,6 +77,8 @@ export function parseConfirmationAttendeeCsv(
     const normalized = raw.trim().toLowerCase().replace(/\s+/g, "_");
     normalizedToRaw.set(normalized, raw);
   }
+
+  const teamColumnHeader = findTeamColumnHeader(rawHeaders);
 
   function getNormalized(raw: Record<string, string>, key: string): string {
     const rawKey = normalizedToRaw.get(key);
@@ -101,6 +127,20 @@ export function parseConfirmationAttendeeCsv(
       if (value) extra[rawHeader] = value;
     }
 
+    const ticketName = getNormalized(raw, "ticket_name") || null;
+    const teamRole = ticketName ? detectTeamRole(ticketName) : null;
+    const teamFieldValue = teamColumnHeader ? (raw[teamColumnHeader] ?? "").trim() : "";
+    const teamEmails = teamFieldValue.match(EMAIL_REGEX)?.map(normalizeEmail) ?? [];
+
+    let teamKey: string | null = null;
+    if (teamRole === "lead") {
+      // The lead is the anchor of their own team.
+      teamKey = email;
+    } else if (teamRole === "member" && teamEmails.length > 0) {
+      // Teammates reference their lead's email — use it as the shared key.
+      teamKey = teamEmails[0];
+    }
+
     seenEmails.add(email);
     rows.push({
       id: hashString(email),
@@ -108,6 +148,9 @@ export function parseConfirmationAttendeeCsv(
       email,
       phone,
       extra,
+      teamKey,
+      teamRole,
+      ticketName,
     });
   }
 

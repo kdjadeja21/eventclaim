@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Crown, Users, User } from "lucide-react";
 import {
   ConfirmationAttendee,
   ConfirmationStatus,
@@ -52,21 +53,65 @@ const statusVariant: Record<
   not_coming: "destructive",
 };
 
+const teamRoleIcon = {
+  lead: Crown,
+  member: Users,
+  individual: User,
+} as const;
+
+const teamRoleLabel = {
+  lead: "Team Lead",
+  member: "Team Member",
+  individual: "Individual",
+} as const;
+
+/** Builds a display label for a team key by finding its lead's record. */
+function useTeamLabels(attendees: ConfirmationAttendee[]) {
+  return useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const a of attendees) {
+      if (a.teamRole === "lead" && a.teamKey) {
+        labels.set(a.teamKey, a.name);
+      }
+    }
+    return labels;
+  }, [attendees]);
+}
+
 export function AttendeeTable({
   attendees,
   volunteers,
+  initialStatus = "all",
 }: {
   attendees: ConfirmationAttendee[];
   volunteers: ConfirmationVolunteer[];
+  initialStatus?: "all" | ConfirmationStatus;
 }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | ConfirmationStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | ConfirmationStatus>(
+    initialStatus
+  );
   const [volunteerFilter, setVolunteerFilter] = useState<"all" | "unassigned" | string>(
     "all"
   );
+  const [teamFilter, setTeamFilter] = useState<"all" | "none" | string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selected, setSelected] = useState<ConfirmationAttendee | null>(null);
+
+  const teamLabels = useTeamLabels(attendees);
+  const teamOptions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of attendees) {
+      if (a.teamKey) counts.set(a.teamKey, (counts.get(a.teamKey) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+  }, [attendees]);
+
+  function teamLabelFor(teamKey: string): string {
+    return teamLabels.get(teamKey) ?? teamKey;
+  }
 
   const filtered = useMemo(() => {
     let list = attendees;
@@ -81,6 +126,12 @@ export function AttendeeTable({
       list = list.filter((a) => a.assignedVolunteerId === volunteerFilter);
     }
 
+    if (teamFilter === "none") {
+      list = list.filter((a) => !a.teamKey);
+    } else if (teamFilter !== "all") {
+      list = list.filter((a) => a.teamKey === teamFilter);
+    }
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -92,8 +143,16 @@ export function AttendeeTable({
       );
     }
 
-    return list;
-  }, [attendees, statusFilter, volunteerFilter, search]);
+    // Group teammates together: sort by team key (leads first), then name.
+    return [...list].sort((a, b) => {
+      const aTeam = a.teamKey ?? "";
+      const bTeam = b.teamKey ?? "";
+      if (aTeam !== bTeam) return aTeam.localeCompare(bTeam);
+      if (a.teamRole === "lead" && b.teamRole !== "lead") return -1;
+      if (b.teamRole === "lead" && a.teamRole !== "lead") return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [attendees, statusFilter, volunteerFilter, teamFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const effectivePage = Math.min(currentPage, totalPages);
@@ -145,6 +204,20 @@ export function AttendeeTable({
             ))}
           </SelectContent>
         </Select>
+        <Select value={teamFilter} onValueChange={setTeamFilter}>
+          <SelectTrigger className="w-52">
+            <SelectValue placeholder="All teams" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All teams</SelectItem>
+            <SelectItem value="none">No team (individual)</SelectItem>
+            {teamOptions.map(([teamKey, count]) => (
+              <SelectItem key={teamKey} value={teamKey}>
+                {teamLabelFor(teamKey)}&apos;s team ({count})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -154,6 +227,7 @@ export function AttendeeTable({
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Contact</TableHead>
+                <TableHead>Team</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Assigned To</TableHead>
                 <TableHead>Updated</TableHead>
@@ -164,7 +238,7 @@ export function AttendeeTable({
               {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center py-12 text-muted-foreground text-sm"
                   >
                     {attendees.length === 0
@@ -173,42 +247,62 @@ export function AttendeeTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                paginated.map((attendee) => (
-                  <TableRow key={attendee.id}>
-                    <TableCell className="font-medium">{attendee.name}</TableCell>
-                    <TableCell className="text-xs">
-                      <p>{attendee.email}</p>
-                      {attendee.phone && (
-                        <p className="text-muted-foreground">{attendee.phone}</p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[attendee.status]}>
-                        {CONFIRMATION_STATUS_LABELS[attendee.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {attendee.assignedVolunteerName ?? (
-                        <span className="text-muted-foreground">Unassigned</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                      {attendee.statusUpdatedAt
-                        ? formatDateTime(attendee.statusUpdatedAt)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelected(attendee)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                paginated.map((attendee) => {
+                  const RoleIcon = attendee.teamRole
+                    ? teamRoleIcon[attendee.teamRole]
+                    : User;
+                  return (
+                    <TableRow key={attendee.id}>
+                      <TableCell className="font-medium">{attendee.name}</TableCell>
+                      <TableCell className="text-xs">
+                        <p>{attendee.email}</p>
+                        {attendee.phone && (
+                          <p className="text-muted-foreground">{attendee.phone}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <RoleIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span>
+                            {attendee.teamRole
+                              ? teamRoleLabel[attendee.teamRole]
+                              : "—"}
+                          </span>
+                        </div>
+                        {attendee.teamKey && (
+                          <p className="text-muted-foreground truncate max-w-32">
+                            {teamLabelFor(attendee.teamKey)}&apos;s team
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={statusVariant[attendee.status]}>
+                          {CONFIRMATION_STATUS_LABELS[attendee.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {attendee.assignedVolunteerName ?? (
+                          <span className="text-muted-foreground">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {attendee.statusUpdatedAt
+                          ? formatDateTime(attendee.statusUpdatedAt)
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelected(attendee)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -229,7 +323,14 @@ export function AttendeeTable({
           key={selected.id}
           attendee={selected}
           volunteers={volunteers}
+          teammates={attendees.filter(
+            (a) => a.teamKey && a.teamKey === selected.teamKey && a.id !== selected.id
+          )}
           onClose={() => setSelected(null)}
+          onSaved={() => {
+            setSelected(null);
+            router.refresh();
+          }}
         />
       )}
     </div>
@@ -239,11 +340,15 @@ export function AttendeeTable({
 function AttendeeDetailDialog({
   attendee,
   volunteers,
+  teammates,
   onClose,
+  onSaved,
 }: {
   attendee: ConfirmationAttendee;
   volunteers: ConfirmationVolunteer[];
+  teammates: ConfirmationAttendee[];
   onClose: () => void;
+  onSaved: () => void;
 }) {
   const [status, setStatus] = useState<ConfirmationStatus>(attendee.status);
   const [notes, setNotes] = useState(attendee.notes ?? "");
@@ -253,7 +358,6 @@ function AttendeeDetailDialog({
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
-    if (!attendee) return;
     setSaving(true);
     try {
       const results = await Promise.all([
@@ -268,7 +372,7 @@ function AttendeeDetailDialog({
         toast.error(failed.error ?? "Failed to save changes.");
       } else {
         toast.success("Attendee updated");
-        window.location.reload();
+        onSaved();
       }
     } finally {
       setSaving(false);
@@ -294,7 +398,39 @@ function AttendeeDetailDialog({
                 {attendee.phone}
               </p>
             )}
+            {attendee.teamRole && (
+              <p>
+                <span className="text-muted-foreground">Team: </span>
+                {teamRoleLabel[attendee.teamRole]}
+                {attendee.ticketName ? ` (${attendee.ticketName})` : ""}
+              </p>
+            )}
           </div>
+
+          {teammates.length > 0 && (
+            <div>
+              <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                Teammates ({teammates.length})
+              </Label>
+              <div className="mt-1.5 space-y-1 rounded-md border p-3">
+                {teammates.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between text-xs">
+                    <span>
+                      {t.name}{" "}
+                      {t.teamRole === "lead" && (
+                        <Badge variant="outline" className="ml-1 text-[10px]">
+                          Lead
+                        </Badge>
+                      )}
+                    </span>
+                    <Badge variant={statusVariant[t.status]} className="text-[10px]">
+                      {CONFIRMATION_STATUS_LABELS[t.status]}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

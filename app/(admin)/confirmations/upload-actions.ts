@@ -46,6 +46,9 @@ export async function uploadConfirmationAttendees(
       assignedAt: null,
       statusUpdatedAt: null,
       createdAt: now,
+      teamKey: row.teamKey,
+      teamRole: row.teamRole,
+      ticketName: row.ticketName,
     };
 
     await docRef.set(attendee);

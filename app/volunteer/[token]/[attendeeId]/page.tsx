@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getVolunteerByToken } from "@/lib/confirmation/volunteer-auth";
 import { getVolunteerSession } from "@/lib/confirmation/volunteer-session";
-import { getVolunteerAttendee } from "../volunteer-actions";
+import { getTeammates, getVolunteerAttendee } from "../volunteer-actions";
 import { PinForm } from "../pin-form";
 import { StatusForm } from "./status-form";
 
@@ -21,5 +21,7 @@ export default async function AttendeeDetailPage({ params }: Props) {
   const attendee = await getVolunteerAttendee(token, attendeeId);
   if (!attendee) notFound();
 
-  return <StatusForm token={token} attendee={attendee} />;
+  const teammates = await getTeammates(token, attendeeId);
+
+  return <StatusForm token={token} attendee={attendee} teammates={teammates} />;
 }

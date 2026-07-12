@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Phone, ChevronRight, Search } from "lucide-react";
+import { LogOut, Phone, ChevronRight, Search, Crown, Users } from "lucide-react";
 import {
   CONFIRMATION_STATUSES,
   CONFIRMATION_STATUS_LABELS,
@@ -134,6 +134,16 @@ export function AttendeeList({
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <Phone className="h-3 w-3" />
                           {attendee.phone}
+                        </p>
+                      )}
+                      {attendee.teamRole && attendee.teamRole !== "individual" && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          {attendee.teamRole === "lead" ? (
+                            <Crown className="h-3 w-3" />
+                          ) : (
+                            <Users className="h-3 w-3" />
+                          )}
+                          {attendee.teamRole === "lead" ? "Team Lead" : "Team Member"}
                         </p>
                       )}
                     </div>

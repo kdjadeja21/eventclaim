@@ -72,6 +72,44 @@ export async function getVolunteerAttendee(
   return attendee;
 }
 
+export interface Teammate {
+  id: string;
+  name: string;
+  status: ConfirmationStatus;
+  teamRole: ConfirmationAttendee["teamRole"];
+  assignedVolunteerName: string | null;
+}
+
+/**
+ * Teammates of the given (already-authorized) attendee, matched by teamKey —
+ * regardless of which volunteer they're assigned to — so a caller can see
+ * whether someone's teammate is already confirmed/called, even across
+ * volunteers. Only minimal fields are exposed (no email/phone/notes).
+ */
+export async function getTeammates(
+  token: string,
+  attendeeId: string
+): Promise<Teammate[]> {
+  const attendee = await getVolunteerAttendee(token, attendeeId);
+  if (!attendee || !attendee.teamKey) return [];
+
+  const snap = await adminDb
+    .collection("confirmationAttendees")
+    .where("teamKey", "==", attendee.teamKey)
+    .get();
+
+  return snap.docs
+    .map((d) => d.data() as ConfirmationAttendee)
+    .filter((a) => a.id !== attendeeId)
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      status: a.status,
+      teamRole: a.teamRole,
+      assignedVolunteerName: a.assignedVolunteerName,
+    }));
+}
+
 export async function updateAttendeeStatus(
   token: string,
   attendeeId: string,

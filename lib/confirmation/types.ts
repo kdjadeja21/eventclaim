@@ -18,6 +18,8 @@ export const CONFIRMATION_STATUSES: ConfirmationStatus[] = [
   "not_coming",
 ];
 
+export type ConfirmationTeamRole = "lead" | "member" | "individual";
+
 export interface ConfirmationAttendee {
   id: string; // hashString(normalizedEmail), idempotent re-upload
   name: string;
@@ -31,6 +33,14 @@ export interface ConfirmationAttendee {
   statusUpdatedAt: string | null;
   notes?: string;
   createdAt: string;
+  // ─── Team matching (derived from ticket_name + the team-lead/teammate CSV
+  // column, e.g. "Create a Team" / "Join a Team"). teamKey is the normalized
+  // email of the team's lead, shared by the lead and every teammate who
+  // listed that lead's email — so grouping by teamKey reunites a team even
+  // though each member is a separate CSV row/attendee record.
+  teamKey?: string | null;
+  teamRole?: ConfirmationTeamRole | null;
+  ticketName?: string | null;
 }
 
 export interface ConfirmationVolunteer {

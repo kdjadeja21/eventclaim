@@ -4,14 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Mail, Phone, Save } from "lucide-react";
+import { ArrowLeft, Crown, Loader2, Mail, Phone, Save, Users } from "lucide-react";
 import {
   CONFIRMATION_STATUSES,
   CONFIRMATION_STATUS_LABELS,
   ConfirmationAttendee,
   ConfirmationStatus,
 } from "@/lib/confirmation/types";
-import { updateAttendeeStatus } from "../volunteer-actions";
+import { Teammate, updateAttendeeStatus } from "../volunteer-actions";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,12 +29,20 @@ const statusVariant: Record<
   not_coming: "destructive",
 };
 
+const teamRoleLabel = {
+  lead: "Team Lead",
+  member: "Team Member",
+  individual: "Individual",
+} as const;
+
 export function StatusForm({
   token,
   attendee,
+  teammates,
 }: {
   token: string;
   attendee: ConfirmationAttendee;
+  teammates: Teammate[];
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<ConfirmationStatus>(attendee.status);
@@ -93,8 +101,51 @@ export function StatusForm({
                 </a>
               </p>
             )}
+            {attendee.teamRole && (
+              <p className="flex items-center gap-2">
+                {attendee.teamRole === "lead" ? (
+                  <Crown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                )}
+                {teamRoleLabel[attendee.teamRole]}
+                {attendee.ticketName ? ` · ${attendee.ticketName}` : ""}
+              </p>
+            )}
           </CardContent>
         </Card>
+
+        {teammates.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Teammates ({teammates.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {teammates.map((t) => (
+                <div key={t.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    {t.teamRole === "lead" && (
+                      <Crown className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                    {t.name}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {t.assignedVolunteerName && (
+                      <span className="text-xs text-muted-foreground">
+                        called by {t.assignedVolunteerName}
+                      </span>
+                    )}
+                    <Badge variant={statusVariant[t.status]} className="text-[10px]">
+                      {CONFIRMATION_STATUS_LABELS[t.status]}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {attendee.extra && Object.keys(attendee.extra).length > 0 && (
           <Card>
