@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut, Phone, ChevronRight, Search, Crown, Users } from "lucide-react";
 import {
@@ -11,6 +10,7 @@ import {
   ConfirmationStatus,
 } from "@/lib/confirmation/types";
 import { logoutVolunteer } from "./volunteer-actions";
+import { AttendeeStatusDialog } from "./attendee-status-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,24 +37,26 @@ export function AttendeeList({
   attendees: ConfirmationAttendee[];
 }) {
   const router = useRouter();
+  const [localAttendees, setLocalAttendees] = useState(attendees);
   const [tab, setTab] = useState<"all" | ConfirmationStatus>("all");
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<ConfirmationAttendee | null>(null);
 
   const counts = useMemo(() => {
     const base: Record<"all" | ConfirmationStatus, number> = {
-      all: attendees.length,
+      all: localAttendees.length,
       need_confirmation: 0,
       call_pending: 0,
       call_done: 0,
       confirm_coming: 0,
       not_coming: 0,
     };
-    for (const a of attendees) base[a.status]++;
+    for (const a of localAttendees) base[a.status]++;
     return base;
-  }, [attendees]);
+  }, [localAttendees]);
 
   const filtered = useMemo(() => {
-    let list = attendees;
+    let list = localAttendees;
     if (tab !== "all") list = list.filter((a) => a.status === tab);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -63,7 +65,7 @@ export function AttendeeList({
       );
     }
     return list;
-  }, [attendees, tab, search]);
+  }, [localAttendees, tab, search]);
 
   async function handleLogout() {
     await logoutVolunteer();
@@ -122,7 +124,12 @@ export function AttendeeList({
             </Card>
           ) : (
             filtered.map((attendee) => (
-              <Link key={attendee.id} href={`/volunteer/${token}/${attendee.id}`}>
+              <button
+                key={attendee.id}
+                type="button"
+                className="block w-full text-left"
+                onClick={() => setSelected(attendee)}
+              >
                 <Card className="hover:border-primary/40 transition-colors">
                   <CardContent className="p-4 flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -155,11 +162,27 @@ export function AttendeeList({
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
+              </button>
             ))
           )}
         </div>
       </div>
+
+      {selected && (
+        <AttendeeStatusDialog
+          key={selected.id}
+          token={token}
+          attendee={selected}
+          onClose={() => setSelected(null)}
+          onSaved={(updated) => {
+            setLocalAttendees((prev) =>
+              prev.map((a) => (a.id === updated.id ? updated : a))
+            );
+            setSelected(null);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
