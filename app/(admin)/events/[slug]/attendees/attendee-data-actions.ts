@@ -4,7 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
-import { Attendee, Event } from "@/lib/types";
+import { Attendee, AttendeeGrantDetail, Coupon, Event, Grant } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import { attendeeDocId } from "@/lib/import";
 import { normalizeEmail } from "@/lib/utils";
@@ -58,6 +58,7 @@ export async function getAttendeeDetail(
   attendeeId: string
 ): Promise<{
   attendee: Attendee;
+  grants: AttendeeGrantDetail[];
   emailLogs: Array<{
     id: string;
     emailType: string;
@@ -67,25 +68,84 @@ export async function getAttendeeDetail(
 }> {
   await requireSession();
 
-  const [attendeeSnap, logsSnap] = await Promise.all([
-    adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("attendees")
-      .doc(attendeeId)
-      .get(),
+  const attendeeRef = adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("attendees")
+    .doc(attendeeId);
+
+  const [attendeeSnap, logsSnap, grantsSnap] = await Promise.all([
+    attendeeRef.get(),
     adminDb
       .collection("emailLogs")
       .where("attendeeId", "==", attendeeId)
       .orderBy("sentAt", "desc")
       .limit(20)
       .get(),
+    attendeeRef.collection("grants").get(),
   ]);
 
   if (!attendeeSnap.exists) throw new Error("Attendee not found");
 
+  let attendee = attendeeSnap.data() as Attendee;
+  const grants: AttendeeGrantDetail[] = [];
+
+  if (!grantsSnap.empty) {
+    const couponIds = [
+      ...new Set(grantsSnap.docs.map((d) => (d.data() as Grant).couponId)),
+    ];
+
+    const couponDocs = await Promise.all(
+      couponIds.map((id) =>
+        adminDb
+          .collection("events")
+          .doc(eventId)
+          .collection("coupons")
+          .doc(id)
+          .get()
+      )
+    );
+
+    const couponMap = new Map(
+      couponDocs
+        .filter((d) => d.exists)
+        .map((d) => [d.id, d.data() as Coupon])
+    );
+
+    for (const grantDoc of grantsSnap.docs) {
+      const grant = grantDoc.data() as Grant;
+      const coupon = couponMap.get(grant.couponId);
+      if (!coupon) continue;
+
+      grants.push({
+        couponId: grant.couponId,
+        couponName: coupon.name,
+        couponKind: coupon.kind,
+        category: coupon.category ?? "",
+        value: grant.value,
+        status: grant.status,
+        assignedAt: grant.assignedAt,
+        claimedAt: grant.claimedAt,
+      });
+    }
+
+    grants.sort((a, b) => a.couponName.localeCompare(b.couponName));
+
+    const actualClaimedCount = grants.filter((g) => g.status === "claimed").length;
+    const storedClaimedCount = attendee.claimedCount ?? 0;
+
+    if (actualClaimedCount !== storedClaimedCount) {
+      await attendeeRef.update({ claimedCount: actualClaimedCount });
+      attendee = { ...attendee, claimedCount: actualClaimedCount };
+    }
+  } else if ((attendee.claimedCount ?? 0) !== 0) {
+    await attendeeRef.update({ claimedCount: 0 });
+    attendee = { ...attendee, claimedCount: 0 };
+  }
+
   return {
-    attendee: attendeeSnap.data() as Attendee,
+    attendee,
+    grants,
     emailLogs: logsSnap.docs.map((d) => ({
       id: d.id,
       emailType: d.data().emailType,
@@ -311,6 +371,7 @@ export async function syncLumaGuests(
       name,
       email,
       grantCount: 0,
+      claimedCount: 0,
       claimedAny: false,
       emailStatus: "pending",
       emailSentAt: null,

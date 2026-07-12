@@ -1,25 +1,33 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Mail, RefreshCw } from "lucide-react";
+import type { EmailQuota } from "@/lib/email";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { refreshEmailQuota } from "./email-actions";
 
 type Props = {
   limit: number;
   used: number;
   remaining: number;
   ok: boolean;
+  onQuotaChange?: (quota: EmailQuota) => void;
 };
 
-export default function EmailQuotaBadge({ limit, used, remaining, ok }: Props) {
-  const router = useRouter();
+export default function EmailQuotaBadge({
+  limit,
+  used,
+  remaining,
+  ok,
+  onQuotaChange,
+}: Props) {
   const [isRefreshing, startTransition] = useTransition();
 
   function handleRefresh() {
-    startTransition(() => {
-      router.refresh();
+    startTransition(async () => {
+      const quota = await refreshEmailQuota();
+      onQuotaChange?.(quota);
     });
   }
 

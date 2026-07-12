@@ -8,7 +8,7 @@ export type CouponLinkStatus = "available" | "assigned" | "claimed";
 
 export type GrantStatus = "assigned" | "claimed";
 
-export type EmailStatus = "pending" | "sent" | "failed";
+export type EmailStatus = "pending" | "sending" | "sent" | "failed";
 
 export type AuditAction =
   | "event_created"
@@ -47,6 +47,8 @@ export interface Event {
   createdAt: string;
   updatedAt: string;
   lumaLastSyncedAt?: string | null;
+  /** When true, email attendees automatically after coupon grant. */
+  autoSendEmail?: boolean;
   // Hero fields for claim landing page
   tagline?: string;
   description?: string;
@@ -61,6 +63,7 @@ export interface Attendee {
   email: string;
   // Grant tracking (replaces old couponId/couponLink/claimed fields)
   grantCount: number;       // how many grants this attendee has
+  claimedCount: number;     // how many grants this attendee has claimed
   claimedAny: boolean;      // true when any grant has been claimed
   emailStatus: EmailStatus;
   emailSentAt: string | null;
@@ -125,6 +128,17 @@ export interface Grant {
   attendeeId: string;
   value: string;              // unique URL / shared code / shared link
   linkId?: string;            // set for uniqueLink grants
+  status: GrantStatus;
+  assignedAt: string;
+  claimedAt: string | null;
+}
+
+export interface AttendeeGrantDetail {
+  couponId: string;
+  couponName: string;
+  couponKind: CouponKind;
+  category: string;
+  value: string;
   status: GrantStatus;
   assignedAt: string;
   claimedAt: string | null;

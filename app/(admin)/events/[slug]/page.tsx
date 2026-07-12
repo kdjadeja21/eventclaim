@@ -25,6 +25,7 @@ import { formatDate } from "@/lib/utils";
 import { Event } from "@/lib/types";
 import EventStatusButton from "./event-status-button";
 import NotionGuideEditor from "./notion-guide-editor";
+import AutoSendToggle from "./auto-send-toggle";
 import EventHeroEditor from "./event-hero-editor";
 import DeleteEventButton from "./delete-event-button";
 
@@ -160,10 +161,18 @@ export default async function EventDetailPage({ params }: Props) {
         notionGuideUrl={event.notionGuideUrl}
       />
 
+      {/* Auto-send emails */}
+      <AutoSendToggle
+        key={String(event.autoSendEmail ?? false)}
+        eventId={event.id}
+        autoSendEmail={event.autoSendEmail ?? false}
+      />
+
       {/* Claim page hero */}
       <EventHeroEditor
-        key={`${event.tagline}-${event.venue}`}
+        key={`${event.date}-${event.tagline}-${event.venue}`}
         eventId={event.id}
+        date={event.date}
         tagline={event.tagline}
         description={event.description}
         timeLabel={event.timeLabel}

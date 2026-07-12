@@ -7,7 +7,9 @@ import {
   sendPendingEmails,
   resendFailedEmails,
   sendCouponEmailsConcurrent,
+  getEmailQuota,
   type AttendeeSendStatus,
+  type EmailQuota,
 } from "@/lib/email";
 import { Attendee } from "@/lib/types";
 import { revalidatePath } from "next/cache";
@@ -30,10 +32,15 @@ async function getEventAndAttendee(eventId: string, attendeeId: string) {
   };
 }
 
+export async function refreshEmailQuota(): Promise<EmailQuota> {
+  await requireSession();
+  return getEmailQuota({ force: true });
+}
+
 export async function sendSingleEmail(
   eventId: string,
   attendeeId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
   console.log("[sendSingleEmail] start", { eventId, attendeeId });
   await requireSession();
   const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
@@ -45,18 +52,24 @@ export async function sendSingleEmail(
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
   if (!attendee.grantCount) {
-    return { success: false, error: "No offers granted — cannot send email" };
+    const quota = await getEmailQuota();
+    return { success: false, error: "No offers granted — cannot send email", quota };
+  }
+  if (attendee.emailStatus === "sending") {
+    const quota = await getEmailQuota();
+    return { success: false, error: "Email is already being sent", quota };
   }
   const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", false, event.name);
   console.log("[sendSingleEmail] result", result);
   revalidatePath(`/events`);
-  return result;
+  const quota = await getEmailQuota();
+  return { ...result, quota };
 }
 
 export async function resendSingleEmail(
   eventId: string,
   attendeeId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
   console.log("[resendSingleEmail] start", { eventId, attendeeId });
   await requireSession();
   const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
@@ -68,17 +81,23 @@ export async function resendSingleEmail(
     notionGuideUrl: event.notionGuideUrl || "(none)",
   });
   if (!attendee.grantCount) {
-    return { success: false, error: "No offers granted — cannot resend email" };
+    const quota = await getEmailQuota();
+    return { success: false, error: "No offers granted — cannot resend email", quota };
+  }
+  if (attendee.emailStatus === "sending") {
+    const quota = await getEmailQuota();
+    return { success: false, error: "Email is already being sent", quota };
   }
   const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", true, event.name);
   console.log("[resendSingleEmail] result", result);
   revalidatePath(`/events`);
-  return result;
+  const quota = await getEmailQuota();
+  return { ...result, quota };
 }
 
 export async function bulkSendPending(
   eventId: string
-): Promise<{ sent: number; failed: number; skipped: number }> {
+): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
   console.log("[bulkSendPending] start", { eventId });
   await requireSession();
   const eventDoc = await adminDb.collection("events").doc(eventId).get();
@@ -86,12 +105,13 @@ export async function bulkSendPending(
   const result = await sendPendingEmails(eventId, eventDoc.data()!.notionGuideUrl || "");
   console.log("[bulkSendPending] result", result);
   revalidatePath(`/events`);
-  return result;
+  const quota = await getEmailQuota();
+  return { ...result, quota };
 }
 
 export async function bulkResendFailed(
   eventId: string
-): Promise<{ sent: number; failed: number; skipped: number }> {
+): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
   console.log("[bulkResendFailed] start", { eventId });
   await requireSession();
   const eventDoc = await adminDb.collection("events").doc(eventId).get();
@@ -99,7 +119,8 @@ export async function bulkResendFailed(
   const result = await resendFailedEmails(eventId, eventDoc.data()!.notionGuideUrl || "");
   console.log("[bulkResendFailed] result", result);
   revalidatePath(`/events`);
-  return result;
+  const quota = await getEmailQuota();
+  return { ...result, quota };
 }
 
 export async function bulkSendSelected(
@@ -110,6 +131,7 @@ export async function bulkSendSelected(
   success: number;
   failed: number;
   skipped: number;
+  quota: EmailQuota;
   results: { attendeeId: string; status: AttendeeSendStatus; error?: string }[];
 }> {
   console.log("[bulkSendSelected] start", {
@@ -173,6 +195,14 @@ export async function bulkSendSelected(
         });
         continue;
       }
+      if (attendee.emailStatus === "sending") {
+        results.push({
+          attendeeId: attendee.id,
+          status: "skipped",
+          error: "Email is already being sent",
+        });
+        continue;
+      }
       toSend.push(attendee);
     }
   }
@@ -191,5 +221,6 @@ export async function bulkSendSelected(
   const skipped = results.filter((r) => r.status === "skipped").length;
 
   console.log("[bulkSendSelected] result", { success, failed, skipped });
-  return { success, failed, skipped, results };
+  const quota = await getEmailQuota();
+  return { success, failed, skipped, results, quota };
 }

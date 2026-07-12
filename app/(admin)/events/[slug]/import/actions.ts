@@ -55,6 +55,7 @@ export async function importAttendees(
       name: row.name,
       email: row.email,
       grantCount: 0,
+      claimedCount: 0,
       claimedAny: false,
       emailStatus: "pending",
       emailSentAt: null,

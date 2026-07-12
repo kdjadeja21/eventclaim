@@ -1,7 +1,8 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee, Coupon, CouponLink, Grant } from "@/lib/types";
+import { autoSendEmailIfEnabled } from "@/lib/auto-send";
+import { Attendee, Coupon, CouponLink, Event, Grant } from "@/lib/types";
 import { ensureClaimToken } from "@/lib/assignment-helpers";
 
 export { ensureClaimToken };
@@ -117,7 +118,8 @@ async function grantOneCoupon(
  */
 export async function grantCouponsToAttendee(
   eventId: string,
-  attendeeId: string
+  attendeeId: string,
+  event?: Event
 ): Promise<number> {
   const attendeeSnap = await adminDb
     .collection("events")
@@ -167,6 +169,10 @@ export async function grantCouponsToAttendee(
       action: "coupon_granted",
       metadata: { attendeeId, newGrants },
     });
+
+    if (event?.autoSendEmail) {
+      await autoSendEmailIfEnabled(event, attendeeId);
+    }
   }
 
   return newGrants;
@@ -178,6 +184,9 @@ export async function grantCouponsToAttendee(
  * Processes checked-in attendees first.
  */
 export async function assignPendingForEvent(eventId: string): Promise<number> {
+  const eventDoc = await adminDb.collection("events").doc(eventId).get();
+  const event = eventDoc.exists ? (eventDoc.data() as Event) : undefined;
+
   const attendeesSnap = await adminDb
     .collection("events")
     .doc(eventId)
@@ -201,7 +210,7 @@ export async function assignPendingForEvent(eventId: string): Promise<number> {
 
   let totalGranted = 0;
   for (const doc of sorted) {
-    const count = await grantCouponsToAttendee(eventId, doc.id);
+    const count = await grantCouponsToAttendee(eventId, doc.id, event);
     totalGranted += count;
   }
   return totalGranted;

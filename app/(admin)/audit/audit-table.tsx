@@ -171,8 +171,12 @@ function getAuditMessage(log: AuditLog): string {
       ].filter(Boolean);
       return `${parts.join(", ")}.`;
     }
-    case "event_hero_updated":
-      return "Claim page hero fields were updated.";
+    case "event_hero_updated": {
+      const date = getMetadataString(metadata, "date");
+      return date
+        ? `Claim page hero fields were updated (date set to ${date}).`
+        : "Claim page hero fields were updated.";
+    }
     case "coupon_created":
       return `Coupon ${couponId ? `"${couponId}" ` : ""}was created.`;
     case "coupon_updated":
@@ -199,10 +203,23 @@ function getAuditMessage(log: AuditLog): string {
       const linkId = getMetadataString(metadata, "linkId");
       return `Link${linkId ? ` ${linkId}` : ""} from coupon ${couponId ?? "record"} was deleted.`;
     }
-    case "grant_claimed":
-      return `Offer ${couponId ?? "record"} was claimed${
-        email ? ` by ${email}` : attendeeId ? ` by ${attendeeId}` : ""
-      }.`;
+    case "grant_claimed": {
+      const couponName =
+        getMetadataString(metadata, "couponName") ?? couponId ?? "record";
+      const claimedAt = getMetadataString(metadata, "claimedAt");
+      const source = getMetadataString(metadata, "source");
+      const who = email ?? attendeeId ?? "";
+      const when = claimedAt ? ` at ${formatDateTime(claimedAt)}` : "";
+      const via =
+        source === "copy"
+          ? " via copy"
+          : source === "redeem_redirect"
+            ? " via redeem"
+            : "";
+      return `Offer "${couponName}" was claimed${
+        who ? ` by ${who}` : ""
+      }${when}${via}.`;
+    }
     case "email_sent":
       return `Offer email was sent${email ? ` to ${email}` : ""}.`;
     case "email_resent":

@@ -1,12 +1,16 @@
 "use server";
 
 import { adminDb } from "@/lib/firebase/admin";
-import { writeAuditLog } from "@/lib/audit";
+import { FieldValue } from "firebase-admin/firestore";
+import {
+  getCouponClaimMetadata,
+  writeGrantClaimedAudit,
+} from "@/lib/claim-tracking";
 import { Attendee, ClaimToken, Grant } from "@/lib/types";
 
 /**
  * Marks a grant as claimed (idempotent).
- * Updates attendee.claimedAny and the grant.status.
+ * Updates attendee.claimedAny, claimedCount, and the grant.status.
  */
 export async function markGrantClaimed(
   token: string,
@@ -31,6 +35,11 @@ export async function markGrantClaimed(
     .collection("attendees")
     .doc(attendeeId);
 
+  let newlyClaimed = false;
+  let claimedAt = "";
+  let attendeeEmail = "";
+  let linkId: string | undefined;
+
   try {
     await adminDb.runTransaction(async (txn) => {
       const [grantSnap, attendeeSnap] = await Promise.all([
@@ -40,13 +49,21 @@ export async function markGrantClaimed(
 
       if (!grantSnap.exists || !attendeeSnap.exists) return;
       const grant = grantSnap.data() as Grant;
-      if (grant.status === "claimed") return; // idempotent
+      if (grant.status === "claimed") return;
 
+      const attendee = attendeeSnap.data() as Attendee;
       const now = new Date().toISOString();
-      txn.update(grantRef, { status: "claimed", claimedAt: now });
-      txn.update(attendeeRef, { claimedAny: true });
+      newlyClaimed = true;
+      claimedAt = now;
+      attendeeEmail = attendee.email;
+      linkId = grant.linkId;
 
-      // If uniqueLink, also mark the pool link as claimed
+      txn.update(grantRef, { status: "claimed", claimedAt: now });
+      txn.update(attendeeRef, {
+        claimedAny: true,
+        claimedCount: FieldValue.increment(1),
+      });
+
       if (grant.linkId) {
         const linkRef = adminDb
           .collection("events")
@@ -59,11 +76,20 @@ export async function markGrantClaimed(
       }
     });
 
-    await writeAuditLog({
-      eventId,
-      action: "grant_claimed",
-      metadata: { attendeeId, couponId },
-    });
+    if (newlyClaimed) {
+      const { couponName, kind } = await getCouponClaimMetadata(eventId, couponId);
+      await writeGrantClaimedAudit({
+        eventId,
+        attendeeId,
+        email: attendeeEmail,
+        couponId,
+        couponName,
+        kind,
+        claimedAt,
+        source: "copy",
+        linkId,
+      });
+    }
 
     return { success: true };
   } catch (err) {
@@ -155,7 +181,6 @@ export async function getClaimPageData(token: string): Promise<
     };
   }
 
-  // Fetch coupon definitions for each grant
   const couponIds = [...new Set(grantsSnap.docs.map((d) => d.data().couponId as string))];
 
   const couponDocs = await Promise.all(

@@ -78,9 +78,18 @@ const EventSettingsSchema = z.object({
   notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
 });
 
+const EventHeroSchema = z.object({
+  date: z.string().min(1, "Date is required"),
+  tagline: z.string().optional(),
+  description: z.string().optional(),
+  timeLabel: z.string().optional(),
+  venue: z.string().optional(),
+});
+
 export async function updateEventHero(
   eventId: string,
   data: {
+    date: string;
     tagline?: string;
     description?: string;
     timeLabel?: string;
@@ -89,22 +98,35 @@ export async function updateEventHero(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  const parsed = EventHeroSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.flatten().fieldErrors.date?.[0] ?? "Invalid input",
+    };
+  }
+
   const eventDoc = await adminDb.collection("events").doc(eventId).get();
   if (!eventDoc.exists) return { success: false, error: "Event not found" };
   const event = eventDoc.data() as Event;
 
-  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-  if (data.tagline !== undefined) update.tagline = data.tagline || null;
-  if (data.description !== undefined) update.description = data.description || null;
-  if (data.timeLabel !== undefined) update.timeLabel = data.timeLabel || null;
-  if (data.venue !== undefined) update.venue = data.venue || null;
+  const update: Record<string, unknown> = {
+    date: parsed.data.date,
+    updatedAt: new Date().toISOString(),
+  };
+  if (parsed.data.tagline !== undefined) update.tagline = parsed.data.tagline || null;
+  if (parsed.data.description !== undefined)
+    update.description = parsed.data.description || null;
+  if (parsed.data.timeLabel !== undefined)
+    update.timeLabel = parsed.data.timeLabel || null;
+  if (parsed.data.venue !== undefined) update.venue = parsed.data.venue || null;
 
   await adminDb.collection("events").doc(eventId).update(update);
 
   await writeAuditLog({
     eventId,
     action: "event_hero_updated",
-    metadata: data,
+    metadata: parsed.data,
     userId: session.uid,
   });
 
@@ -143,6 +165,36 @@ export async function updateEventSettings(
     eventId,
     action: "event_updated",
     metadata: { notionGuideUrl: parsed.data.notionGuideUrl },
+    userId: session.uid,
+  });
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${event.slug}`);
+  return { success: true };
+}
+
+export async function setAutoSendEmail(
+  eventId: string,
+  enabled: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  const eventDoc = await adminDb.collection("events").doc(eventId).get();
+  if (!eventDoc.exists) {
+    return { success: false, error: "Event not found" };
+  }
+
+  const event = eventDoc.data() as Event;
+
+  await adminDb.collection("events").doc(eventId).update({
+    autoSendEmail: enabled,
+    updatedAt: new Date().toISOString(),
+  });
+
+  await writeAuditLog({
+    eventId,
+    action: "event_updated",
+    metadata: { autoSendEmail: enabled },
     userId: session.uid,
   });
 

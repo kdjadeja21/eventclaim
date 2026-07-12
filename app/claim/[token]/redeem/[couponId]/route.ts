@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
-import { writeAuditLog } from "@/lib/audit";
-import { ClaimToken, Grant } from "@/lib/types";
+import { FieldValue } from "firebase-admin/firestore";
+import {
+  getCouponClaimMetadata,
+  writeGrantClaimedAudit,
+} from "@/lib/claim-tracking";
+import { Attendee, ClaimToken, Grant } from "@/lib/types";
 
 type Params = {
   token: string;
@@ -45,6 +49,9 @@ export async function GET(
 
   let targetUrl: string | null = null;
   let newlyClaimed = false;
+  let claimedAt = "";
+  let attendeeEmail = "";
+  let linkId: string | undefined;
 
   try {
     await adminDb.runTransaction(async (txn) => {
@@ -60,11 +67,18 @@ export async function GET(
 
       if (grant.status === "claimed") return;
 
+      const attendee = attendeeSnap.data() as Attendee;
       newlyClaimed = true;
       const now = new Date().toISOString();
+      claimedAt = now;
+      attendeeEmail = attendee.email;
+      linkId = grant.linkId;
 
       txn.update(grantRef, { status: "claimed", claimedAt: now });
-      txn.update(attendeeRef, { claimedAny: true });
+      txn.update(attendeeRef, {
+        claimedAny: true,
+        claimedCount: FieldValue.increment(1),
+      });
 
       if (grant.linkId) {
         const linkRef = adminDb
@@ -89,10 +103,17 @@ export async function GET(
     const destination = new URL(targetUrl);
 
     if (newlyClaimed) {
-      await writeAuditLog({
+      const { couponName, kind } = await getCouponClaimMetadata(eventId, couponId);
+      await writeGrantClaimedAudit({
         eventId,
-        action: "grant_claimed",
-        metadata: { attendeeId, couponId, source: "redeem_redirect" },
+        attendeeId,
+        email: attendeeEmail,
+        couponId,
+        couponName,
+        kind,
+        claimedAt,
+        source: "redeem_redirect",
+        linkId,
       });
     }
 

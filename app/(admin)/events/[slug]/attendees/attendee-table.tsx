@@ -23,7 +23,8 @@ import {
   Ban,
   CheckCircle,
 } from "lucide-react";
-import { Attendee } from "@/lib/types";
+import type { EmailQuota } from "@/lib/email";
+import { Attendee, AttendeeGrantDetail } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -89,6 +90,7 @@ type SortDir = "asc" | "desc";
 
 const emailStatusConfig = {
   pending: { label: "Pending", variant: "warning" as const, icon: Clock },
+  sending: { label: "Sending…", variant: "secondary" as const, icon: Loader2 },
   sent: { label: "Sent", variant: "success" as const, icon: CheckCircle2 },
   failed: { label: "Failed", variant: "destructive" as const, icon: XCircle },
 };
@@ -143,12 +145,14 @@ export default function AttendeeTable({
   eventSlug,
   initialLumaLastSyncedAt,
   lumaApiEnabled = false,
+  onQuotaChange,
 }: {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
   initialLumaLastSyncedAt?: string | null;
   lumaApiEnabled?: boolean;
+  onQuotaChange?: (quota: EmailQuota) => void;
 }) {
   const [attendees, setAttendees] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
@@ -499,6 +503,7 @@ export default function AttendeeTable({
     setActionPending(attendee.id + "-send");
     startTransition(async () => {
       const res = await sendSingleEmail(eventId, attendee.id);
+      if (res.quota) onQuotaChange?.(res.quota);
       if (res.success) {
         updateAttendee(attendee.id, {
           emailStatus: "sent",
@@ -517,6 +522,7 @@ export default function AttendeeTable({
     setActionPending(attendee.id + "-resend");
     startTransition(async () => {
       const res = await resendSingleEmail(eventId, attendee.id);
+      if (res.quota) onQuotaChange?.(res.quota);
       if (res.success) {
         updateAttendee(attendee.id, {
           emailStatus: "sent",
@@ -560,6 +566,8 @@ export default function AttendeeTable({
       for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
         const chunkIds = ids.slice(i, i + CHUNK_SIZE);
         const res = await bulkSendSelected(eventId, chunkIds, mode);
+
+        if (res.quota) onQuotaChange?.(res.quota);
 
         // Apply the precise per-attendee outcome returned by the server.
         for (const r of res.results) {
@@ -610,6 +618,17 @@ export default function AttendeeTable({
     setLoadingDetail(true);
     const data = await getAttendeeDetail(eventId, attendeeId);
     setDetailData(data);
+    setAttendees((prev) =>
+      prev.map((a) =>
+        a.id === attendeeId
+          ? {
+              ...a,
+              claimedCount: data.attendee.claimedCount ?? 0,
+              claimedAny: data.attendee.claimedAny,
+            }
+          : a
+      )
+    );
     setLoadingDetail(false);
   }
 
@@ -620,6 +639,7 @@ export default function AttendeeTable({
       "Email",
       "Grants",
       "Email Status",
+      "Claimed Count",
       "Claimed Any",
       "Email Sent At",
     ];
@@ -628,6 +648,9 @@ export default function AttendeeTable({
       a.email,
       a.grantCount ?? 0,
       a.emailStatus,
+      (a.grantCount ?? 0) > 0
+        ? `${a.claimedCount ?? 0}/${a.grantCount ?? 0}`
+        : "0",
       a.claimedAny ? "Yes" : "No",
       a.emailSentAt ?? "",
     ]);
@@ -920,7 +943,12 @@ export default function AttendeeTable({
                       const Icon = cfg.icon;
                       return (
                         <Badge variant={cfg.variant} className="gap-1">
-                          <Icon className="h-3 w-3" />
+                          <Icon
+                            className={cn(
+                              "h-3 w-3",
+                              attendee.emailStatus === "sending" && "animate-spin"
+                            )}
+                          />
                           {cfg.label}
                         </Badge>
                       );
@@ -928,13 +956,17 @@ export default function AttendeeTable({
                   </TableCell>
 
                   <TableCell>
-                    {attendee.claimedAny ? (
-                      <Badge variant="success" className="gap-1">
-                        <CheckCheck className="h-3 w-3" />
-                        Claimed
-                      </Badge>
+                    {(attendee.grantCount ?? 0) > 0 ? (
+                      (attendee.claimedCount ?? 0) > 0 ? (
+                        <Badge variant="success" className="gap-1">
+                          <CheckCheck className="h-3 w-3" />
+                          {attendee.claimedCount}/{attendee.grantCount}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Unclaimed</Badge>
+                      )
                     ) : (
-                      <Badge variant="secondary">Unclaimed</Badge>
+                      <Badge variant="secondary">—</Badge>
                     )}
                   </TableCell>
 
@@ -1345,7 +1377,7 @@ export default function AttendeeTable({
         open={selectedDetail !== null}
         onOpenChange={(open) => !open && setSelectedDetail(null)}
       >
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Attendee Detail</DialogTitle>
             <DialogDescription>
@@ -1375,16 +1407,25 @@ export default function AttendeeTable({
                 />
               </DetailSection>
 
-              <DetailSection title="Coupon">
-                <DetailRow
-                  label="Grants"
-                  value={String(detailData.attendee.grantCount ?? 0)}
-                />
-                <DetailRow
-                  label="Claimed Any"
-                  value={detailData.attendee.claimedAny ? "Yes" : "No"}
-                />
-              </DetailSection>
+              <div className="space-y-1.5">
+                <p className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Coupons
+                </p>
+                <div className="rounded-md border px-3 py-2 text-sm flex items-center justify-between">
+                  <span className="text-muted-foreground">Claimed</span>
+                  <span className="font-medium">
+                    {detailData.attendee.claimedCount ?? 0}/
+                    {detailData.attendee.grantCount ?? 0}
+                  </span>
+                </div>
+                {detailData.grants.length > 0 ? (
+                  <AttendeeGrantList grants={detailData.grants} />
+                ) : (
+                  <div className="rounded-md border px-3 py-4 text-sm text-muted-foreground">
+                    No offers granted yet.
+                  </div>
+                )}
+              </div>
 
               {detailData.emailLogs.length > 0 && (
                 <DetailSection title="Email History">
@@ -1470,9 +1511,79 @@ function DetailSection({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-right max-w-48 truncate">{value}</span>
+    <div className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className="font-medium sm:text-right break-words min-w-0">{value}</span>
     </div>
+  );
+}
+
+function AttendeeGrantList({ grants }: { grants: AttendeeGrantDetail[] }) {
+  return (
+    <>
+      <div className="space-y-2 md:hidden">
+        {grants.map((grant) => (
+          <div key={grant.couponId} className="rounded-md border p-3 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium text-sm leading-snug">{grant.couponName}</p>
+              <Badge
+                variant={grant.status === "claimed" ? "success" : "secondary"}
+                className="capitalize text-xs shrink-0"
+              >
+                {grant.status}
+              </Badge>
+            </div>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Kind</dt>
+              <dd className="capitalize">{grant.couponKind}</dd>
+              <dt className="text-muted-foreground">Granted</dt>
+              <dd>{formatDateTime(grant.assignedAt)}</dd>
+              <dt className="text-muted-foreground">Claimed</dt>
+              <dd>{formatDateTime(grant.claimedAt)}</dd>
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden md:block rounded-lg border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Offer</TableHead>
+              <TableHead>Kind</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Granted At</TableHead>
+              <TableHead>Claimed At</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {grants.map((grant) => (
+              <TableRow key={grant.couponId}>
+                <TableCell className="font-medium text-sm">
+                  {grant.couponName}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground capitalize">
+                  {grant.couponKind}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant={grant.status === "claimed" ? "success" : "secondary"}
+                    className="capitalize text-xs"
+                  >
+                    {grant.status}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                  {formatDateTime(grant.assignedAt)}
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                  {formatDateTime(grant.claimedAt)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }

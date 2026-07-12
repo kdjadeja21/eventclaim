@@ -1,23 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Gift } from "lucide-react";
 import confetti from "canvas-confetti";
 
-export default function SurpriseReveal({ attendeeFirstName }: { attendeeFirstName: string }) {
-  const [revealed, setRevealed] = useState(false);
+function storageKey(token: string) {
+  return `claim-surprise-revealed:${token}`;
+}
+
+export default function SurpriseReveal({
+  attendeeFirstName,
+  token,
+}: {
+  attendeeFirstName: string;
+  token: string;
+}) {
+  // null = not yet hydrated from localStorage (avoid flash for returning visitors)
+  const [revealed, setRevealed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    try {
+      setRevealed(localStorage.getItem(storageKey(token)) === "1");
+    } catch {
+      setRevealed(false);
+    }
+  }, [token]);
 
   function handleReveal() {
+    try {
+      localStorage.setItem(storageKey(token), "1");
+    } catch {
+      // ignore quota / private mode failures
+    }
     setRevealed(true);
-    
-    // Play confetti
+
     const duration = 3 * 1000;
     const animationEnd = Date.now() + duration;
     const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
 
-    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+    const randomInRange = (min: number, max: number) =>
+      Math.random() * (max - min) + min;
 
-    const interval = setInterval(function() {
+    const interval = setInterval(function () {
       const timeLeft = animationEnd - Date.now();
 
       if (timeLeft <= 0) {
@@ -26,17 +50,19 @@ export default function SurpriseReveal({ attendeeFirstName }: { attendeeFirstNam
 
       const particleCount = 50 * (timeLeft / duration);
       confetti({
-        ...defaults, particleCount,
-        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
       });
       confetti({
-        ...defaults, particleCount,
-        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
       });
     }, 250);
   }
 
-  if (revealed) return null;
+  if (revealed === null || revealed) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/60 backdrop-blur-xl transition-opacity">

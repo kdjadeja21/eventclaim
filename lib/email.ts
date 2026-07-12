@@ -127,10 +127,31 @@ async function fetchEmailJsHistoryPage(
   return response.json() as Promise<EmailJsHistoryResponse>;
 }
 
-export async function getEmailQuota(): Promise<EmailQuota> {
+export function invalidateQuotaCache(): void {
+  quotaCache = null;
+}
+
+export function adjustQuotaCache(delta: number): void {
+  if (!quotaCache?.value.ok || delta === 0) return;
+  const { limit } = quotaCache.value;
+  const used = Math.max(0, quotaCache.value.used + delta);
+  const remaining = Math.max(0, limit - used);
+  quotaCache = {
+    at: Date.now(),
+    value: { limit, used, remaining, ok: true },
+  };
+}
+
+export async function getEmailQuota(options?: {
+  force?: boolean;
+}): Promise<EmailQuota> {
   const limit = EMAILJS_MONTHLY_QUOTA;
 
-  if (quotaCache && Date.now() - quotaCache.at < QUOTA_CACHE_TTL_MS) {
+  if (
+    !options?.force &&
+    quotaCache &&
+    Date.now() - quotaCache.at < QUOTA_CACHE_TTL_MS
+  ) {
     return quotaCache.value;
   }
 
@@ -375,6 +396,8 @@ export async function sendCouponEmail(
       action: isResend ? "email_resent" : "email_sent",
       metadata: { attendeeId: attendee.id, email: attendee.email },
     });
+
+    adjustQuotaCache(1);
 
     console.log("[sendCouponEmail] success", { attendeeId: attendee.id, email: attendee.email });
     return { success: true };

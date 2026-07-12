@@ -76,7 +76,7 @@ export default async function ClaimPage({ params }: Props) {
             )}
           </div>
 
-          <SurpriseReveal attendeeFirstName={attendeeFirstName} />
+          <SurpriseReveal attendeeFirstName={attendeeFirstName} token={token} />
         </div>
 
         {/* Offers Section */}
