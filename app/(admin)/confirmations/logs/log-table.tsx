@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ConfirmationAuditAction, ConfirmationAuditLog } from "@/lib/confirmation/types";
+import { getConfirmationLogMessage } from "@/lib/confirmation/log-message";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -87,11 +88,15 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
       list = list.filter((log) => {
         const details = stringifyMetadata(log.metadata).toLowerCase();
         const label = actionLabels[log.action].toLowerCase();
+        const message = getConfirmationLogMessage(log).toLowerCase();
         return (
           label.includes(q) ||
+          message.includes(q) ||
           log.actorType.toLowerCase().includes(q) ||
           log.actorId.toLowerCase().includes(q) ||
+          (log.actorName ?? "").toLowerCase().includes(q) ||
           (log.attendeeId ?? "").toLowerCase().includes(q) ||
+          (log.attendeeName ?? "").toLowerCase().includes(q) ||
           (log.volunteerId ?? "").toLowerCase().includes(q) ||
           details.includes(q)
         );
@@ -145,6 +150,7 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Action</TableHead>
+                <TableHead>Message</TableHead>
                 <TableHead>Actor</TableHead>
                 <TableHead>Timestamp</TableHead>
                 <TableHead>Details</TableHead>
@@ -154,7 +160,7 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
               {filtered.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={4}
+                    colSpan={5}
                     className="text-center py-12 text-muted-foreground text-sm"
                   >
                     {logs.length === 0
@@ -170,16 +176,24 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
                         {actionLabels[log.action]}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs">
-                      <Badge variant="outline" className="mr-1 capitalize">
+                    <TableCell className="text-sm text-foreground min-w-64">
+                      {getConfirmationLogMessage(log)}
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      <Badge
+                        variant={log.actorType === "volunteer" ? "info" : "outline"}
+                        className="mr-1 capitalize"
+                      >
                         {log.actorType}
                       </Badge>
-                      <span className="text-muted-foreground">{log.actorId}</span>
+                      <span className="text-muted-foreground">
+                        {log.actorName ?? log.actorId}
+                      </span>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTime(log.timestamp)}
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-md truncate">
+                    <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
                       {stringifyMetadata(log.metadata)}
                     </TableCell>
                   </TableRow>

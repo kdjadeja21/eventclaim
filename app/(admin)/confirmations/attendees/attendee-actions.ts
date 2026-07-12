@@ -17,6 +17,7 @@ export async function updateAttendeeStatusAdmin(
     const ref = adminDb.collection("confirmationAttendees").doc(attendeeId);
     const snap = await ref.get();
     if (!snap.exists) return { success: false, error: "Attendee not found." };
+    const attendee = snap.data() as ConfirmationAttendee;
 
     await ref.update({
       status,
@@ -28,7 +29,9 @@ export async function updateAttendeeStatusAdmin(
       action: "attendee_status_updated",
       actorType: "admin",
       actorId: session.uid,
+      actorName: session.email ?? session.uid,
       attendeeId,
+      attendeeName: attendee.name,
       metadata: { status, source: "admin_override" },
     });
 
@@ -82,9 +85,15 @@ export async function reassignAttendeeAdmin(
       action: "attendees_assigned",
       actorType: "admin",
       actorId: session.uid,
+      actorName: session.email ?? session.uid,
       attendeeId,
+      attendeeName: attendee.name,
       volunteerId: volunteerId ?? undefined,
-      metadata: { source: "admin_manual_reassign", volunteerId },
+      metadata: {
+        source: "admin_manual_reassign",
+        volunteerId,
+        volunteerName,
+      },
     });
 
     revalidatePath("/confirmations/attendees");

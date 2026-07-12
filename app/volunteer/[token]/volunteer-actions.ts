@@ -138,7 +138,9 @@ export async function updateAttendeeStatus(
       action: "attendee_status_updated",
       actorType: "volunteer",
       actorId: volunteer.id,
+      actorName: volunteer.name,
       attendeeId,
+      attendeeName: attendee.name,
       volunteerId: volunteer.id,
       metadata: { status },
     });

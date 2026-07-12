@@ -30,6 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/lib/utils";
+import { getConfirmationLogMessage } from "@/lib/confirmation/log-message";
 import { UploadForm } from "./upload-form";
 import { AssignButton } from "./assign-button";
 import { ConfirmationSectionNav } from "./confirmation-section-nav";
@@ -58,15 +59,6 @@ async function getDashboardData() {
 
   return { globalStats, volunteerStats, activeVolunteerCount, recentActivity };
 }
-
-const actionLabels: Record<string, string> = {
-  attendees_imported: "Attendees imported",
-  volunteer_created: "Volunteer created",
-  volunteer_deactivated: "Volunteer status changed",
-  volunteer_pin_reset: "Volunteer PIN reset",
-  attendees_assigned: "Attendees assigned",
-  attendee_status_updated: "Attendee status updated",
-};
 
 const statusIcons: Record<string, React.ElementType> = {
   need_confirmation: Users,
@@ -201,12 +193,10 @@ export default async function ConfirmationsPage() {
                     <div key={item.id} className="py-2.5 text-sm">
                       <div className="flex items-center gap-2">
                         <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <span className="flex-1">
-                          {actionLabels[item.action] ?? item.action}
-                        </span>
+                        <span className="flex-1">{getConfirmationLogMessage(item)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5 ml-6">
-                        {formatDateTime(item.timestamp)} · {item.actorType}
+                        {formatDateTime(item.timestamp)}
                       </p>
                     </div>
                   ))}

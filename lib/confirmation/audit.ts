@@ -6,7 +6,9 @@ export async function writeConfirmationAuditLog(params: {
   action: ConfirmationAuditAction;
   actorType: "admin" | "volunteer";
   actorId: string;
+  actorName?: string;
   attendeeId?: string;
+  attendeeName?: string;
   volunteerId?: string;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
@@ -14,7 +16,9 @@ export async function writeConfirmationAuditLog(params: {
     action,
     actorType,
     actorId,
+    actorName,
     attendeeId,
+    attendeeName,
     volunteerId,
     metadata = {},
   } = params;
@@ -24,7 +28,9 @@ export async function writeConfirmationAuditLog(params: {
     action,
     actorType,
     actorId,
+    ...(actorName ? { actorName } : {}),
     ...(attendeeId ? { attendeeId } : {}),
+    ...(attendeeName ? { attendeeName } : {}),
     ...(volunteerId ? { volunteerId } : {}),
     metadata,
     timestamp: new Date().toISOString(),

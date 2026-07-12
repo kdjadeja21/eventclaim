@@ -68,7 +68,9 @@ export interface ConfirmationAuditLog {
   action: ConfirmationAuditAction;
   actorType: "admin" | "volunteer";
   actorId: string;
+  actorName?: string; // denormalized display name (volunteer name, or admin email/uid)
   attendeeId?: string;
+  attendeeName?: string; // denormalized for readable log messages
   volunteerId?: string;
   metadata: Record<string, unknown>;
   timestamp: string;
