@@ -14,6 +14,7 @@ Web app for distributing Cursor credit coupons to event attendees: import attend
 - **Public claim flow** — `GET /claim/[token]` marks the coupon claimed and redirects to the coupon URL (idempotent).
 - **Status lookup** — `/check-status` lets attendees look up email/claim status by registered email.
 - **Audit logs** — Admin actions (imports, assignments, emails, claims) are recorded in Firestore.
+- **Attendee Confirmation Calling** — A standalone module (`/confirmations`) for uploading a CSV of approved attendees, creating volunteers, evenly distributing attendees across volunteers for follow-up calls, and letting each volunteer manage their assigned attendees' call status via a unique link + 4-digit PIN.
 
 ## Tech stack
 
@@ -58,7 +59,8 @@ Create a `.env.local` in the project root:
 | `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
 | `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
 | `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
-| `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
+| `APP_BASE_URL` | No | Public base URL for claim links in emails and volunteer confirmation links (default: `http://localhost:3000`) |
+| `CONFIRMATION_SESSION_SECRET` | Yes (Confirmations module) | Secret used to HMAC-sign the volunteer session cookie for `/volunteer/[token]`. Falls back to an insecure development value with a warning if unset — set a strong random value in production. |
 
 ## Scripts
 
@@ -91,6 +93,17 @@ Create a `.env.local` in the project root:
 | `/events/[slug]/attendees` | Manage attendees and email actions |
 | `/events/[slug]/preview` | Preview and bulk-send pending emails |
 | `/audit` | Audit log viewer |
+| `/confirmations` | Confirmation calling dashboard — stats, CSV upload, "Assign Attendees" |
+| `/confirmations/volunteers` | Manage volunteers, copy their link + PIN, reset PIN |
+| `/confirmations/attendees` | Full attendee table with status/volunteer filters and manual overrides |
+| `/confirmations/logs` | Confirmation module audit log viewer |
+
+### Volunteer-facing (own token + PIN + cookie auth, not Firebase Auth)
+
+| Path | Description |
+|------|-------------|
+| `/volunteer/[token]` | PIN entry, then that volunteer's assigned attendee list |
+| `/volunteer/[token]/[attendeeId]` | Attendee detail + call status update + notes |
 
 ### API
 
@@ -109,6 +122,9 @@ Top-level collections:
 - `claimTokens` — maps token → `eventId` + `attendeeId`
 - `emailLogs` — send/resend history
 - `auditLogs` — admin action audit trail
+- `confirmationAttendees` — attendees uploaded for confirmation calling, their status, and volunteer assignment (decoupled from `events`)
+- `confirmationVolunteers` — volunteers, their unique token/PIN, and active state
+- `confirmationAuditLogs` — audit trail for the Confirmations module (imports, assignments, PIN resets, status updates)
 
 ## Import formats
 
@@ -118,12 +134,18 @@ Top-level collections:
 
 Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
 
+**Confirmation attendees:** Tolerant of arbitrary CSV columns (e.g. a Luma "approved attendees" export). Requires `email` and either `name` or `first_name`/`last_name`; `phone`/`phone_number` is mapped to the attendee's phone number. By default only rows with `approval_status` = `approved` (or no `approval_status` column at all) are imported — toggle this off on the upload form to import every row. Every other column is preserved verbatim for the attendee detail view. Re-uploading the same email is idempotent (deterministic document ID from the normalized email).
+
 ## Authentication
 
 1. Admin signs in with Google (Firebase client SDK).
 2. Client posts the Firebase ID token to `/api/auth/session`.
 3. Server creates a Firebase session cookie (`eventclaim_session`, 5-day expiry).
 4. `(admin)` layout routes call `getSession()` and redirect to `/login` if missing.
+
+### Volunteer authentication (Confirmations module)
+
+Volunteers are not Firebase Auth users. Each volunteer gets a unique shareable link (`/volunteer/[token]`) and a 4-digit PIN, both shown/copyable on `/confirmations/volunteers`. Entering the correct PIN once sets a self-signed, HMAC-signed httpOnly cookie (`confirm_volunteer_session`, scoped to `/volunteer`, ~30-day expiry) so the volunteer isn't asked for the PIN again until it expires or the admin resets their PIN. Ten incorrect PIN attempts lock that volunteer's link for 15 minutes. Every server action re-validates that the session cookie's volunteer ID matches the token in the URL, so a volunteer can only ever see/edit their own assigned attendees.
 
 ## Deployment
 

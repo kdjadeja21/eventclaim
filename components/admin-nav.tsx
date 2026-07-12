@@ -9,6 +9,7 @@ import {
   Wrench,
   LogOut,
   ChevronRight,
+  PhoneCall,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/events", label: "Events", icon: CalendarDays },
+  { href: "/confirmations", label: "Confirmations", icon: PhoneCall },
   { href: "/audit", label: "Audit Logs", icon: ClipboardList },
   { href: "/tools", label: "Tools", icon: Wrench },
 ];
