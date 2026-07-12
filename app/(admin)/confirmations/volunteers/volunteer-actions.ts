@@ -7,17 +7,18 @@ import {
   resetVolunteerPin,
 } from "@/lib/confirmation/volunteer-auth";
 import { revalidatePath } from "next/cache";
+import { ConfirmationVolunteer } from "@/lib/confirmation/types";
 
 export async function createVolunteerAction(
   name: string,
   username?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; volunteer?: ConfirmationVolunteer; error?: string }> {
   const session = await requireSession();
   try {
-    await createVolunteer(name, username, session.uid);
+    const volunteer = await createVolunteer(name, username, session.uid);
     revalidatePath("/confirmations");
     revalidatePath("/confirmations/volunteers");
-    return { success: true };
+    return { success: true, volunteer };
   } catch (err) {
     return {
       success: false,

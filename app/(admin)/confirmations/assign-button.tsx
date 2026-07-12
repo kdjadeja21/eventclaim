@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Shuffle, Loader2 } from "lucide-react";
 import { assignAttendeesAction } from "./assign-actions";
 import { Button } from "@/components/ui/button";
 
 export function AssignButton({ volunteerCount }: { volunteerCount: number }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleAssign() {
@@ -20,7 +22,7 @@ export function AssignButton({ volunteerCount }: { volunteerCount: number }) {
       toast.success(
         `Assigned ${res.totalAssigned} attendee${res.totalAssigned !== 1 ? "s" : ""} across ${res.volunteerCount} volunteer${res.volunteerCount !== 1 ? "s" : ""}`
       );
-      window.location.reload();
+      router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Assignment failed");
     } finally {

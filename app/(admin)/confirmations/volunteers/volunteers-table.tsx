@@ -64,11 +64,24 @@ export function VolunteersTable({
     setCreating(true);
     try {
       const res = await createVolunteerAction(name.trim(), username.trim() || undefined);
-      if (res.success) {
+      if (res.success && res.volunteer) {
         toast.success(`Volunteer "${name.trim()}" created`);
         setName("");
         setUsername("");
-        window.location.reload();
+        setStats((prev) => [
+          {
+            volunteer: res.volunteer!,
+            total: 0,
+            byStatus: {
+              need_confirmation: 0,
+              call_pending: 0,
+              call_done: 0,
+              confirm_coming: 0,
+              not_coming: 0,
+            },
+          },
+          ...prev,
+        ]);
       } else {
         toast.error(res.error ?? "Failed to create volunteer.");
       }
