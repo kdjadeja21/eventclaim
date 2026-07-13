@@ -1,5 +1,6 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeConfirmationAuditLog } from "@/lib/confirmation/audit";
+import { resolveAndPersistConfirmationTeams } from "@/lib/confirmation/team-resolve-service";
 import {
   ConfirmationAssignResult,
   ConfirmationAttendee,
@@ -9,32 +10,44 @@ import { QueryDocumentSnapshot } from "firebase-admin/firestore";
 
 const BATCH_LIMIT = 500;
 
+function pickLeastLoadedVolunteer(
+  volunteers: ConfirmationVolunteer[],
+  load: Map<string, number>
+): ConfirmationVolunteer {
+  let chosen = volunteers[0];
+  for (const v of volunteers) {
+    if ((load.get(v.id) ?? 0) < (load.get(chosen.id) ?? 0)) chosen = v;
+  }
+  return chosen;
+}
+
 /**
- * Pools together every attendee whose status is still "need_confirmation" or
- * "call_pending" (finished work — call_done / confirm_coming / not_coming — is
- * left untouched) and redistributes that pool across all currently active
- * volunteers.
+ * Assigns every currently unassigned attendee across active volunteers.
  *
- * Attendees are grouped by `teamKey` first (an individual with no team is
- * treated as a team of one), so every member of a team is always assigned to
- * the *same* volunteer — nobody wants a teammate to be called twice by two
- * different volunteers, or to have a half-confirmed team. Groups are then
- * assigned largest-first to whichever volunteer currently has the smallest
- * total load (existing assignments + what's been handed out so far this run),
- * which keeps queues as balanced as team-sized chunks allow.
+ * Before assigning, re-resolves teams so `teamKey` is up to date. Attendees
+ * are then grouped by `teamKey` (an individual with no team is a group of
+ * one) and each whole group is handed to a single volunteer — teammates are
+ * never split. Groups are assigned largest-first to whichever volunteer
+ * currently has the smallest load (existing assignments + this run).
+ *
+ * Already-assigned attendees are left alone so mid-campaign rebalances don't
+ * yank people between volunteers.
  */
 export async function assignConfirmationAttendees(
   actorId = "admin"
 ): Promise<ConfirmationAssignResult> {
-  const volunteersSnap = await adminDb
-    .collection("confirmationVolunteers")
-    .where("isActive", "==", true)
-    .orderBy("createdAt", "asc")
-    .get();
+  // Ensure teamKey is fresh before grouping — otherwise every row looks like
+  // a solo assignment even when teams exist on the Teams page.
+  await resolveAndPersistConfirmationTeams(actorId);
 
-  const volunteers = volunteersSnap.docs.map(
-    (d) => d.data() as ConfirmationVolunteer
-  );
+  const volunteersSnap = await adminDb.collection("confirmationVolunteers").get();
+
+  // Filter + sort in memory so we don't need a composite Firestore index on
+  // (isActive, createdAt) — a missing index was causing Assign to fail silently.
+  const volunteers = volunteersSnap.docs
+    .map((d) => d.data() as ConfirmationVolunteer)
+    .filter((v) => v.isActive)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   if (volunteers.length === 0) {
     return { volunteerCount: 0, totalAssigned: 0, perVolunteerCounts: {} };
@@ -56,10 +69,16 @@ export async function assignConfirmationAttendees(
     load.set(v.id, currentLoadSnaps[i].data().count);
   });
 
-  // Group the pool by team so every teammate goes to the same volunteer.
+  // Only unassigned attendees — never steal someone else's queue.
+  const unassignedDocs = poolSnap.docs.filter((doc) => {
+    const attendee = doc.data() as ConfirmationAttendee;
+    return !attendee.assignedVolunteerId;
+  });
+
+  // Group by team so every teammate goes to the same volunteer.
   // Attendees with no teamKey are their own team of one.
   const groups = new Map<string, QueryDocumentSnapshot[]>();
-  for (const doc of poolSnap.docs) {
+  for (const doc of unassignedDocs) {
     const attendee = doc.data() as ConfirmationAttendee;
     const groupKey = attendee.teamKey ?? `_solo_${doc.id}`;
     const group = groups.get(groupKey) ?? [];
@@ -67,8 +86,7 @@ export async function assignConfirmationAttendees(
     groups.set(groupKey, group);
   }
 
-  // Largest teams first (LPT-style greedy) so big teams don't land on an
-  // already-loaded volunteer purely by chance of processing order.
+  // Largest teams first (LPT-style greedy).
   const sortedGroups = Array.from(groups.values()).sort(
     (a, b) => b.length - a.length
   );
@@ -78,12 +96,10 @@ export async function assignConfirmationAttendees(
   let batch = adminDb.batch();
   let opsInBatch = 0;
 
+  // Assign one group at a time so a team is never split across volunteers
+  // even if a batch commit boundary falls mid-run.
   for (const group of sortedGroups) {
-    // Pick whichever active volunteer currently has the smallest total load.
-    let chosen = volunteers[0];
-    for (const v of volunteers) {
-      if ((load.get(v.id) ?? 0) < (load.get(chosen.id) ?? 0)) chosen = v;
-    }
+    const chosen = pickLeastLoadedVolunteer(volunteers, load);
 
     for (const doc of group) {
       const attendee = doc.data() as ConfirmationAttendee;

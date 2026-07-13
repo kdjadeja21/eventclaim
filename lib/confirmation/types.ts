@@ -158,6 +158,7 @@ export interface ConfirmationAuditLog {
   actorType: "admin" | "volunteer";
   actorId: string;
   actorName?: string; // denormalized display name (volunteer name, or admin email/uid)
+  actorUsername?: string; // volunteer username — preferred identity in admin logs
   attendeeId?: string;
   attendeeName?: string; // denormalized for readable log messages
   volunteerId?: string;

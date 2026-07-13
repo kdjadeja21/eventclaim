@@ -82,5 +82,14 @@ export async function getVolunteerSession(): Promise<{
 
 export async function clearVolunteerSession(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  // Must match the path used in createVolunteerSession — a bare delete()
+  // only clears cookies set on path "/" and leaves the volunteer session
+  // cookie in place, which made Sign Out appear to do nothing.
+  cookieStore.set(SESSION_COOKIE_NAME, "", {
+    maxAge: 0,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/volunteer",
+  });
 }

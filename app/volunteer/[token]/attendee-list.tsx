@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { LogOut, Phone, ChevronRight, Search, Crown, Users } from "lucide-react";
 import {
   CONFIRMATION_STATUSES,
@@ -10,7 +12,6 @@ import {
   ConfirmationStatus,
 } from "@/lib/confirmation/types";
 import { logoutVolunteer } from "./volunteer-actions";
-import { AttendeeStatusDialog } from "./attendee-status-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -37,26 +38,25 @@ export function AttendeeList({
   attendees: ConfirmationAttendee[];
 }) {
   const router = useRouter();
-  const [localAttendees, setLocalAttendees] = useState(attendees);
   const [tab, setTab] = useState<"all" | ConfirmationStatus>("all");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<ConfirmationAttendee | null>(null);
+  const [loggingOut, startLogout] = useTransition();
 
   const counts = useMemo(() => {
     const base: Record<"all" | ConfirmationStatus, number> = {
-      all: localAttendees.length,
+      all: attendees.length,
       need_confirmation: 0,
       call_pending: 0,
       call_done: 0,
       confirm_coming: 0,
       not_coming: 0,
     };
-    for (const a of localAttendees) base[a.status]++;
+    for (const a of attendees) base[a.status]++;
     return base;
-  }, [localAttendees]);
+  }, [attendees]);
 
   const filtered = useMemo(() => {
-    let list = localAttendees;
+    let list = attendees;
     if (tab !== "all") list = list.filter((a) => a.status === tab);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -65,11 +65,17 @@ export function AttendeeList({
       );
     }
     return list;
-  }, [localAttendees, tab, search]);
+  }, [attendees, tab, search]);
 
-  async function handleLogout() {
-    await logoutVolunteer();
-    router.refresh();
+  function handleLogout() {
+    startLogout(async () => {
+      try {
+        await logoutVolunteer();
+        router.refresh();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Sign out failed");
+      }
+    });
   }
 
   return (
@@ -85,8 +91,15 @@ export function AttendeeList({
               to you
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            aria-label="Sign out"
+          >
             <LogOut className="h-4 w-4" />
+            <span className="sr-only sm:not-sr-only sm:ml-1">Sign out</span>
           </Button>
         </div>
 
@@ -124,11 +137,10 @@ export function AttendeeList({
             </Card>
           ) : (
             filtered.map((attendee) => (
-              <button
+              <Link
                 key={attendee.id}
-                type="button"
+                href={`/volunteer/${token}/${attendee.id}`}
                 className="block w-full text-left"
-                onClick={() => setSelected(attendee)}
               >
                 <Card className="hover:border-primary/40 transition-colors">
                   <CardContent className="p-4 flex items-center justify-between gap-3">
@@ -155,34 +167,21 @@ export function AttendeeList({
                       )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={statusVariant[attendee.status]} className="whitespace-nowrap">
+                      <Badge
+                        variant={statusVariant[attendee.status]}
+                        className="whitespace-nowrap"
+                      >
                         {CONFIRMATION_STATUS_LABELS[attendee.status]}
                       </Badge>
                       <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </div>
                   </CardContent>
                 </Card>
-              </button>
+              </Link>
             ))
           )}
         </div>
       </div>
-
-      {selected && (
-        <AttendeeStatusDialog
-          key={selected.id}
-          token={token}
-          attendee={selected}
-          onClose={() => setSelected(null)}
-          onSaved={(updated) => {
-            setLocalAttendees((prev) =>
-              prev.map((a) => (a.id === updated.id ? updated : a))
-            );
-            setSelected(null);
-            router.refresh();
-          }}
-        />
-      )}
     </div>
   );
 }

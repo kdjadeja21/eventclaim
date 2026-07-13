@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ConfirmationAuditAction, ConfirmationAuditLog } from "@/lib/confirmation/types";
-import { getConfirmationLogMessage } from "@/lib/confirmation/log-message";
+import {
+  getConfirmationLogActorLabel,
+  getConfirmationLogMessage,
+} from "@/lib/confirmation/log-message";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -97,6 +100,7 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
           log.actorType.toLowerCase().includes(q) ||
           log.actorId.toLowerCase().includes(q) ||
           (log.actorName ?? "").toLowerCase().includes(q) ||
+          (log.actorUsername ?? "").toLowerCase().includes(q) ||
           (log.attendeeId ?? "").toLowerCase().includes(q) ||
           (log.attendeeName ?? "").toLowerCase().includes(q) ||
           (log.volunteerId ?? "").toLowerCase().includes(q) ||
@@ -189,7 +193,7 @@ export function LogTable({ logs }: { logs: ConfirmationAuditLog[] }) {
                         {log.actorType}
                       </Badge>
                       <span className="text-muted-foreground">
-                        {log.actorName ?? log.actorId}
+                        {getConfirmationLogActorLabel(log)}
                       </span>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">

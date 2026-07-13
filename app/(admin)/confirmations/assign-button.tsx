@@ -19,9 +19,15 @@ export function AssignButton({ volunteerCount }: { volunteerCount: number }) {
         toast.error("Add at least one active volunteer before assigning.");
         return;
       }
-      toast.success(
-        `Assigned ${res.totalAssigned} attendee${res.totalAssigned !== 1 ? "s" : ""} across ${res.volunteerCount} volunteer${res.volunteerCount !== 1 ? "s" : ""}`
-      );
+      if (res.totalAssigned === 0) {
+        toast.message(
+          "Nothing new to assign — all eligible attendees already have a volunteer."
+        );
+      } else {
+        toast.success(
+          `Assigned ${res.totalAssigned} attendee${res.totalAssigned !== 1 ? "s" : ""} across ${res.volunteerCount} volunteer${res.volunteerCount !== 1 ? "s" : ""}`
+        );
+      }
       router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Assignment failed");

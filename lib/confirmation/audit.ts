@@ -7,6 +7,7 @@ export async function writeConfirmationAuditLog(params: {
   actorType: "admin" | "volunteer";
   actorId: string;
   actorName?: string;
+  actorUsername?: string;
   attendeeId?: string;
   attendeeName?: string;
   volunteerId?: string;
@@ -17,6 +18,7 @@ export async function writeConfirmationAuditLog(params: {
     actorType,
     actorId,
     actorName,
+    actorUsername,
     attendeeId,
     attendeeName,
     volunteerId,
@@ -29,6 +31,7 @@ export async function writeConfirmationAuditLog(params: {
     actorType,
     actorId,
     ...(actorName ? { actorName } : {}),
+    ...(actorUsername ? { actorUsername } : {}),
     ...(attendeeId ? { attendeeId } : {}),
     ...(attendeeName ? { attendeeName } : {}),
     ...(volunteerId ? { volunteerId } : {}),

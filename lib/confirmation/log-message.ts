@@ -12,6 +12,20 @@ function getMetadataString(
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+/** Prefer username for volunteers so admins can tell who did what. */
+export function getConfirmationLogActorLabel(log: ConfirmationAuditLog): string {
+  if (log.actorType === "volunteer") {
+    return (
+      log.actorUsername ??
+      getMetadataString(log.metadata, "username") ??
+      log.actorName ??
+      log.volunteerId ??
+      log.actorId
+    );
+  }
+  return log.actorName ?? log.actorId;
+}
+
 /**
  * Human-readable summary of a confirmation audit log entry — used on both the
  * dashboard's recent activity feed and the full logs table. For status
@@ -26,8 +40,8 @@ export function getConfirmationLogMessage(log: ConfirmationAuditLog): string {
       const statusLabel = status ? CONFIRMATION_STATUS_LABELS[status] : "a new status";
       const who =
         log.actorType === "volunteer"
-          ? `by volunteer ${log.actorName ?? log.volunteerId ?? "(unknown)"}`
-          : `by ${log.actorName ?? "an admin"}`;
+          ? `by volunteer @${getConfirmationLogActorLabel(log)}`
+          : `by ${getConfirmationLogActorLabel(log) || "an admin"}`;
       return `Status for ${log.attendeeName ?? "an attendee"} was set to "${statusLabel}" ${who}.`;
     }
     case "attendees_imported": {
@@ -71,7 +85,7 @@ export function getConfirmationLogMessage(log: ConfirmationAuditLog): string {
     }
     default:
       return log.actorType === "volunteer"
-        ? `Action performed by volunteer ${log.actorName ?? "(unknown)"}.`
+        ? `Action performed by volunteer @${getConfirmationLogActorLabel(log)}.`
         : "Action performed by an admin.";
   }
 }
