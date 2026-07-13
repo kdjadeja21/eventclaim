@@ -1,3 +1,4 @@
+import { recoverTeamIntentFromAttendee } from "@/lib/confirmation/csv";
 import { findSuggestions } from "@/lib/confirmation/email-match";
 import {
   ConfirmationAttendee,
@@ -71,6 +72,23 @@ function referencedEmailsOf(attendee: ConfirmationAttendee): string[] {
   return (attendee.teamIntent?.referencedEmails ?? []).map(normalizeEmail).filter(Boolean);
 }
 
+function edgeTypeForKind(
+  kind: NonNullable<ConfirmationAttendee["teamIntent"]>["kind"],
+  referencedCount: number
+): "expects_member" | "expects_lead" | null {
+  if (kind === "lead") return "expects_member";
+  if (kind === "member") return "expects_lead";
+  if (kind === "ambiguous") {
+    // Multiple emails ⇒ forming a team; a single email ⇒ joining / naming a lead.
+    return referencedCount >= 2 ? "expects_member" : "expects_lead";
+  }
+  // Individuals with leftover emails (misclassified ticket) still contribute
+  // edges so teams can form from the email graph alone.
+  if (referencedCount >= 2) return "expects_member";
+  if (referencedCount === 1) return "expects_lead";
+  return null;
+}
+
 function buildEdges(
   attendees: ConfirmationAttendee[],
   emailToId: Map<string, string>
@@ -81,41 +99,24 @@ function buildEdges(
     const kind = attendee.teamIntent?.kind ?? "individual";
     const selfEmail = normalizeEmail(attendee.email);
     const referenced = referencedEmailsOf(attendee);
+    const edgeType = edgeTypeForKind(kind, referenced.length);
+    if (!edgeType) continue;
 
-    if (kind === "lead") {
-      for (const email of referenced) {
-        if (email === selfEmail) continue;
-        const toId = emailToId.get(email);
-        const reverse = attendees.find(
-          (other) =>
-            normalizeEmail(other.email) === email &&
-            referencedEmailsOf(other).includes(selfEmail)
-        );
-        edges.push({
-          fromId: attendee.id,
-          toEmail: email,
-          toId,
-          type: "expects_member",
-          bidirectional: !!reverse,
-        });
-      }
-    }
-
-    if (kind === "member" || kind === "ambiguous") {
-      for (const email of referenced) {
-        if (email === selfEmail) continue;
-        const toId = emailToId.get(email);
-        const reverse = attendees.find(
-          (other) => other.id === toId && referencedEmailsOf(other).includes(selfEmail)
-        );
-        edges.push({
-          fromId: attendee.id,
-          toEmail: email,
-          toId,
-          type: "expects_lead",
-          bidirectional: !!reverse,
-        });
-      }
+    for (const email of referenced) {
+      if (email === selfEmail) continue;
+      const toId = emailToId.get(email);
+      const reverse = attendees.find(
+        (other) =>
+          normalizeEmail(other.email) === email &&
+          referencedEmailsOf(other).includes(selfEmail)
+      );
+      edges.push({
+        fromId: attendee.id,
+        toEmail: email,
+        toId,
+        type: edgeType,
+        bidirectional: !!reverse,
+      });
     }
   }
 
@@ -163,7 +164,12 @@ function scoreLeadCandidate(attendee: ConfirmationAttendee, edges: TeamEdge[]): 
   let score = 0;
   const kind = attendee.teamIntent?.kind;
   if (kind === "lead") score += 3;
+  if (kind === "ambiguous" && (attendee.teamIntent?.referencedEmails?.length ?? 0) >= 2) {
+    score += 2;
+  }
   score += countInboundLeadEdges(attendee.id, edges);
+  // Being listed by others as a member is a mild lead signal.
+  score += edges.filter((e) => e.toId === attendee.id && e.type === "expects_member").length;
   if (
     kind === "member" &&
     !edges.some((e) => e.fromId === attendee.id && e.type === "expects_member")
@@ -181,12 +187,28 @@ function pickLead(
   const scores = memberIds.map((id) => ({
     id,
     score: scoreLeadCandidate(attendeeMap.get(id)!, edges),
+    kind: attendeeMap.get(id)!.teamIntent?.kind ?? "individual",
   }));
-  scores.sort((a, b) => b.score - a.score);
+  scores.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+
   if (scores.length === 0) return { leadId: null, tied: false };
   if (scores.length === 1) return { leadId: scores[0].id, tied: false };
+
+  const explicitLeads = scores.filter((s) => s.kind === "lead");
+  if (explicitLeads.length > 1 && explicitLeads[0].score === explicitLeads[1].score) {
+    return { leadId: null, tied: true };
+  }
+  if (explicitLeads.length === 1) {
+    return { leadId: explicitLeads[0].id, tied: false };
+  }
+
+  // For mutually-linked teammates without an explicit lead ticket, still pick
+  // a stable lead so the team card forms instead of collapsing to "no lead".
+  if (memberIds.length >= 2) {
+    return { leadId: scores[0].id, tied: false };
+  }
+
   if (scores[0].score <= 0) return { leadId: null, tied: true };
-  if (scores[0].score === scores[1].score) return { leadId: null, tied: true };
   return { leadId: scores[0].id, tied: false };
 }
 
@@ -241,14 +263,17 @@ function dedupeSuggestions(links: ConfirmationSuggestedLink[]): ConfirmationSugg
 }
 
 function isPoolQuality(attendee: ConfirmationAttendee): boolean {
-  const quality = attendee.teamIntent?.quality;
-  return (
-    attendee.teamIntent?.kind === "individual" ||
-    quality === "garbage" ||
-    quality === "self_only" ||
-    quality === "empty" ||
-    quality === "individual"
-  );
+  const intent = attendee.teamIntent;
+  if (!intent) return true;
+
+  // Listed teammate/lead emails → keep out of the individual pool.
+  if ((intent.referencedEmails?.length ?? 0) > 0) return false;
+
+  // A declared lead with a blank email field still gets an incomplete team
+  // card for admin review. Lone members/individuals with no emails stay in pool.
+  if (intent.kind === "lead") return false;
+
+  return true;
 }
 
 function validateComponent(
@@ -387,23 +412,44 @@ export function resolveConfirmationTeams(
   attendees: ConfirmationAttendee[],
   rules: ConfirmationTeamRules
 ): TeamResolverOutput {
-  const emailToId = buildEmailIndex(attendees);
-  const edges = buildEdges(attendees, emailToId);
-  const components = buildComponents(attendees, edges);
+  // Recover emails from `extra` / re-classify kind so improved detection
+  // rules take effect on Resolve without requiring a fresh CSV upload.
+  const refinedAttendees = attendees.map((a) => {
+    const recovered = recoverTeamIntentFromAttendee(a);
+    const unchanged =
+      a.teamIntent &&
+      a.teamIntent.kind === recovered.kind &&
+      a.teamIntent.quality === recovered.quality &&
+      JSON.stringify(a.teamIntent.referencedEmails ?? []) ===
+        JSON.stringify(recovered.referencedEmails ?? []) &&
+      (a.teamIntent.rawValue ?? null) === (recovered.rawValue ?? null);
+    if (unchanged) return a;
+    return { ...a, teamIntent: recovered };
+  });
+
+  const emailToId = buildEmailIndex(refinedAttendees);
+  const edges = buildEdges(refinedAttendees, emailToId);
+  const components = buildComponents(refinedAttendees, edges);
   const duplicateMembers = findDuplicateMembers(components);
 
   const teams: ConfirmationTeam[] = [];
   const poolAttendeeIds: string[] = [];
   const assignments = new Map<string, string>();
 
-  for (const attendee of attendees) {
+  for (const attendee of refinedAttendees) {
     if (isPoolQuality(attendee) && !poolAttendeeIds.includes(attendee.id)) {
       poolAttendeeIds.push(attendee.id);
     }
   }
 
   for (const comp of components.values()) {
-    const { team, poolIds } = validateComponent(comp, attendees, emailToId, rules, duplicateMembers);
+    const { team, poolIds } = validateComponent(
+      comp,
+      refinedAttendees,
+      emailToId,
+      rules,
+      duplicateMembers
+    );
     for (const id of poolIds) {
       if (!poolAttendeeIds.includes(id)) poolAttendeeIds.push(id);
     }

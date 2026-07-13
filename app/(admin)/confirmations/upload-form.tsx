@@ -57,8 +57,9 @@ export function UploadForm() {
           <code className="text-xs bg-muted px-1 rounded">first_name</code>/
           <code className="text-xs bg-muted px-1 rounded">last_name</code>) and{" "}
           <code className="text-xs bg-muted px-1 rounded">email</code> column.
-          Everything else (phone, survey answers, team info) is kept for the
-          attendee detail view. Re-uploads are idempotent.
+          Ticket type and team-email question columns are used to form teams.
+          Re-uploading the same emails refreshes team signals without wiping
+          call status or volunteer assignments.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import type { WriteBatch } from "firebase-admin/firestore";
 import { writeConfirmationAuditLog } from "@/lib/confirmation/audit";
+import { recoverTeamIntentFromAttendee } from "@/lib/confirmation/csv";
 import {
   computeAttendeeTeamFields,
   computeTeamFormationStats,
@@ -30,10 +31,26 @@ async function commitInBatches(ops: Array<(batch: WriteBatch) => void>): Promise
   if (count > 0) await batch.commit();
 }
 
+function teamIntentChanged(
+  before: ConfirmationAttendee["teamIntent"],
+  after: ConfirmationAttendee["teamIntent"]
+): boolean {
+  if (!before && !after) return false;
+  if (!before || !after) return true;
+  return (
+    before.kind !== after.kind ||
+    before.quality !== after.quality ||
+    (before.rawValue ?? null) !== (after.rawValue ?? null) ||
+    JSON.stringify(before.referencedEmails ?? []) !==
+      JSON.stringify(after.referencedEmails ?? [])
+  );
+}
+
 /**
  * Re-runs team resolution across every current attendee (not just one CSV
  * upload), persists the computed teams to `confirmationTeams`, and updates
- * each attendee's teamKey/teamRole/inPool. Safe to call repeatedly — old team
+ * each attendee's teamKey/teamRole/inPool (and refreshed teamIntent when
+ * recovery/reclassification changed it). Safe to call repeatedly — old team
  * docs are cleared and replaced with the freshly computed set each time.
  */
 export async function resolveAndPersistConfirmationTeams(
@@ -43,7 +60,14 @@ export async function resolveAndPersistConfirmationTeams(
   const attendeesSnap = await adminDb.collection("confirmationAttendees").get();
   const attendees = attendeesSnap.docs.map((d) => d.data() as ConfirmationAttendee);
 
-  const output = resolveConfirmationTeams(attendees, rules);
+  // Apply the same recovery the resolver uses so we can persist improved
+  // teamIntent fields back onto attendee docs.
+  const recoveredAttendees = attendees.map((a) => ({
+    ...a,
+    teamIntent: recoverTeamIntentFromAttendee(a),
+  }));
+
+  const output = resolveConfirmationTeams(recoveredAttendees, rules);
 
   const existingTeamsSnap = await adminDb.collection("confirmationTeams").get();
 
@@ -59,17 +83,31 @@ export async function resolveAndPersistConfirmationTeams(
   }
 
   const updatedAttendees: ConfirmationAttendee[] = [];
-  for (const attendee of attendees) {
-    const fields = computeAttendeeTeamFields(attendee, output);
-    if (
-      attendee.teamKey !== fields.teamKey ||
-      attendee.teamRole !== fields.teamRole ||
-      attendee.inPool !== fields.inPool
-    ) {
-      const ref = adminDb.collection("confirmationAttendees").doc(attendee.id);
-      ops.push((batch) => batch.update(ref, fields));
+  for (let i = 0; i < attendees.length; i++) {
+    const original = attendees[i];
+    const recovered = recoveredAttendees[i];
+    const fields = computeAttendeeTeamFields(recovered, output);
+    const intentChanged = teamIntentChanged(original.teamIntent, recovered.teamIntent);
+    const assignmentChanged =
+      original.teamKey !== fields.teamKey ||
+      original.teamRole !== fields.teamRole ||
+      original.inPool !== fields.inPool;
+
+    if (intentChanged || assignmentChanged) {
+      const ref = adminDb.collection("confirmationAttendees").doc(original.id);
+      ops.push((batch) =>
+        batch.update(ref, {
+          ...fields,
+          ...(intentChanged ? { teamIntent: recovered.teamIntent } : {}),
+        })
+      );
     }
-    updatedAttendees.push({ ...attendee, ...fields });
+
+    updatedAttendees.push({
+      ...original,
+      ...fields,
+      teamIntent: recovered.teamIntent,
+    });
   }
 
   await commitInBatches(ops);

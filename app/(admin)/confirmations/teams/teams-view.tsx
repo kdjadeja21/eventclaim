@@ -159,7 +159,7 @@ export function TeamsView({
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
             {teams.length === 0
-              ? 'No teams yet. Upload attendees, then click "Resolve Teams".'
+              ? 'No teams formed yet. Upload a CSV with ticket + team-email columns, then click "Resolve Teams". Existing imports can be fixed by Resolve (it recovers emails from stored fields) or by re-uploading the CSV.'
               : "No teams match this filter."}
           </CardContent>
         </Card>
@@ -190,7 +190,10 @@ export function TeamsView({
                       <p className="text-xs text-muted-foreground truncate">{a.email}</p>
                     </div>
                     <Badge variant="secondary" className="text-[10px] whitespace-nowrap">
-                      {a.teamIntent?.quality ?? "individual"}
+                      {a.teamIntent?.kind ?? "individual"}
+                      {a.teamIntent?.quality && a.teamIntent.quality !== "ok"
+                        ? ` · ${a.teamIntent.quality}`
+                        : ""}
                     </Badge>
                   </div>
                 ))}

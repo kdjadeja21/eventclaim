@@ -24,12 +24,24 @@ export async function uploadConfirmationAttendees(
 
   let imported = 0;
   let skipped = skippedCount;
+  let updated = 0;
 
   for (const row of rows) {
     const docRef = attendeesRef.doc(row.id);
     const existing = await docRef.get();
 
     if (existing.exists) {
+      // Refresh team/contact fields from the CSV without wiping call progress
+      // or volunteer assignment. A bad first import used to stick forever
+      // because re-uploads skipped existing emails entirely.
+      await docRef.update({
+        name: row.name,
+        ...(row.phone ? { phone: row.phone } : {}),
+        extra: row.extra,
+        teamIntent: row.teamIntent,
+        ticketName: row.ticketName,
+      });
+      updated++;
       skipped++;
       continue;
     }
@@ -62,12 +74,12 @@ export async function uploadConfirmationAttendees(
     action: "attendees_imported",
     actorType: "admin",
     actorId: session.uid,
-    metadata: { imported, skipped, invalid: invalidCount },
+    metadata: { imported, skipped, updated, invalid: invalidCount },
   });
 
-  // Re-run team resolution across every attendee (not just this batch) so a
-  // lead uploaded earlier and a teammate uploaded just now still link up.
-  if (imported > 0) {
+  // Re-run team resolution whenever anything was imported or team signals
+  // refreshed, so leads/members link across batches.
+  if (imported > 0 || updated > 0) {
     await resolveAndPersistConfirmationTeams(session.uid);
   }
 

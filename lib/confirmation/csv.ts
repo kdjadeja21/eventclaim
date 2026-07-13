@@ -46,50 +46,213 @@ const KNOWN_HEADER_KEYS = new Set([
   "approval_status",
 ]);
 
-const EMAIL_REGEX = /[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g;
+const TICKET_HEADER_KEYS = [
+  "ticket_name",
+  "ticket",
+  "ticket_type",
+  "ticket_title",
+  "ticket_tier",
+];
+
+export const EMAIL_REGEX = /[^\s,;<>]+@[^\s,;<>]+\.[^\s,;<>]+/g;
 
 /**
- * Finds the CSV column that holds team lead / teammate email(s) — e.g. the
- * long Luma custom question: "If you're a Team Lead, enter your team
- * members' email(s)... If you're registering individually, enter
- * 'Individual'." Matched generically by any raw header containing "team"
- * (case-insensitive), so it survives minor rewording between event forms.
+ * Picks the CSV column that holds team lead / teammate email(s).
+ *
+ * Prefer columns whose values actually contain emails (so a yes/no
+ * "Are you on a team?" column doesn't shadow the real question). Falls back
+ * to the longest header mentioning team/teammate/lead+email — Luma's custom
+ * questions are typically long.
  */
-function findTeamColumnHeader(rawHeaders: string[]): string | null {
-  return rawHeaders.find((h) => h.toLowerCase().includes("team")) ?? null;
+export function findTeamColumnHeader(
+  rawHeaders: string[],
+  sampleRows: Record<string, string>[] = []
+): string | null {
+  const candidates = rawHeaders.filter((h) => {
+    const lower = h.toLowerCase();
+    if (lower.includes("ticket")) return false;
+    if (lower === "email" || lower === "name") return false;
+    return (
+      lower.includes("team") ||
+      lower.includes("teammate") ||
+      (lower.includes("member") && lower.includes("email")) ||
+      (lower.includes("lead") && lower.includes("email")) ||
+      (lower.includes("partner") && lower.includes("email"))
+    );
+  });
+
+  if (candidates.length === 0) {
+    // Last-resort: any non-identity column that is dense with emails.
+    const scored = rawHeaders
+      .filter((h) => {
+        const n = h.trim().toLowerCase().replace(/\s+/g, "_");
+        return !KNOWN_HEADER_KEYS.has(n) && !n.includes("ticket");
+      })
+      .map((h) => ({ header: h, score: scoreColumnForEmails(h, sampleRows) }))
+      .filter((c) => c.score > 0)
+      .sort((a, b) => b.score - a.score);
+    return scored[0]?.header ?? null;
+  }
+
+  const scored = candidates
+    .map((h) => ({
+      header: h,
+      score: scoreColumnForEmails(h, sampleRows),
+      length: h.length,
+    }))
+    .sort((a, b) => b.score - a.score || b.length - a.length);
+
+  if (scored[0]?.score > 0) return scored[0].header;
+
+  // No emails observed yet (empty export / all "Individual") — prefer the
+  // longest "team" question header, which is usually the Luma custom field.
+  return scored[0]?.header ?? null;
 }
 
-function detectTeamIntentKind(ticketName: string | null): ConfirmationTeamIntentKind {
-  if (!ticketName) return "individual";
-  const lower = ticketName.toLowerCase();
-  if (lower.includes("create a team") || lower.includes("team lead")) return "lead";
-  if (lower.includes("join a team") || lower.includes("teammate")) return "member";
-  return "individual";
+function scoreColumnForEmails(
+  header: string,
+  sampleRows: Record<string, string>[]
+): number {
+  let emailCount = 0;
+  let individualMentions = 0;
+  for (const row of sampleRows.slice(0, 300)) {
+    const val = (row[header] ?? "").trim();
+    if (!val) continue;
+    const found = val.match(EMAIL_REGEX);
+    if (found) emailCount += found.length;
+    if (/individual/i.test(val)) individualMentions++;
+  }
+  // Emails dominate; "Individual" answers confirm this is the team question.
+  return emailCount * 10 + individualMentions;
 }
 
-function detectAnswerQuality(
+/**
+ * Reads ticket / registration type from common Luma/export header variants.
+ */
+export function findTicketName(
+  getNormalized: (key: string) => string,
+  rawHeaders: string[],
+  rawRow: Record<string, string>
+): string | null {
+  for (const key of TICKET_HEADER_KEYS) {
+    const value = getNormalized(key);
+    if (value) return value;
+  }
+
+  for (const rawHeader of rawHeaders) {
+    const lower = rawHeader.toLowerCase();
+    if (!lower.includes("ticket")) continue;
+    if (lower.includes("ticket_id") || lower.includes("ticket id")) continue;
+    const value = (rawRow[rawHeader] ?? "").trim();
+    if (value) return value;
+  }
+
+  return null;
+}
+
+export function detectAnswerQuality(
   rawValue: string,
   referencedEmails: string[],
   selfEmail: string
 ): ConfirmationTeamAnswerQuality {
   if (!rawValue.trim()) return "empty";
   if (referencedEmails.length > 0) return "ok";
-  if (/individual/i.test(rawValue)) return "individual";
+  if (/^\s*individual\s*$/i.test(rawValue) || /^individual\b/i.test(rawValue.trim())) {
+    return "individual";
+  }
   if (normalizeEmail(rawValue) === selfEmail) return "self_only";
   return "garbage";
 }
 
-function buildTeamIntent(
+/**
+ * Classifies lead / member / individual / ambiguous from ticket label + the
+ * emails found in the team question. Ticket text is preferred when it clearly
+ * says lead/member; otherwise we fall back to how many emails they listed
+ * (multiple → forming a team / lead, one → joining or listing a lead).
+ */
+export function detectTeamIntentKind(
+  ticketName: string | null,
+  referencedEmails: string[],
+  quality: ConfirmationTeamAnswerQuality
+): ConfirmationTeamIntentKind {
+  if (quality === "individual" && referencedEmails.length === 0) {
+    return "individual";
+  }
+
+  const ticket = (ticketName ?? "").toLowerCase().trim();
+
+  const ticketSaysIndividual =
+    /\bindividual\b/.test(ticket) ||
+    /\bsolo\b/.test(ticket) ||
+    /\bsingle\b/.test(ticket) ||
+    ticket.includes("general admission") ||
+    ticket.includes("ga ticket");
+
+  if (ticketSaysIndividual && referencedEmails.length === 0) {
+    return "individual";
+  }
+
+  const ticketSaysLead =
+    ticket.includes("create a team") ||
+    ticket.includes("create team") ||
+    ticket.includes("creating a team") ||
+    ticket.includes("team lead") ||
+    ticket.includes("team leader") ||
+    ticket.includes("team-lead") ||
+    ticket.includes("team_lead") ||
+    (/\blead\b/.test(ticket) && ticket.includes("team")) ||
+    ticket === "lead" ||
+    ticket === "team lead";
+
+  if (ticketSaysLead) return "lead";
+
+  const ticketSaysMember =
+    ticket.includes("join a team") ||
+    ticket.includes("join team") ||
+    ticket.includes("joining a team") ||
+    ticket.includes("joining team") ||
+    ticket.includes("teammate") ||
+    ticket.includes("team member") ||
+    ticket.includes("team-member") ||
+    ticket.includes("team_member") ||
+    (/\bmember\b/.test(ticket) && ticket.includes("team")) ||
+    ticket === "member" ||
+    ticket === "teammate";
+
+  if (ticketSaysMember) return "member";
+
+  // Content-based fallback when the ticket is missing or generic ("VIP",
+  // "Standard", etc.) but the team question has emails.
+  if (referencedEmails.length >= 2) return "lead";
+  if (referencedEmails.length === 1) return "ambiguous";
+
+  if (
+    quality === "empty" ||
+    quality === "garbage" ||
+    quality === "self_only" ||
+    quality === "individual"
+  ) {
+    return "individual";
+  }
+
+  return "individual";
+}
+
+export function buildTeamIntent(
   ticketName: string | null,
   rawTeamFieldValue: string,
   selfEmail: string
 ): ConfirmationTeamIntent {
   const referencedEmails = [
     ...new Set((rawTeamFieldValue.match(EMAIL_REGEX) ?? []).map(normalizeEmail)),
-  ].filter((e) => e && e !== selfEmail);
+  ].filter((e) => e && e !== normalizeEmail(selfEmail));
 
-  const quality = detectAnswerQuality(rawTeamFieldValue, referencedEmails, selfEmail);
-  const kind = detectTeamIntentKind(ticketName);
+  const quality = detectAnswerQuality(
+    rawTeamFieldValue,
+    referencedEmails,
+    normalizeEmail(selfEmail)
+  );
+  const kind = detectTeamIntentKind(ticketName, referencedEmails, quality);
 
   return {
     kind,
@@ -97,6 +260,83 @@ function buildTeamIntent(
     rawValue: rawTeamFieldValue.trim() || null,
     quality,
   };
+}
+
+/**
+ * Re-derive kind from already-stored ticketName + teamIntent. Used by the
+ * resolver so clicking "Resolve Teams" can fix classifications without a
+ * fresh CSV upload (e.g. after detection rules improve).
+ */
+export function refineTeamIntent(
+  ticketName: string | null | undefined,
+  intent: ConfirmationTeamIntent | null | undefined
+): ConfirmationTeamIntent | null {
+  if (!intent) return null;
+  const kind = detectTeamIntentKind(
+    ticketName ?? null,
+    intent.referencedEmails ?? [],
+    intent.quality
+  );
+  if (kind === intent.kind) return intent;
+  return { ...intent, kind };
+}
+
+/**
+ * Rebuild teamIntent from stored attendee fields, recovering emails that may
+ * only live in `extra` when the original upload picked the wrong team column
+ * (common cause of "everyone is an individual").
+ */
+export function recoverTeamIntentFromAttendee(attendee: {
+  email: string;
+  ticketName?: string | null;
+  teamIntent?: ConfirmationTeamIntent | null;
+  extra?: Record<string, string>;
+}): ConfirmationTeamIntent {
+  const existing = attendee.teamIntent ?? null;
+  const ticketName = attendee.ticketName ?? null;
+
+  if ((existing?.referencedEmails?.length ?? 0) > 0) {
+    return refineTeamIntent(ticketName, existing) ?? existing!;
+  }
+
+  const candidates: Array<{ header: string; value: string }> = [];
+  if (existing?.rawValue) {
+    candidates.push({ header: "__raw__", value: existing.rawValue });
+  }
+
+  for (const [header, value] of Object.entries(attendee.extra ?? {})) {
+    if (!value?.trim()) continue;
+    const lower = header.toLowerCase();
+    if (lower.includes("ticket")) continue;
+    candidates.push({ header, value });
+  }
+
+  let bestValue = existing?.rawValue ?? "";
+  let bestScore = -1;
+
+  for (const { header, value } of candidates) {
+    const lower = header.toLowerCase();
+    const emailCount = (value.match(EMAIL_REGEX) ?? []).length;
+    const looksTeam =
+      header === "__raw__" ||
+      lower.includes("team") ||
+      lower.includes("teammate") ||
+      (lower.includes("member") && lower.includes("email")) ||
+      (lower.includes("lead") && lower.includes("email"));
+    const individualMention = /individual/i.test(value) ? 1 : 0;
+    const score =
+      emailCount * 10 + (looksTeam ? 2 : 0) + individualMention;
+    if (score > bestScore) {
+      bestScore = score;
+      bestValue = value;
+    }
+  }
+
+  if (bestScore <= 0 && existing) {
+    return refineTeamIntent(ticketName, existing) ?? existing;
+  }
+
+  return buildTeamIntent(ticketName, bestValue, attendee.email);
 }
 
 export function parseConfirmationAttendeeCsv(
@@ -120,7 +360,7 @@ export function parseConfirmationAttendeeCsv(
     normalizedToRaw.set(normalized, raw);
   }
 
-  const teamColumnHeader = findTeamColumnHeader(rawHeaders);
+  const teamColumnHeader = findTeamColumnHeader(rawHeaders, result.data);
 
   function getNormalized(raw: Record<string, string>, key: string): string {
     const rawKey = normalizedToRaw.get(key);
@@ -169,8 +409,14 @@ export function parseConfirmationAttendeeCsv(
       if (value) extra[rawHeader] = value;
     }
 
-    const ticketName = getNormalized(raw, "ticket_name") || null;
-    const teamFieldValue = teamColumnHeader ? (raw[teamColumnHeader] ?? "").trim() : "";
+    const ticketName = findTicketName(
+      (key) => getNormalized(raw, key),
+      rawHeaders,
+      raw
+    );
+    const teamFieldValue = teamColumnHeader
+      ? (raw[teamColumnHeader] ?? "").trim()
+      : "";
     const teamIntent = buildTeamIntent(ticketName, teamFieldValue, email);
 
     seenEmails.add(email);
