@@ -35,6 +35,7 @@ const actionVariant: Record<
   volunteer_pin_reset: "secondary",
   attendees_assigned: "info",
   attendee_status_updated: "success",
+  teams_resolved: "info",
 };
 
 const actionLabels: Record<ConfirmationAuditAction, string> = {
@@ -44,6 +45,7 @@ const actionLabels: Record<ConfirmationAuditAction, string> = {
   volunteer_pin_reset: "Volunteer PIN Reset",
   attendees_assigned: "Attendees Assigned",
   attendee_status_updated: "Attendee Status Updated",
+  teams_resolved: "Teams Resolved",
 };
 
 function stringifyMetadata(metadata: ConfirmationAuditLog["metadata"]): string {

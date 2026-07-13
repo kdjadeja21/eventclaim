@@ -95,15 +95,15 @@ Create a `.env.local` in the project root:
 | `/audit` | Audit log viewer |
 | `/confirmations` | Confirmation calling dashboard — stats, CSV upload, "Assign Attendees" |
 | `/confirmations/volunteers` | Manage volunteers, copy their link + PIN, reset PIN |
-| `/confirmations/attendees` | Full attendee table with status/volunteer filters and manual overrides |
+| `/confirmations/attendees` | Full attendee table with status/volunteer/team filters and manual overrides |
+| `/confirmations/teams` | Review whole teams at once — lead, members, missing teammates, and fuzzy-match fixes |
 | `/confirmations/logs` | Confirmation module audit log viewer |
 
 ### Volunteer-facing (own token + PIN + cookie auth, not Firebase Auth)
 
 | Path | Description |
 |------|-------------|
-| `/volunteer/[token]` | PIN entry, then that volunteer's assigned attendee list |
-| `/volunteer/[token]/[attendeeId]` | Attendee detail + call status update + notes |
+| `/volunteer/[token]` | PIN entry, then that volunteer's assigned attendee list; clicking an attendee opens a status-update dialog (no page navigation) |
 
 ### API
 
@@ -122,9 +122,14 @@ Top-level collections:
 - `claimTokens` — maps token → `eventId` + `attendeeId`
 - `emailLogs` — send/resend history
 - `auditLogs` — admin action audit trail
-- `confirmationAttendees` — attendees uploaded for confirmation calling, their status, and volunteer assignment (decoupled from `events`)
+- `confirmationAttendees` — attendees uploaded for confirmation calling, their status, team signal (`teamIntent`), resolved team (`teamKey`/`teamRole`/`inPool`), and volunteer assignment (decoupled from `events`)
+- `confirmationTeams` — teams computed by the team resolver (lead, members, missing/expected teammates, review issues, fuzzy-match suggestions), recomputed each time "Resolve Teams" runs
 - `confirmationVolunteers` — volunteers, their unique token/PIN, and active state
-- `confirmationAuditLogs` — audit trail for the Confirmations module (imports, assignments, PIN resets, status updates)
+- `confirmationAuditLogs` — audit trail for the Confirmations module (imports, assignments, PIN resets, status updates, team resolution)
+
+### Team formation
+
+Each attendee's `ticket_name` (e.g. "Create a Team" / "Join a Team") plus the CSV's team-lead/teammate question are parsed into a `teamIntent` (kind: lead/member/individual/ambiguous, referenced emails, and an answer-quality flag) at upload time. Actual team *formation* is a separate step (`lib/confirmation/team-resolver.ts`, triggered automatically after every upload and re-runnable from `/confirmations/teams`): it builds a graph of who-references-whom across **every** current attendee (not just one upload batch — so a lead uploaded today and a teammate uploaded next week still link up), finds connected components via union-find, picks the most likely lead per component, and flags issues (no lead identified, a lead's email not found, a listed teammate never registered, duplicate membership across teams, or a team below/above the configured size). When an expected email doesn't match anyone exactly, `lib/confirmation/email-match.ts` suggests likely typo fixes (Levenshtein distance + local-part similarity) that an admin can confirm with one click on the Teams page, which corrects the data and re-resolves.
 
 ## Import formats
 

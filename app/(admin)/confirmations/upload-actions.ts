@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeConfirmationAuditLog } from "@/lib/confirmation/audit";
 import { parseConfirmationAttendeeCsv } from "@/lib/confirmation/csv";
+import { resolveAndPersistConfirmationTeams } from "@/lib/confirmation/team-resolve-service";
 import {
   ConfirmationAttendee,
   ConfirmationImportResult,
@@ -46,9 +47,11 @@ export async function uploadConfirmationAttendees(
       assignedAt: null,
       statusUpdatedAt: null,
       createdAt: now,
-      teamKey: row.teamKey,
-      teamRole: row.teamRole,
+      teamIntent: row.teamIntent,
       ticketName: row.ticketName,
+      teamKey: null,
+      teamRole: null,
+      inPool: false,
     };
 
     await docRef.set(attendee);
@@ -62,8 +65,15 @@ export async function uploadConfirmationAttendees(
     metadata: { imported, skipped, invalid: invalidCount },
   });
 
+  // Re-run team resolution across every attendee (not just this batch) so a
+  // lead uploaded earlier and a teammate uploaded just now still link up.
+  if (imported > 0) {
+    await resolveAndPersistConfirmationTeams(session.uid);
+  }
+
   revalidatePath("/confirmations");
   revalidatePath("/confirmations/attendees");
+  revalidatePath("/confirmations/teams");
 
   return {
     imported,

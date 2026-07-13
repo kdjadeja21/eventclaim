@@ -17,9 +17,12 @@ import {
 } from "@/lib/confirmation/stats";
 import {
   CONFIRMATION_STATUS_LABELS,
+  ConfirmationAttendee,
   ConfirmationAuditLog,
+  ConfirmationTeam,
   ConfirmationVolunteer,
 } from "@/lib/confirmation/types";
+import { computeTeamFormationStats } from "@/lib/confirmation/team-resolver";
 import {
   Card,
   CardContent,
@@ -57,7 +60,15 @@ async function getDashboardData() {
     .get();
   const recentActivity = logsSnap.docs.map((d) => d.data() as ConfirmationAuditLog);
 
-  return { globalStats, volunteerStats, activeVolunteerCount, recentActivity };
+  const [teamsSnap, attendeesSnap] = await Promise.all([
+    adminDb.collection("confirmationTeams").get(),
+    adminDb.collection("confirmationAttendees").get(),
+  ]);
+  const teams = teamsSnap.docs.map((d) => d.data() as ConfirmationTeam);
+  const attendees = attendeesSnap.docs.map((d) => d.data() as ConfirmationAttendee);
+  const teamStats = computeTeamFormationStats(teams, attendees);
+
+  return { globalStats, volunteerStats, activeVolunteerCount, recentActivity, teamStats };
 }
 
 const statusIcons: Record<string, React.ElementType> = {
@@ -69,7 +80,7 @@ const statusIcons: Record<string, React.ElementType> = {
 };
 
 export default async function ConfirmationsPage() {
-  const { globalStats, volunteerStats, activeVolunteerCount, recentActivity } =
+  const { globalStats, volunteerStats, activeVolunteerCount, recentActivity, teamStats } =
     await getDashboardData();
 
   return (
@@ -109,6 +120,31 @@ export default async function ConfirmationsPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
           <UploadForm />
+
+          <Link href="/confirmations/teams">
+            <Card className="hover:border-primary/40 hover:shadow-sm transition-colors cursor-pointer">
+              <CardContent className="p-4 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    Team Formation
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {teamStats.formedTeams} teams formed · {teamStats.poolCount} attendees
+                    in the pool
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {teamStats.needsReviewTeams > 0 && (
+                    <Badge variant="destructive">
+                      {teamStats.needsReviewTeams} need review
+                    </Badge>
+                  )}
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">

@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart2, ClipboardList, Users, UserCog } from "lucide-react";
+import { BarChart2, ClipboardList, Users, UserCog, UsersRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ConfirmationSection = "dashboard" | "volunteers" | "attendees" | "logs";
+type ConfirmationSection = "dashboard" | "volunteers" | "attendees" | "teams" | "logs";
 
 const sections: {
   key: ConfirmationSection;
@@ -15,6 +15,7 @@ const sections: {
   { key: "dashboard", href: "/confirmations", label: "Dashboard", icon: BarChart2 },
   { key: "volunteers", href: "/confirmations/volunteers", label: "Volunteers", icon: UserCog },
   { key: "attendees", href: "/confirmations/attendees", label: "Attendees", icon: Users },
+  { key: "teams", href: "/confirmations/teams", label: "Teams", icon: UsersRound },
   { key: "logs", href: "/confirmations/logs", label: "Logs", icon: ClipboardList },
 ];
 

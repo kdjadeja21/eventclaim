@@ -44,6 +44,19 @@ export function getConfirmationLogMessage(log: ConfirmationAuditLog): string {
     }
     case "volunteer_pin_reset":
       return "Volunteer PIN was reset.";
+    case "teams_resolved": {
+      const source = getMetadataString(metadata, "source");
+      if (source === "confirmed_fuzzy_match") {
+        const correctedEmail = getMetadataString(metadata, "correctedEmail");
+        const correctedAttendeeName = getMetadataString(metadata, "correctedAttendeeName");
+        return `${log.attendeeName ?? "An attendee"}'s team link was corrected to ${
+          correctedAttendeeName ?? correctedEmail ?? "a matched attendee"
+        } by ${log.actorName ?? "an admin"}.`;
+      }
+      const formedTeams = metadata.formedTeams;
+      const needsReviewTeams = metadata.needsReviewTeams;
+      return `Teams were re-resolved: ${formedTeams ?? "?"} teams formed (${needsReviewTeams ?? 0} need review).`;
+    }
     case "attendees_assigned": {
       const source = getMetadataString(metadata, "source");
       if (source === "admin_manual_reassign") {
