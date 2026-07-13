@@ -139,7 +139,7 @@ Each attendee's ticket type (from `ticket_name` / `ticket` / `ticket_type`, e.g.
 
 Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
 
-**Confirmation attendees:** Tolerant of arbitrary CSV columns (e.g. a Luma "approved attendees" export). Requires `email` and either `name` or `first_name`/`last_name`; `phone`/`phone_number` is mapped to the attendee's phone number. By default only rows with `approval_status` = `approved` (or no `approval_status` column at all) are imported — toggle this off on the upload form to import every row. Every other column is preserved verbatim for the attendee detail view. Re-uploading the same email is idempotent (deterministic document ID from the normalized email).
+**Confirmation attendees:** Tolerant of arbitrary CSV columns (e.g. a Luma "approved attendees" export). Requires `email` and either `name` or `first_name`/`last_name`; `phone`/`phone_number` is mapped to the attendee's phone number. By default only rows with `approval_status` = `approved` (or no `approval_status` column at all) are imported — toggle this off on the upload form to import every row. Ticket + team-email columns drive team formation. Every other column is preserved in `extra`. Re-uploading the same email refreshes name/phone/extra/team signals without resetting call status or volunteer assignment.
 
 ## Authentication
 
