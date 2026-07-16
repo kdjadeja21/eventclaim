@@ -259,8 +259,17 @@ export default function CouponList({
     next.splice(target, 0, moved);
     const withOrder = next.map((c, i) => ({ ...c, sortOrder: i }));
 
-    setCoupons(withOrder);
-    setReorderingId(moved.id);
+    // Animate the reorder using CSS View Transitions if supported
+    if ("startViewTransition" in document) {
+      document.startViewTransition(() => {
+        setCoupons(withOrder);
+        setReorderingId(moved.id);
+      });
+    } else {
+      setCoupons(withOrder);
+      setReorderingId(moved.id);
+    }
+
     const res = await reorderCoupons(
       eventId,
       withOrder.map((c) => c.id),
@@ -305,6 +314,7 @@ export default function CouponList({
               <Card
                 key={coupon.id}
                 className={cn("transition-opacity", coupon.isDisabled && "opacity-60")}
+                style={{ viewTransitionName: `coupon-card-${coupon.id}` }}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-3">
