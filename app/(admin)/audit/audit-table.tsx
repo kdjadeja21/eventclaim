@@ -46,6 +46,7 @@ const actionVariant: Record<
   coupon_deleted: "destructive",
   coupon_disabled: "warning",
   coupon_enabled: "success",
+  coupon_reordered: "info",
   coupon_links_added: "success",
   coupon_granted: "success",
   coupon_unassigned: "warning",
@@ -72,6 +73,7 @@ const actionLabels: Record<AuditAction, string> = {
   coupon_deleted: "Coupon Deleted",
   coupon_disabled: "Coupon Disabled",
   coupon_enabled: "Coupon Enabled",
+  coupon_reordered: "Coupons Reordered",
   coupon_links_added: "Links Added",
   coupon_granted: "Grants Issued",
   coupon_unassigned: "Link Unassigned",
@@ -187,6 +189,13 @@ function getAuditMessage(log: AuditLog): string {
       return `Coupon ${couponId ?? "record"} was disabled.`;
     case "coupon_enabled":
       return `Coupon ${couponId ?? "record"} was enabled.`;
+    case "coupon_reordered": {
+      const orderedIds = metadata?.orderedIds;
+      const count = Array.isArray(orderedIds) ? orderedIds.length : null;
+      return count != null
+        ? `${count} partner offer${count !== 1 ? "s" : ""} were reordered.`
+        : "Partner offers were reordered.";
+    }
     case "coupon_links_added": {
       const imported = getMetadataNumber(metadata, "imported");
       return `${imported ?? "?"} links added to coupon ${couponId ?? "pool"}.`;

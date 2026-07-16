@@ -19,6 +19,8 @@ import {
   BarChart2,
   ChevronDown,
   ChevronUp,
+  ArrowUp,
+  ArrowDown,
   Eye,
   MoreHorizontal,
 } from "lucide-react";
@@ -61,6 +63,7 @@ import {
   updateCoupon,
   deleteCoupon,
   toggleCouponDisabled,
+  reorderCoupons,
 } from "./coupon-actions";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -135,6 +138,7 @@ export default function CouponList({
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [reordering, setReordering] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const router = useRouter();
@@ -242,6 +246,33 @@ export default function CouponList({
     });
   }
 
+  // ─── Reorder ────────────────────────────────────────────────────────────────
+
+  async function handleMove(index: number, direction: "up" | "down") {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= coupons.length || reordering) return;
+
+    const previous = coupons;
+    const next = [...coupons];
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    const withOrder = next.map((c, i) => ({ ...c, sortOrder: i }));
+
+    setCoupons(withOrder);
+    setReordering(true);
+    const res = await reorderCoupons(
+      eventId,
+      withOrder.map((c) => c.id),
+      eventSlug
+    );
+    setReordering(false);
+
+    if (!res.success) {
+      setCoupons(previous);
+      toast.error(res.error ?? "Failed to reorder offers.");
+    }
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -266,7 +297,7 @@ export default function CouponList({
         </div>
       ) : (
         <div className="grid gap-4">
-          {coupons.map((coupon) => {
+          {coupons.map((coupon, index) => {
             const KindIcon = kindConfig[coupon.kind].icon;
             const expanded = expandedIds.has(coupon.id);
             return (
@@ -276,6 +307,32 @@ export default function CouponList({
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-3">
+                    {/* Reorder */}
+                    <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleMove(index, "up")}
+                        disabled={index === 0 || reordering}
+                        title="Move up"
+                        aria-label={`Move ${coupon.name} up`}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleMove(index, "down")}
+                        disabled={index === coupons.length - 1 || reordering}
+                        title="Move down"
+                        aria-label={`Move ${coupon.name} down`}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
                     {/* Logo */}
                     {coupon.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element

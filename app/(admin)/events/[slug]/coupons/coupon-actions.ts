@@ -162,6 +162,64 @@ export async function updateCoupon(
   return { success: true };
 }
 
+// ─── Reorder coupons (sets contiguous sortOrder 0..n-1) ───────────────────────
+
+export async function reorderCoupons(
+  eventId: string,
+  orderedIds: string[],
+  slug: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  if (orderedIds.length === 0) {
+    return { success: false, error: "No coupons to reorder." };
+  }
+
+  const couponsSnap = await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .get();
+
+  const existingIds = new Set(couponsSnap.docs.map((d) => d.id));
+
+  if (orderedIds.length !== existingIds.size) {
+    return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+  }
+
+  for (const id of orderedIds) {
+    if (!existingIds.has(id)) {
+      return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+    }
+  }
+
+  // Reject duplicates
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    return { success: false, error: "Invalid coupon order." };
+  }
+
+  const batch = adminDb.batch();
+  orderedIds.forEach((id, index) => {
+    const ref = adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(id);
+    batch.update(ref, { sortOrder: index });
+  });
+  await batch.commit();
+
+  await writeAuditLog({
+    eventId,
+    action: "coupon_reordered",
+    metadata: { orderedIds },
+    userId: session.uid,
+  });
+
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true };
+}
+
 // ─── Toggle coupon disabled state ─────────────────────────────────────────────
 
 export async function toggleCouponDisabled(
