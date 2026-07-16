@@ -1,11 +1,13 @@
 import { initializeApp, getApps, cert, App } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { getStorage } from "firebase-admin/storage";
 
 function getAdminApp(): App {
   if (getApps().length > 0) return getApps()[0];
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 
   if (!serviceAccountJson) {
     // Allow dev without service account — Firebase Admin can initialise with
@@ -19,15 +21,18 @@ function getAdminApp(): App {
     );
     return initializeApp({
       projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+      storageBucket,
     });
   }
 
   return initializeApp({
     credential: cert(JSON.parse(serviceAccountJson)),
     projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket,
   });
 }
 
 const adminApp = getAdminApp();
 export const adminDb = getFirestore(adminApp);
 export const adminAuth = getAuth(adminApp);
+export const adminBucket = getStorage(adminApp).bucket();
