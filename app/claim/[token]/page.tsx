@@ -6,6 +6,7 @@ import {
   Clock,
   MapPin,
   Gift,
+  ExternalLink,
 } from "lucide-react";
 import { getClaimPageData } from "./claim-actions";
 import CopyCode from "./copy-code";
@@ -182,29 +183,36 @@ function OfferCard({
         </span>
       </div>
 
-      <p className="mb-6 flex-1 text-[15px] leading-relaxed text-zinc-500">
-        {coupon.description}
-      </p>
-
-      {coupon.note && (
-        <div className="mb-6 rounded-xl border border-amber-100/50 bg-amber-50/50 px-4 py-3.5 text-[13px] leading-relaxed text-amber-800">
-          <span className="font-bold text-amber-900">Note: </span>
-          {coupon.note}
+      <div className="mb-6 flex-1 space-y-3">
+        <div>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5 block">
+            How to claim
+          </span>
+          <p className="text-[14px] leading-relaxed text-zinc-700">
+            {coupon.description}
+          </p>
         </div>
-      )}
 
-      {coupon.redeemUrl && (
-        <div className="mb-6">
-          <a
-            href={coupon.redeemUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center text-[13px] font-bold text-zinc-500 hover:text-zinc-900 transition-colors"
-          >
-            How to redeem →
-          </a>
-        </div>
-      )}
+        {coupon.note && (
+          <div className="rounded-xl border border-amber-200/60 bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-900">
+            <span className="font-bold">Note: </span>
+            {coupon.note}
+          </div>
+        )}
+
+        {coupon.redeemUrl && (
+          <div className="pt-1">
+            <a
+              href={coupon.redeemUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[13px] font-bold text-zinc-900 hover:text-zinc-600 transition-colors"
+            >
+              Read full guide <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        )}
+      </div>
 
       <div className="mt-auto">
         {coupon.kind === "sharedCode" ? (
