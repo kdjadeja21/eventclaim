@@ -19,6 +19,8 @@ import {
   BarChart2,
   ChevronDown,
   ChevronUp,
+  ArrowUp,
+  ArrowDown,
   Eye,
   MoreHorizontal,
 } from "lucide-react";
@@ -61,7 +63,9 @@ import {
   updateCoupon,
   deleteCoupon,
   toggleCouponDisabled,
+  reorderCoupons,
 } from "./coupon-actions";
+import { LogoField } from "./logo-field";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,6 +139,7 @@ export default function CouponList({
   const [dialog, setDialog] = useState<DialogMode>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const router = useRouter();
@@ -242,6 +247,42 @@ export default function CouponList({
     });
   }
 
+  // ─── Reorder ────────────────────────────────────────────────────────────────
+
+  async function handleMove(index: number, direction: "up" | "down") {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= coupons.length || reorderingId) return;
+
+    const previous = coupons;
+    const next = [...coupons];
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    const withOrder = next.map((c, i) => ({ ...c, sortOrder: i }));
+
+    // Animate the reorder using CSS View Transitions if supported
+    if ("startViewTransition" in document) {
+      document.startViewTransition(() => {
+        setCoupons(withOrder);
+        setReorderingId(moved.id);
+      });
+    } else {
+      setCoupons(withOrder);
+      setReorderingId(moved.id);
+    }
+
+    const res = await reorderCoupons(
+      eventId,
+      withOrder.map((c) => c.id),
+      eventSlug
+    );
+    setReorderingId(null);
+
+    if (!res.success) {
+      setCoupons(previous);
+      toast.error(res.error ?? "Failed to reorder offers.");
+    }
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -266,16 +307,51 @@ export default function CouponList({
         </div>
       ) : (
         <div className="grid gap-4">
-          {coupons.map((coupon) => {
+          {coupons.map((coupon, index) => {
             const KindIcon = kindConfig[coupon.kind].icon;
             const expanded = expandedIds.has(coupon.id);
             return (
               <Card
                 key={coupon.id}
                 className={cn("transition-opacity", coupon.isDisabled && "opacity-60")}
+                style={{ viewTransitionName: `coupon-card-${coupon.id}` }}
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start gap-3">
+                    {/* Reorder */}
+                    <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
+                      {reorderingId === coupon.id ? (
+                        <div className="flex h-[52px] w-6 items-center justify-center">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleMove(index, "up")}
+                            disabled={index === 0 || !!reorderingId}
+                            title="Move up"
+                            aria-label={`Move ${coupon.name} up`}
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleMove(index, "down")}
+                            disabled={index === coupons.length - 1 || !!reorderingId}
+                            title="Move down"
+                            aria-label={`Move ${coupon.name} down`}
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+
                     {/* Logo */}
                     {coupon.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -466,15 +542,11 @@ export default function CouponList({
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="cf-logo">Logo URL</Label>
-              <Input
-                id="cf-logo"
-                value={form.logoUrl}
-                onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))}
-                placeholder="https://example.com/logo.svg"
-              />
-            </div>
+            <LogoField
+              eventId={eventId}
+              value={form.logoUrl}
+              onChange={(logoUrl) => setForm((f) => ({ ...f, logoUrl }))}
+            />
 
             <div className="space-y-1.5">
               <Label htmlFor="cf-highlight">Gift Highlight *</Label>

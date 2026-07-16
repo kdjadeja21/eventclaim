@@ -182,13 +182,13 @@ function OfferCard({
         </span>
       </div>
 
-      <p className="mb-6 flex-1 text-[15px] leading-relaxed text-zinc-500">
+      <p className="mb-6 flex-1 text-[16px] leading-relaxed text-zinc-800">
         {coupon.description}
       </p>
 
       {coupon.note && (
-        <div className="mb-6 rounded-xl border border-amber-100/50 bg-amber-50/50 px-4 py-3.5 text-[13px] leading-relaxed text-amber-800">
-          <span className="font-bold text-amber-900">Note: </span>
+        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50 px-4 py-3.5 text-[14px] leading-relaxed text-amber-900">
+          <span className="font-bold">Note: </span>
           {coupon.note}
         </div>
       )}
@@ -199,7 +199,7 @@ function OfferCard({
             href={coupon.redeemUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center text-[13px] font-bold text-zinc-500 hover:text-zinc-900 transition-colors"
+            className="inline-flex items-center text-[14px] font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
           >
             How to redeem →
           </a>

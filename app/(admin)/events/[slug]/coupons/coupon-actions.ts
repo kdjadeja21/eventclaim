@@ -1,6 +1,6 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
+import { adminBucket, adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
@@ -9,6 +9,15 @@ import { Coupon, CouponKind, CouponLink, Grant } from "@/lib/types";
 import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_CONTENT_TYPES: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+};
 
 // ─── Create a new coupon definition ───────────────────────────────────────────
 
@@ -160,6 +169,130 @@ export async function updateCoupon(
 
   revalidatePath(`/events/${slug}/coupons`);
   return { success: true };
+}
+
+// ─── Reorder coupons (sets contiguous sortOrder 0..n-1) ───────────────────────
+
+export async function reorderCoupons(
+  eventId: string,
+  orderedIds: string[],
+  slug: string
+): Promise<{ success: boolean; error?: string }> {
+  const session = await requireSession();
+
+  if (orderedIds.length === 0) {
+    return { success: false, error: "No coupons to reorder." };
+  }
+
+  const couponsSnap = await adminDb
+    .collection("events")
+    .doc(eventId)
+    .collection("coupons")
+    .get();
+
+  const existingIds = new Set(couponsSnap.docs.map((d) => d.id));
+
+  if (orderedIds.length !== existingIds.size) {
+    return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+  }
+
+  for (const id of orderedIds) {
+    if (!existingIds.has(id)) {
+      return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+    }
+  }
+
+  // Reject duplicates
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    return { success: false, error: "Invalid coupon order." };
+  }
+
+  const batch = adminDb.batch();
+  orderedIds.forEach((id, index) => {
+    const ref = adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(id);
+    batch.update(ref, { sortOrder: index });
+  });
+  await batch.commit();
+
+  await writeAuditLog({
+    eventId,
+    action: "coupon_reordered",
+    metadata: { orderedIds },
+    userId: session.uid,
+  });
+
+  revalidatePath(`/events/${slug}/coupons`);
+  return { success: true };
+}
+
+// ─── Upload a partner offer logo to Firebase Storage ──────────────────────────
+
+export async function uploadCouponLogo(
+  eventId: string,
+  formData: FormData
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  await requireSession();
+
+  if (!eventId.trim()) {
+    return { success: false, error: "Event is required." };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { success: false, error: "Choose an image file to upload." };
+  }
+
+  const ext = LOGO_CONTENT_TYPES[file.type];
+  if (!ext) {
+    return {
+      success: false,
+      error: "Use a PNG, JPG, WEBP, GIF, or SVG image.",
+    };
+  }
+
+  if (file.size > LOGO_MAX_BYTES) {
+    return { success: false, error: "Logo must be 2 MB or smaller." };
+  }
+
+  if (!process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
+    return {
+      success: false,
+      error: "Storage is not configured (missing storage bucket).",
+    };
+  }
+
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const objectPath = `events/${eventId}/coupon-logos/${nanoid()}.${ext}`;
+    const downloadToken = nanoid();
+
+    await adminBucket.file(objectPath).save(buffer, {
+      resumable: false,
+      metadata: {
+        contentType: file.type,
+        cacheControl: "public,max-age=31536000",
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+        },
+      },
+    });
+
+    const url =
+      `https://firebasestorage.googleapis.com/v0/b/${adminBucket.name}/o/` +
+      `${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`;
+
+    return { success: true, url };
+  } catch (err) {
+    console.error("[uploadCouponLogo]", err);
+    return {
+      success: false,
+      error: "Failed to upload logo. Check Storage permissions and try again.",
+    };
+  }
 }
 
 // ─── Toggle coupon disabled state ─────────────────────────────────────────────

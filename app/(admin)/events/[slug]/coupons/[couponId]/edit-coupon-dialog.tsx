@@ -18,6 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateCoupon } from "../coupon-actions";
+import { LogoField } from "../logo-field";
 
 export function EditCouponDialog({
   eventId,
@@ -103,15 +104,11 @@ export function EditCouponDialog({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="cf-logo">Logo URL</Label>
-            <Input
-              id="cf-logo"
-              value={form.logoUrl}
-              onChange={(e) => setForm((f) => ({ ...f, logoUrl: e.target.value }))}
-              placeholder="https://example.com/logo.svg"
-            />
-          </div>
+          <LogoField
+            eventId={eventId}
+            value={form.logoUrl}
+            onChange={(logoUrl) => setForm((f) => ({ ...f, logoUrl }))}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="cf-highlight">Gift Highlight *</Label>

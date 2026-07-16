@@ -25,6 +25,7 @@ export type AuditAction =
   | "coupon_deleted"
   | "coupon_disabled"
   | "coupon_enabled"
+  | "coupon_reordered"
   | "coupon_links_added"
   | "coupon_granted"
   | "coupon_unassigned"

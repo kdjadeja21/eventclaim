@@ -104,6 +104,7 @@ const actionLabels: Record<string, string> = {
   coupon_created: "Coupon created",
   coupon_updated: "Coupon updated",
   coupon_deleted: "Coupon deleted",
+  coupon_reordered: "Coupons reordered",
   coupon_links_added: "Links added",
   coupon_granted: "Grants issued",
   grant_claimed: "Offer claimed",
