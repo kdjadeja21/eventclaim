@@ -22,6 +22,7 @@ import {
   Settings2,
   Ban,
   CheckCircle,
+  Gift,
 } from "lucide-react";
 import type { EmailQuota } from "@/lib/email";
 import { Attendee, AttendeeGrantDetail } from "@/lib/types";
@@ -62,7 +63,11 @@ import {
   getAttendeeDetail,
   syncLumaGuests,
 } from "./attendee-data-actions";
-import { toggleAttendeeBlacklist } from "./attendee-actions";
+import {
+  toggleAttendeeBlacklist,
+  assignCouponsToAttendee,
+  bulkAssignCoupons,
+} from "./attendee-actions";
 import LumaFetchDialog, {
   LumaFetchConfig,
   defaultConfig,
@@ -178,6 +183,7 @@ export default function AttendeeTable({
   const [bulkBlacklistPending, setBulkBlacklistPending] = useState(false);
   const [bulkUnblacklistConfirm, setBulkUnblacklistConfirm] = useState(false);
   const [bulkUnblacklistPending, setBulkUnblacklistPending] = useState(false);
+  const [bulkAssignPending, setBulkAssignPending] = useState(false);
   const [, startTransition] = useTransition();
   const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -423,6 +429,68 @@ export default function AttendeeTable({
     });
   }
 
+  async function handleAssignCoupons(attendee: Attendee) {
+    setActionPending(attendee.id + "-assign");
+    startTransition(async () => {
+      const res = await assignCouponsToAttendee(eventId, attendee.id, eventSlug);
+      setActionPending(null);
+      if (res.success) {
+        updateAttendee(attendee.id, {
+          grantCount: (attendee.grantCount ?? 0) + (res.newGrants ?? 0),
+          emailStatus: "pending",
+        });
+        toast.success(
+          `Assigned ${res.newGrants} coupon${res.newGrants !== 1 ? "s" : ""} to ${attendee.name}`
+        );
+      } else {
+        toast.error(res.error ?? "Coupon assignment failed.");
+      }
+    });
+  }
+
+  async function handleBulkAssignCoupons() {
+    const targets = selectedAttendees.filter(
+      (a) => !a.isBlacklisted
+    );
+    if (targets.length === 0) return;
+
+    setBulkAssignPending(true);
+    const ids = targets.map((a) => a.id);
+
+    try {
+      const res = await bulkAssignCoupons(eventId, ids, eventSlug);
+      for (const r of res.results) {
+        setAttendees((prev) =>
+          prev.map((a) =>
+            a.id === r.attendeeId
+              ? {
+                  ...a,
+                  grantCount: (a.grantCount ?? 0) + r.newGrants,
+                  emailStatus: "pending",
+                }
+              : a
+          )
+        );
+      }
+
+      if (res.assigned === 0) {
+        toast.warning("No coupons were assigned — attendees may already have every offer.");
+      } else if (res.skipped === 0) {
+        toast.success(
+          `Assigned coupons to ${res.assigned} attendee${res.assigned !== 1 ? "s" : ""}`
+        );
+      } else {
+        toast.warning(
+          `Assigned coupons to ${res.assigned}, skipped ${res.skipped}`
+        );
+      }
+    } catch {
+      toast.error("Bulk coupon assignment failed unexpectedly.");
+    } finally {
+      setBulkAssignPending(false);
+    }
+  }
+
   async function handleBulkToggleBlacklist(blacklisted: boolean) {
     const targets = selectedAttendees.filter((a) =>
       blacklisted ? !a.isBlacklisted && !a.claimedAny : !!a.isBlacklisted
@@ -470,7 +538,7 @@ export default function AttendeeTable({
   }
 
   async function handleBulkDelete() {
-    const targets = selectedAttendees.filter((a) => !(a.grantCount ?? 0));
+    const targets = selectedAttendees;
     if (targets.length === 0) return;
     setBulkDeletePending(true);
     setBulkDeleteConfirm(false);
@@ -695,8 +763,9 @@ export default function AttendeeTable({
   const bulkRetryCount = selectedAttendees.filter(
     (a) => a.emailStatus === "failed"
   ).length;
-  const bulkDeleteCount = selectedAttendees.filter(
-    (a) => !(a.grantCount ?? 0)
+  const bulkDeleteCount = selectedAttendees.length;
+  const bulkAssignCount = selectedAttendees.filter(
+    (a) => !a.isBlacklisted
   ).length;
   const bulkBlacklistCount = selectedAttendees.filter(
     (a) => !a.isBlacklisted && !a.claimedAny
@@ -708,7 +777,8 @@ export default function AttendeeTable({
     bulkPending ||
     bulkDeletePending ||
     bulkBlacklistPending ||
-    bulkUnblacklistPending;
+    bulkUnblacklistPending ||
+    bulkAssignPending;
 
   const hasSelection = selectedIds.size > 0;
   const lumaLastRunSummary = lastRunStatus
@@ -1031,6 +1101,23 @@ export default function AttendeeTable({
                         </Button>
                       )}
 
+                      {!attendee.isBlacklisted && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleAssignCoupons(attendee)}
+                          disabled={actionPending === attendee.id + "-assign"}
+                          title="Assign all coupons to this attendee"
+                        >
+                          {actionPending === attendee.id + "-assign" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Gift className="h-3.5 w-3.5" />
+                          )}
+                          Assign Coupons
+                        </Button>
+                      )}
+
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1060,22 +1147,20 @@ export default function AttendeeTable({
                         {attendee.isBlacklisted ? "Unblacklist" : "Blacklist"}
                       </Button>
 
-                      {!(attendee.grantCount ?? 0) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDeleteTarget(attendee)}
-                          disabled={actionPending === attendee.id + "-delete"}
-                          className="text-destructive hover:text-destructive"
-                          title="Delete attendee"
-                        >
-                          {actionPending === attendee.id + "-delete" ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDeleteTarget(attendee)}
+                        disabled={actionPending === attendee.id + "-delete"}
+                        className="text-destructive hover:text-destructive"
+                        title="Delete attendee"
+                      >
+                        {actionPending === attendee.id + "-delete" ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -1144,6 +1229,20 @@ export default function AttendeeTable({
               )}
               Retry Failed
               {bulkRetryCount > 0 && ` (${bulkRetryCount})`}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={bulkActionPending || bulkAssignCount === 0}
+              onClick={handleBulkAssignCoupons}
+            >
+              {bulkAssignPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Gift className="h-3.5 w-3.5" />
+              )}
+              Assign Coupons
+              {bulkAssignCount > 0 && ` (${bulkAssignCount})`}
             </Button>
             <Button
               size="sm"
@@ -1229,8 +1328,9 @@ export default function AttendeeTable({
               Delete Attendee?
             </DialogTitle>
             <DialogDescription>
-              This will permanently remove the attendee record. Only attendees
-              without an assigned coupon can be deleted.
+              This will permanently remove the attendee record. Any unclaimed
+              coupon links assigned to them will be released back to the pool;
+              already-claimed coupons stay claimed.
             </DialogDescription>
           </DialogHeader>
           {deleteTarget && (
@@ -1279,7 +1379,7 @@ export default function AttendeeTable({
               Delete {bulkDeleteCount} Attendee{bulkDeleteCount !== 1 ? "s" : ""}?
             </DialogTitle>
             <DialogDescription>
-              This will permanently remove {bulkDeleteCount} attendee{bulkDeleteCount !== 1 ? "s" : ""} without an assigned coupon. Attendees with a coupon will be skipped.
+              This will permanently remove {bulkDeleteCount} attendee{bulkDeleteCount !== 1 ? "s" : ""}. Any unclaimed coupon links assigned to them will be released back to the pool; already-claimed coupons stay claimed.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">
