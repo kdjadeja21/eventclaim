@@ -185,7 +185,6 @@ export interface AttendeeImportResult {
 
 export interface CouponImportResult {
   imported: number;
-  duplicatesSkipped: number;
   invalidSkipped: number;
   autoGranted: number;
   errors: string[];
