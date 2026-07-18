@@ -14,6 +14,7 @@ Web app for distributing Cursor credit coupons to event attendees: import attend
 - **Public claim flow** — `GET /claim/[token]` marks the coupon claimed and redirects to the coupon URL (idempotent).
 - **Status lookup** — `/check-status` lets attendees look up email/claim status by registered email.
 - **Audit logs** — Admin actions (imports, assignments, emails, claims) are recorded in Firestore.
+- **Attendee Confirmation Calling** — A standalone module (`/confirmations`) for uploading a CSV of approved attendees, creating volunteers, evenly distributing attendees across volunteers for follow-up calls, and letting each volunteer manage their assigned attendees' call status via a unique link + 4-digit PIN.
 
 ## Tech stack
 
@@ -58,7 +59,8 @@ Create a `.env.local` in the project root:
 | `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
 | `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
 | `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
-| `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
+| `APP_BASE_URL` | No | Public base URL for claim links in emails and volunteer confirmation links (default: `http://localhost:3000`) |
+| `CONFIRMATION_SESSION_SECRET` | Yes (Confirmations module) | Secret used to HMAC-sign the volunteer session cookie for `/volunteer/[token]`. Falls back to an insecure development value with a warning if unset — set a strong random value in production. |
 
 ## Scripts
 
@@ -91,6 +93,17 @@ Create a `.env.local` in the project root:
 | `/events/[slug]/attendees` | Manage attendees and email actions |
 | `/events/[slug]/preview` | Preview and bulk-send pending emails |
 | `/audit` | Audit log viewer |
+| `/confirmations` | Confirmation calling dashboard — stats, CSV upload, "Assign Attendees" |
+| `/confirmations/volunteers` | Manage volunteers, copy their link + PIN, reset PIN |
+| `/confirmations/attendees` | Full attendee table with status/volunteer/team filters and manual overrides |
+| `/confirmations/teams` | Review whole teams at once — lead, members, missing teammates, and fuzzy-match fixes |
+| `/confirmations/logs` | Confirmation module audit log viewer |
+
+### Volunteer-facing (own token + PIN + cookie auth, not Firebase Auth)
+
+| Path | Description |
+|------|-------------|
+| `/volunteer/[token]` | PIN entry, then that volunteer's assigned attendee list; clicking an attendee opens a status-update dialog (no page navigation) |
 
 ### API
 
@@ -109,6 +122,14 @@ Top-level collections:
 - `claimTokens` — maps token → `eventId` + `attendeeId`
 - `emailLogs` — send/resend history
 - `auditLogs` — admin action audit trail
+- `confirmationAttendees` — attendees uploaded for confirmation calling, their status, team signal (`teamIntent`), resolved team (`teamKey`/`teamRole`/`inPool`), and volunteer assignment (decoupled from `events`)
+- `confirmationTeams` — teams computed by the team resolver (lead, members, missing/expected teammates, review issues, fuzzy-match suggestions), recomputed each time "Resolve Teams" runs
+- `confirmationVolunteers` — volunteers, their unique token/PIN, and active state
+- `confirmationAuditLogs` — audit trail for the Confirmations module (imports, assignments, PIN resets, status updates, team resolution)
+
+### Team formation
+
+Each attendee's ticket type (from `ticket_name` / `ticket` / `ticket_type`, e.g. "Create a Team", "Team Member", "Join a Team") plus the CSV's team-email question are parsed into a `teamIntent` (kind: lead/member/individual/ambiguous, referenced emails, and an answer-quality flag) at upload time. The team-email column is chosen by email density (so a yes/no "Are you on a team?" field doesn't shadow the real question). If the ticket label is generic, kind is inferred from how many emails they listed (2+ → lead, 1 → ambiguous). Actual team *formation* is a separate step (`lib/confirmation/team-resolver.ts`, triggered after upload / Assign and re-runnable from `/confirmations/teams`): it recovers emails from stored `extra` fields when needed, builds a graph of who-references-whom across **every** attendee, finds connected components via union-find, picks a lead per component, and flags review issues. Re-uploading the same emails refreshes team signals without wiping call status or assignments.
 
 ## Import formats
 
@@ -118,12 +139,18 @@ Top-level collections:
 
 Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
 
+**Confirmation attendees:** Tolerant of arbitrary CSV columns (e.g. a Luma "approved attendees" export). Requires `email` and either `name` or `first_name`/`last_name`; `phone`/`phone_number` is mapped to the attendee's phone number. By default only rows with `approval_status` = `approved` (or no `approval_status` column at all) are imported — toggle this off on the upload form to import every row. Ticket + team-email columns drive team formation. Every other column is preserved in `extra`. Re-uploading the same email refreshes name/phone/extra/team signals without resetting call status or volunteer assignment.
+
 ## Authentication
 
 1. Admin signs in with Google (Firebase client SDK).
 2. Client posts the Firebase ID token to `/api/auth/session`.
 3. Server creates a Firebase session cookie (`eventclaim_session`, 5-day expiry).
 4. `(admin)` layout routes call `getSession()` and redirect to `/login` if missing.
+
+### Volunteer authentication (Confirmations module)
+
+Volunteers are not Firebase Auth users. Each volunteer gets a unique shareable link (`/volunteer/[token]`) and a 4-digit PIN, both shown/copyable on `/confirmations/volunteers`. Entering the correct PIN once sets a self-signed, HMAC-signed httpOnly cookie (`confirm_volunteer_session`, scoped to `/volunteer`, ~30-day expiry) so the volunteer isn't asked for the PIN again until it expires or the admin resets their PIN. Ten incorrect PIN attempts lock that volunteer's link for 15 minutes. Every server action re-validates that the session cookie's volunteer ID matches the token in the URL, so a volunteer can only ever see/edit their own assigned attendees.
 
 ## Deployment
 

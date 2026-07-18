@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE_NAME = "eventclaim_session";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/events", "/audit"];
-const PUBLIC_PATHS = ["/login", "/check-status", "/claim"];
+const PROTECTED_PREFIXES = ["/dashboard", "/events", "/audit", "/confirmations"];
+const PUBLIC_PATHS = ["/login", "/check-status", "/claim", "/volunteer"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
