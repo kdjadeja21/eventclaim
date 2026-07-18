@@ -188,8 +188,11 @@ export async function deleteAttendee(
     if (!grantsSnap.empty) {
       const batch = adminDb.batch();
       for (const grantDoc of grantsSnap.docs) {
-        const grant = grantDoc.data();
-        if (grant.linkId) {
+        const grant = grantDoc.data() as Grant;
+        // Only return unclaimed links to the available pool — a claimed
+        // link was already redeemed by the attendee and must not be
+        // handed out again.
+        if (grant.linkId && grant.status !== "claimed") {
           const linkRef = adminDb
             .collection("events")
             .doc(eventId)
