@@ -594,8 +594,6 @@ function LinkPoolTable({
         parts.push(`${res.imported} link${res.imported !== 1 ? "s" : ""} added`);
       if (res.autoGranted > 0)
         parts.push(`${res.autoGranted} auto-granted`);
-      if (res.duplicatesSkipped > 0)
-        parts.push(`${res.duplicatesSkipped} duplicates skipped`);
       if (res.invalidSkipped > 0)
         parts.push(`${res.invalidSkipped} invalid skipped`);
       toast.success(parts.join(", ") || "No new links imported.");

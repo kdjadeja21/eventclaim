@@ -73,7 +73,6 @@ export interface ParsedCoupon {
 
 export interface CouponParseResult {
   rows: ParsedCoupon[];
-  duplicatesInFile: number;
   invalidCount: number;
   errors: string[];
 }
@@ -83,6 +82,8 @@ const urlSchema = z.string().url();
 /**
  * Parses a coupon CSV (single column of URLs, header or no header).
  * Accepts bare URLs (one per line) or a CSV with a header like "coupon_link".
+ * Every uploaded link is treated as unique — links are never deduplicated,
+ * so the same URL may appear multiple times across rows/uploads.
  */
 export function parseCouponCsv(csv: string): CouponParseResult {
   const lines = csv
@@ -90,9 +91,7 @@ export function parseCouponCsv(csv: string): CouponParseResult {
     .map((l) => l.trim())
     .filter(Boolean);
 
-  const seenLinks = new Set<string>();
   const rows: ParsedCoupon[] = [];
-  let duplicatesInFile = 0;
   let invalidCount = 0;
   const errors: string[] = [];
 
@@ -115,16 +114,10 @@ export function parseCouponCsv(csv: string): CouponParseResult {
       continue;
     }
 
-    if (seenLinks.has(couponLink)) {
-      duplicatesInFile++;
-      continue;
-    }
-
-    seenLinks.add(couponLink);
     rows.push({ couponLink });
   }
 
-  return { rows, duplicatesInFile, invalidCount, errors };
+  return { rows, invalidCount, errors };
 }
 
 /**

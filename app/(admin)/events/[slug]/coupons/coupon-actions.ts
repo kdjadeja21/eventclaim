@@ -422,7 +422,6 @@ export async function addCouponLinks(
 ): Promise<{
   success: boolean;
   imported: number;
-  duplicatesSkipped: number;
   invalidSkipped: number;
   autoGranted: number;
   errors: string[];
@@ -441,7 +440,6 @@ export async function addCouponLinks(
     return {
       success: false,
       imported: 0,
-      duplicatesSkipped: 0,
       invalidSkipped: 0,
       autoGranted: 0,
       errors: [],
@@ -454,7 +452,6 @@ export async function addCouponLinks(
     return {
       success: false,
       imported: 0,
-      duplicatesSkipped: 0,
       invalidSkipped: 0,
       autoGranted: 0,
       errors: [],
@@ -462,25 +459,16 @@ export async function addCouponLinks(
     };
   }
 
-  const { rows, duplicatesInFile, invalidCount, errors } =
-    parseCouponCsv(rawText);
+  const { rows, invalidCount, errors } = parseCouponCsv(rawText);
 
   let imported = 0;
-  let duplicatesSkipped = duplicatesInFile;
 
   const linksRef = couponRef.collection("links");
 
+  // Every uploaded link is treated as unique — no dedup against the file or
+  // the existing pool, so a fresh doc is created for each row.
   for (const row of rows) {
-    // Use a hash of the URL as the doc ID for dedup
-    const docId = Buffer.from(
-      `${couponId}:${row.couponLink}`
-    ).toString("base64url").slice(0, 40);
-
-    const existing = await linksRef.doc(docId).get();
-    if (existing.exists) {
-      duplicatesSkipped++;
-      continue;
-    }
+    const docId = nanoid();
 
     const link: CouponLink = {
       id: docId,
@@ -507,7 +495,7 @@ export async function addCouponLinks(
   await writeAuditLog({
     eventId,
     action: "coupon_links_added",
-    metadata: { couponId, imported, duplicatesSkipped, invalid: invalidCount },
+    metadata: { couponId, imported, invalid: invalidCount },
     userId: session.uid,
   });
 
@@ -518,7 +506,6 @@ export async function addCouponLinks(
   return {
     success: true,
     imported,
-    duplicatesSkipped,
     invalidSkipped: invalidCount,
     autoGranted,
     errors,
