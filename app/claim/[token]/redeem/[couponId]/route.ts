@@ -26,7 +26,17 @@ export async function GET(
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  const tokenDoc = await adminDb.collection("claimTokens").doc(token).get();
+  let tokenDoc;
+  try {
+    tokenDoc = await adminDb.collection("claimTokens").doc(token).get();
+  } catch (err) {
+    // Firestore unavailable (e.g. quota exhausted) — send the user back to the
+    // claim page, which degrades gracefully via its error boundary instead of
+    // surfacing a raw 500 here.
+    console.error("[redeem] Failed to read claim token:", err);
+    return NextResponse.redirect(claimPageUrl(request, token));
+  }
+
   if (!tokenDoc.exists) {
     return NextResponse.redirect(claimPageUrl(request, token));
   }
