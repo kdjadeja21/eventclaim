@@ -3,6 +3,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
+import { getFriendlyFirestoreMessage } from "@/lib/firestore-errors";
 import { Attendee, CouponLink, Grant } from "@/lib/types";
 import { FieldValue } from "firebase-admin/firestore";
 import { revalidatePath } from "next/cache";
@@ -59,6 +60,7 @@ export async function autoAssignLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  try {
   // Check attendee doesn't already have a grant
   const existingGrant = await grantRef(eventId, attendeeId, couponId).get();
   if (existingGrant.exists) {
@@ -134,6 +136,9 @@ export async function autoAssignLink(
 
   revalidatePath(detailPath(eventSlug, couponId));
   return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Assign a specific link to an attendee ────────────────────────────────────
@@ -147,6 +152,7 @@ export async function assignSpecificLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  try {
   const existingGrant = await grantRef(eventId, attendeeId, couponId).get();
   if (existingGrant.exists) {
     return { success: false, error: "Attendee already has a grant for this coupon." };
@@ -204,6 +210,9 @@ export async function assignSpecificLink(
 
   revalidatePath(detailPath(eventSlug, couponId));
   return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Unassign a link (release back to available pool) ─────────────────────────
@@ -217,6 +226,7 @@ export async function unassignLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  try {
   const linkSnap = await linksRef(eventId, couponId).doc(linkId).get();
   if (!linkSnap.exists) return { success: false, error: "Link not found." };
 
@@ -249,6 +259,9 @@ export async function unassignLink(
 
   revalidatePath(detailPath(eventSlug, couponId));
   return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Delete a link from the pool (available only) ─────────────────────────────
@@ -261,6 +274,7 @@ export async function deleteLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  try {
   const linkDocRef = linksRef(eventId, couponId).doc(linkId);
   const linkSnap = await linkDocRef.get();
   if (!linkSnap.exists) return { success: false, error: "Link not found." };
@@ -285,6 +299,9 @@ export async function deleteLink(
 
   revalidatePath(detailPath(eventSlug, couponId));
   return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Toggle a single link's disabled state ────────────────────────────────────
@@ -298,6 +315,7 @@ export async function toggleLinkDisabled(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  try {
   const linkDocRef = linksRef(eventId, couponId).doc(linkId);
   const linkSnap = await linkDocRef.get();
   if (!linkSnap.exists) return { success: false, error: "Link not found." };
@@ -313,6 +331,9 @@ export async function toggleLinkDisabled(
 
   revalidatePath(detailPath(eventSlug, couponId));
   return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Bulk auto-assign: assign all available links to attendees without a grant ─
@@ -324,23 +345,30 @@ export async function bulkAutoAssignLinks(
 ): Promise<{ success: boolean; assigned: number; error?: string }> {
   await requireSession();
 
-  // Get all attendees who don't have a grant for this coupon
-  const unassigned = await getUnassignedAttendees(eventId, couponId);
-  if (unassigned.length === 0) {
-    return { success: true, assigned: 0 };
-  }
-
-  let assigned = 0;
-  for (const attendee of unassigned) {
-    const res = await autoAssignLink(eventId, couponId, attendee.id, eventSlug);
-    if (res.success) assigned++;
-    else if (res.error === "No available links in pool." || res.error === "No available links could be reserved.") {
-      break; // pool exhausted
+  try {
+    // Get all attendees who don't have a grant for this coupon
+    const unassigned = await getUnassignedAttendees(eventId, couponId);
+    if (unassigned.length === 0) {
+      return { success: true, assigned: 0 };
     }
-  }
 
-  revalidatePath(detailPath(eventSlug, couponId));
-  return { success: true, assigned };
+    let assigned = 0;
+    for (const attendee of unassigned) {
+      const res = await autoAssignLink(eventId, couponId, attendee.id, eventSlug);
+      if (res.success) assigned++;
+      else if (
+        res.error === "No available links in pool." ||
+        res.error === "No available links could be reserved."
+      ) {
+        break; // pool exhausted
+      }
+    }
+
+    revalidatePath(detailPath(eventSlug, couponId));
+    return { success: true, assigned };
+  } catch (err) {
+    return { success: false, assigned: 0, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Data queries ─────────────────────────────────────────────────────────────

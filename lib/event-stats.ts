@@ -1,5 +1,6 @@
 import { adminDb } from "@/lib/firebase/admin";
-import { EventStats, Attendee } from "@/lib/types";
+import { retryOnTransient } from "@/lib/firestore-errors";
+import { EventStats } from "@/lib/types";
 
 export async function getEventCountStats(eventId: string): Promise<EventStats> {
   const attendeesRef = adminDb
@@ -12,6 +13,9 @@ export async function getEventCountStats(eventId: string): Promise<EventStats> {
     .doc(eventId)
     .collection("coupons");
 
+  // Retry the aggregation on transient Firestore errors (network/UNAVAILABLE).
+  // Quota-exhaustion errors are not retried — they bubble up to the caller,
+  // which serves cached data / a friendly message instead.
   const [
     totalAttendeesSnap,
     couponDefsSnap,
@@ -20,16 +24,18 @@ export async function getEventCountStats(eventId: string): Promise<EventStats> {
     failedSnap,
     claimedAnySnap,
     grantedSnap,
-  ] = await Promise.all([
-    attendeesRef.count().get(),
-    couponsRef.count().get(),
-    attendeesRef.where("emailStatus", "==", "sent").count().get(),
-    attendeesRef.where("emailStatus", "==", "pending").count().get(),
-    attendeesRef.where("emailStatus", "==", "failed").count().get(),
-    attendeesRef.where("claimedAny", "==", true).count().get(),
-    // Attendees who have >=1 grant
-    attendeesRef.where("grantCount", ">", 0).count().get(),
-  ]);
+  ] = await retryOnTransient(() =>
+    Promise.all([
+      attendeesRef.count().get(),
+      couponsRef.count().get(),
+      attendeesRef.where("emailStatus", "==", "sent").count().get(),
+      attendeesRef.where("emailStatus", "==", "pending").count().get(),
+      attendeesRef.where("emailStatus", "==", "failed").count().get(),
+      attendeesRef.where("claimedAny", "==", true).count().get(),
+      // Attendees who have >=1 grant
+      attendeesRef.where("grantCount", ">", 0).count().get(),
+    ])
+  );
 
   const totalAttendees = totalAttendeesSnap.data().count;
   const totalCouponDefs = couponDefsSnap.data().count;

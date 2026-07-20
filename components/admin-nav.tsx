@@ -11,6 +11,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clearLocalCacheByPrefix } from "@/lib/local-cache";
+import { CACHE_PREFIX } from "@/lib/cache-keys";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
@@ -27,6 +29,8 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
+    // Don't leave cached admin data (incl. attendee PII) in the browser.
+    clearLocalCacheByPrefix(CACHE_PREFIX);
     router.push("/login");
   }
 

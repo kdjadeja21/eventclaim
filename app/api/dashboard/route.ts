@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { getEventCountStats } from "@/lib/event-stats";
 import { requireSession } from "@/lib/session";
+import { getFriendlyFirestoreMessage } from "@/lib/firestore-errors";
 import { Event } from "@/lib/types";
 
 export interface DashboardData {
@@ -117,8 +118,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error: "UNAVAILABLE",
-        message:
-          error instanceof Error ? error.message : "Failed to load dashboard data",
+        message: getFriendlyFirestoreMessage(error),
       },
       { status: 503 }
     );

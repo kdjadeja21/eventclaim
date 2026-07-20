@@ -1,0 +1,246 @@
+"use client";
+
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Users,
+  Ticket,
+  Mail,
+  BarChart2,
+  Upload,
+  Send,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { formatDate } from "@/lib/utils";
+import { useCachedData } from "@/hooks/use-cached-data";
+import { cacheKeys } from "@/lib/cache-keys";
+import { DataUnavailable } from "@/components/data-unavailable";
+import { StaleDataBanner } from "@/components/stale-data-banner";
+import { Event } from "@/lib/types";
+import type { EventDetailData } from "@/app/api/events/[slug]/route";
+import EventStatusButton from "./event-status-button";
+import NotionGuideEditor from "./notion-guide-editor";
+import AutoSendToggle from "./auto-send-toggle";
+import EventHeroEditor from "./event-hero-editor";
+import DeleteEventButton from "./delete-event-button";
+import EventDetailLoading from "./loading";
+
+const statusVariant: Record<
+  Event["status"],
+  "default" | "success" | "secondary"
+> = {
+  draft: "secondary",
+  active: "success",
+  completed: "default",
+};
+
+export default function EventDetailClient({ slug }: { slug: string }) {
+  const { data, cachedAt, isStale, loading, refresh } =
+    useCachedData<EventDetailData>(cacheKeys.event(slug), `/api/events/${slug}`);
+
+  if (loading && !data) return <EventDetailLoading />;
+
+  if (data?.notFound) notFound();
+
+  if (!data || !data.event || !data.stats) {
+    return (
+      <DataUnavailable
+        title="This event is temporarily unavailable"
+        onRetry={refresh}
+      />
+    );
+  }
+
+  const { event, stats } = data;
+
+  const quickLinks = [
+    {
+      href: `/events/${slug}/import`,
+      label: "Import Attendees",
+      icon: Upload,
+      description: "Upload a Luma CSV export",
+    },
+    {
+      href: `/events/${slug}/attendees`,
+      label: "Manage Attendees",
+      icon: Users,
+      description: "View, search, filter, and send emails",
+    },
+    {
+      href: `/events/${slug}/coupons`,
+      label: "Manage Coupons",
+      icon: Ticket,
+      description: "Assign, unassign, add, and track coupons",
+    },
+    {
+      href: `/events/${slug}/preview`,
+      label: "Preview & Send",
+      icon: Send,
+      description: "Validate and send all pending emails",
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {isStale && <StaleDataBanner cachedAt={cachedAt} />}
+
+      {/* Header */}
+      <div className="flex items-start gap-3">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href="/events">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {event.name}
+            </h1>
+            <Badge variant={statusVariant[event.status]} className="capitalize">
+              {event.status}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {formatDate(event.date)} &middot; /{event.slug}
+          </p>
+        </div>
+        <EventStatusButton eventId={event.id} currentStatus={event.status} />
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={Users}
+          label="Attendees"
+          value={stats.totalAttendees}
+          sub={`${stats.totalGranted} with offers`}
+        />
+        <StatCard
+          icon={Ticket}
+          label="Offer Types"
+          value={stats.totalCouponDefs}
+          sub="unique partner offers"
+        />
+        <StatCard
+          icon={Mail}
+          label="Emails Sent"
+          value={stats.totalEmailsSent}
+          sub={`${stats.totalEmailsPending} pending`}
+        />
+        <StatCard
+          icon={BarChart2}
+          label="Claim Rate"
+          value={`${stats.claimRate.toFixed(1)}%`}
+          sub={`${stats.totalClaimed} / ${stats.totalGranted} claimed`}
+          progress={stats.claimRate}
+        />
+      </div>
+
+      {/* Quick links */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {quickLinks.map(({ href, label, icon: Icon, description }) => (
+          <Link key={href} href={href}>
+            <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center">
+                    <Icon className="h-4 w-4 text-primary" />
+                  </div>
+                  <CardTitle className="text-sm">{label}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-xs">
+                  {description}
+                </CardDescription>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+
+      {/* Notion guide */}
+      <NotionGuideEditor
+        key={event.notionGuideUrl}
+        eventId={event.id}
+        notionGuideUrl={event.notionGuideUrl}
+      />
+
+      {/* Auto-send emails */}
+      <AutoSendToggle
+        key={String(event.autoSendEmail ?? false)}
+        eventId={event.id}
+        autoSendEmail={event.autoSendEmail ?? false}
+      />
+
+      {/* Claim page hero */}
+      <EventHeroEditor
+        key={`${event.date}-${event.tagline}-${event.venue}`}
+        eventId={event.id}
+        date={event.date}
+        tagline={event.tagline}
+        description={event.description}
+        timeLabel={event.timeLabel}
+        venue={event.venue}
+      />
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base text-destructive">
+            Danger Zone
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Permanently delete this event and all its data. This cannot be
+            undone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DeleteEventButton eventId={event.id} eventName={event.name} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  progress,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  sub: string;
+  progress?: number;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardDescription className="flex items-center gap-1.5 text-xs">
+          <Icon className="h-3.5 w-3.5" />
+          {label}
+        </CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-muted-foreground">{sub}</p>
+        {progress !== undefined && (
+          <Progress value={progress} className="mt-2 h-1.5" />
+        )}
+      </CardContent>
+    </Card>
+  );
+}

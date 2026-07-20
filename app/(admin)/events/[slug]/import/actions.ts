@@ -5,6 +5,10 @@ import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseLumaAttendeeCsv, attendeeDocId } from "@/lib/import";
+import {
+  getFriendlyFirestoreMessage,
+  isFirestoreUnavailable,
+} from "@/lib/firestore-errors";
 import { Attendee, AttendeeImportResult } from "@/lib/types";
 
 async function resolveEventId(slug: string): Promise<string> {
@@ -23,6 +27,8 @@ export async function importAttendees(
   checkedInOnly: boolean
 ): Promise<AttendeeImportResult> {
   const session = await requireSession();
+
+  try {
   const eventId = await resolveEventId(slug);
 
   const { rows, invalidCount, errors } = parseLumaAttendeeCsv(
@@ -85,4 +91,10 @@ export async function importAttendees(
     assigned,
     errors,
   };
+  } catch (err) {
+    if (isFirestoreUnavailable(err)) {
+      throw new Error(getFriendlyFirestoreMessage(err));
+    }
+    throw err;
+  }
 }

@@ -33,7 +33,11 @@ export default function EventStatusButton({
     if (status === current) return;
     startTransition(async () => {
       try {
-        await updateEventStatus(eventId, status);
+        const res = await updateEventStatus(eventId, status);
+        if (!res.success) {
+          toast.error(res.error ?? "Failed to update status");
+          return;
+        }
         setCurrent(status);
         const label = statuses.find((s) => s.value === status)?.label ?? status;
         toast.success(`Status updated to ${label}`);

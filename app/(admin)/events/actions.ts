@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import type FirebaseFirestore from "@google-cloud/firestore";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
+import { getFriendlyFirestoreMessage } from "@/lib/firestore-errors";
 import { slugify } from "@/lib/utils";
 import { Event, EventStatus } from "@/lib/types";
 import { nanoid } from "nanoid";
@@ -25,7 +26,12 @@ export async function createEvent(
   _prevState: unknown,
   formData: FormData
 ): Promise<{ success: boolean; eventId?: string; slug?: string; errors?: Record<string, string[]> }> {
-  const session = await requireSession();
+  let session;
+  try {
+    session = await requireSession();
+  } catch {
+    return { success: false, errors: { form: ["Your session has expired. Please sign in again."] } };
+  }
 
   const raw = {
     name: formData.get("name") as string,
@@ -62,13 +68,17 @@ export async function createEvent(
     ...(parsed.data.venue ? { venue: parsed.data.venue } : {}),
   };
 
-  await adminDb.collection("events").doc(id).set(event);
-  await writeAuditLog({
-    eventId: id,
-    action: "event_created",
-    metadata: { name: event.name, slug },
-    userId: session.uid,
-  });
+  try {
+    await adminDb.collection("events").doc(id).set(event);
+    await writeAuditLog({
+      eventId: id,
+      action: "event_created",
+      metadata: { name: event.name, slug },
+      userId: session.uid,
+    });
+  } catch (err) {
+    return { success: false, errors: { form: [getFriendlyFirestoreMessage(err)] } };
+  }
 
   revalidatePath("/events");
   return { success: true, eventId: id, slug };
@@ -106,33 +116,37 @@ export async function updateEventHero(
     };
   }
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) return { success: false, error: "Event not found" };
-  const event = eventDoc.data() as Event;
+  try {
+    const eventDoc = await adminDb.collection("events").doc(eventId).get();
+    if (!eventDoc.exists) return { success: false, error: "Event not found" };
+    const event = eventDoc.data() as Event;
 
-  const update: Record<string, unknown> = {
-    date: parsed.data.date,
-    updatedAt: new Date().toISOString(),
-  };
-  if (parsed.data.tagline !== undefined) update.tagline = parsed.data.tagline || null;
-  if (parsed.data.description !== undefined)
-    update.description = parsed.data.description || null;
-  if (parsed.data.timeLabel !== undefined)
-    update.timeLabel = parsed.data.timeLabel || null;
-  if (parsed.data.venue !== undefined) update.venue = parsed.data.venue || null;
+    const update: Record<string, unknown> = {
+      date: parsed.data.date,
+      updatedAt: new Date().toISOString(),
+    };
+    if (parsed.data.tagline !== undefined) update.tagline = parsed.data.tagline || null;
+    if (parsed.data.description !== undefined)
+      update.description = parsed.data.description || null;
+    if (parsed.data.timeLabel !== undefined)
+      update.timeLabel = parsed.data.timeLabel || null;
+    if (parsed.data.venue !== undefined) update.venue = parsed.data.venue || null;
 
-  await adminDb.collection("events").doc(eventId).update(update);
+    await adminDb.collection("events").doc(eventId).update(update);
 
-  await writeAuditLog({
-    eventId,
-    action: "event_hero_updated",
-    metadata: parsed.data,
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: "event_hero_updated",
+      metadata: parsed.data,
+      userId: session.uid,
+    });
 
-  revalidatePath("/events");
-  revalidatePath(`/events/${event.slug}`);
-  return { success: true };
+    revalidatePath("/events");
+    revalidatePath(`/events/${event.slug}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 export async function updateEventSettings(
@@ -149,28 +163,32 @@ export async function updateEventSettings(
     };
   }
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) {
-    return { success: false, error: "Event not found" };
+  try {
+    const eventDoc = await adminDb.collection("events").doc(eventId).get();
+    if (!eventDoc.exists) {
+      return { success: false, error: "Event not found" };
+    }
+
+    const event = eventDoc.data() as Event;
+
+    await adminDb.collection("events").doc(eventId).update({
+      notionGuideUrl: parsed.data.notionGuideUrl,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await writeAuditLog({
+      eventId,
+      action: "event_updated",
+      metadata: { notionGuideUrl: parsed.data.notionGuideUrl },
+      userId: session.uid,
+    });
+
+    revalidatePath("/events");
+    revalidatePath(`/events/${event.slug}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
   }
-
-  const event = eventDoc.data() as Event;
-
-  await adminDb.collection("events").doc(eventId).update({
-    notionGuideUrl: parsed.data.notionGuideUrl,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await writeAuditLog({
-    eventId,
-    action: "event_updated",
-    metadata: { notionGuideUrl: parsed.data.notionGuideUrl },
-    userId: session.uid,
-  });
-
-  revalidatePath("/events");
-  revalidatePath(`/events/${event.slug}`);
-  return { success: true };
 }
 
 export async function setAutoSendEmail(
@@ -179,51 +197,59 @@ export async function setAutoSendEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) {
-    return { success: false, error: "Event not found" };
+  try {
+    const eventDoc = await adminDb.collection("events").doc(eventId).get();
+    if (!eventDoc.exists) {
+      return { success: false, error: "Event not found" };
+    }
+
+    const event = eventDoc.data() as Event;
+
+    await adminDb.collection("events").doc(eventId).update({
+      autoSendEmail: enabled,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await writeAuditLog({
+      eventId,
+      action: "event_updated",
+      metadata: { autoSendEmail: enabled },
+      userId: session.uid,
+    });
+
+    revalidatePath("/events");
+    revalidatePath(`/events/${event.slug}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
   }
-
-  const event = eventDoc.data() as Event;
-
-  await adminDb.collection("events").doc(eventId).update({
-    autoSendEmail: enabled,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await writeAuditLog({
-    eventId,
-    action: "event_updated",
-    metadata: { autoSendEmail: enabled },
-    userId: session.uid,
-  });
-
-  revalidatePath("/events");
-  revalidatePath(`/events/${event.slug}`);
-  return { success: true };
 }
 
 export async function updateEventStatus(
   eventId: string,
   status: EventStatus
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  await adminDb.collection("events").doc(eventId).update({
-    status,
-    updatedAt: new Date().toISOString(),
-  });
+  try {
+    await adminDb.collection("events").doc(eventId).update({
+      status,
+      updatedAt: new Date().toISOString(),
+    });
 
-  await writeAuditLog({
-    eventId,
-    action: "event_updated",
-    metadata: { status },
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: "event_updated",
+      metadata: { status },
+      userId: session.uid,
+    });
 
-  revalidatePath("/events");
-  revalidatePath(`/events/${eventId}`);
-  return { success: true };
+    revalidatePath("/events");
+    revalidatePath(`/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 export async function getEvents(): Promise<Event[]> {

@@ -35,35 +35,49 @@ export async function getCoupons(slug: string): Promise<{
 
   const coupons = couponsSnap.docs.map((d) => d.data() as Coupon);
 
-  // Build per-coupon stats in parallel
-  const couponsWithStats: CouponWithStats[] = await Promise.all(
-    coupons.map(async (coupon) => {
-      // Count grants for this coupon (across all attendees via collectionGroup)
-      const grantsSnap = await adminDb
-        .collectionGroup("grants")
-        .where("couponId", "==", coupon.id)
-        .where("eventId", "==", eventId)
-        .get();
+  // Fetch every grant for this event in a single collectionGroup query, then
+  // aggregate per-coupon in memory. This replaces the previous N+1 pattern (one
+  // query per coupon), which multiplied Firestore reads and made it much easier
+  // to hit the quota on events with many offers.
+  const grantsSnap = await adminDb
+    .collectionGroup("grants")
+    .where("eventId", "==", eventId)
+    .get();
 
-      const grants = grantsSnap.docs.map((d) => d.data() as Grant);
-      const granted = grants.length;
-      const claimed = grants.filter((g) => g.status === "claimed").length;
-      const claimRate = granted > 0 ? (claimed / granted) * 100 : 0;
+  const grantedByCoupon = new Map<string, number>();
+  const claimedByCoupon = new Map<string, number>();
+  grantsSnap.docs.forEach((d) => {
+    const grant = d.data() as Grant;
+    grantedByCoupon.set(
+      grant.couponId,
+      (grantedByCoupon.get(grant.couponId) ?? 0) + 1
+    );
+    if (grant.status === "claimed") {
+      claimedByCoupon.set(
+        grant.couponId,
+        (claimedByCoupon.get(grant.couponId) ?? 0) + 1
+      );
+    }
+  });
 
-      return {
-        ...coupon,
-        stats: {
-          total: coupon.kind === "uniqueLink" ? (coupon.linkTotal ?? 0) : 1,
-          available:
-            coupon.kind === "uniqueLink" ? (coupon.linkAvailable ?? 0) : 0,
-          granted,
-          claimed,
-          claimRate,
-          disabled: coupon.isDisabled,
-        },
-      };
-    })
-  );
+  const couponsWithStats: CouponWithStats[] = coupons.map((coupon) => {
+    const granted = grantedByCoupon.get(coupon.id) ?? 0;
+    const claimed = claimedByCoupon.get(coupon.id) ?? 0;
+    const claimRate = granted > 0 ? (claimed / granted) * 100 : 0;
+
+    return {
+      ...coupon,
+      stats: {
+        total: coupon.kind === "uniqueLink" ? (coupon.linkTotal ?? 0) : 1,
+        available:
+          coupon.kind === "uniqueLink" ? (coupon.linkAvailable ?? 0) : 0,
+        granted,
+        claimed,
+        claimRate,
+        disabled: coupon.isDisabled,
+      },
+    };
+  });
 
   return { coupons: couponsWithStats, eventId };
 }

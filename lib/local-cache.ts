@@ -47,3 +47,21 @@ export function clearLocalCache(key: string): void {
     // ignore
   }
 }
+
+/**
+ * Removes every cache entry whose key starts with `prefix`. Used on logout to
+ * avoid leaving admin data behind in the browser.
+ */
+export function clearLocalCacheByPrefix(prefix: string): void {
+  if (!isBrowser()) return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach((key) => window.localStorage.removeItem(key));
+  } catch {
+    // ignore
+  }
+}
