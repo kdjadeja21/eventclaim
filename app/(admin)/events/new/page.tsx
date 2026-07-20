@@ -65,6 +65,11 @@ export default function NewEventPage() {
         </CardHeader>
         <CardContent>
           <form action={formAction} className="space-y-4">
+            {state?.errors?.form && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {state.errors.form[0]}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="name">Event Name *</Label>
               <Input

@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
+import { getFriendlyFirestoreMessage } from "@/lib/firestore-errors";
 import { Attendee, AttendeeGrantDetail, Coupon, Event, Grant } from "@/lib/types";
 import { revalidatePath } from "next/cache";
 import { attendeeDocId } from "@/lib/import";
@@ -329,6 +330,7 @@ export async function syncLumaGuests(
   let blacklistedCount = 0;
   const added: Attendee[] = [];
 
+  try {
   for (const guest of guests) {
     const rawEmail = guest.user_email ?? "";
     const email = normalizeEmail(rawEmail);
@@ -419,4 +421,18 @@ export async function syncLumaGuests(
     syncedAt,
     added,
   };
+  } catch (err) {
+    return {
+      addedCount,
+      skipped,
+      totalFetched,
+      checkedInCount,
+      noCheckedInRecords,
+      blacklistedCount,
+      invalid,
+      syncedAt: "",
+      added,
+      error: getFriendlyFirestoreMessage(err),
+    };
+  }
 }

@@ -3,6 +3,7 @@
 import { adminBucket, adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
+import { getFriendlyFirestoreMessage } from "@/lib/firestore-errors";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseCouponCsv } from "@/lib/import";
 import { Coupon, CouponKind, CouponLink, Grant } from "@/lib/types";
@@ -89,25 +90,29 @@ export async function createCoupon(
 
   const coupon = couponData as unknown as Coupon;
 
-  await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(id)
-    .set(coupon);
+  try {
+    await adminDb
+      .collection("events")
+      .doc(eventId)
+      .collection("coupons")
+      .doc(id)
+      .set(coupon);
 
-  await writeAuditLog({
-    eventId,
-    action: "coupon_created",
-    metadata: { couponId: id, name: coupon.name, kind: coupon.kind },
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: "coupon_created",
+      metadata: { couponId: id, name: coupon.name, kind: coupon.kind },
+      userId: session.uid,
+    });
 
-  // Grant this new coupon to all existing eligible attendees
-  await assignPendingForEvent(eventId);
+    // Grant this new coupon to all existing eligible attendees
+    await assignPendingForEvent(eventId);
 
-  revalidatePath(`/events/${slug}/coupons`);
-  return { success: true, couponId: id };
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true, couponId: id };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Update an existing coupon definition ─────────────────────────────────────
@@ -136,39 +141,43 @@ export async function updateCoupon(
     .collection("coupons")
     .doc(couponId);
 
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
+  try {
+    const snap = await couponRef.get();
+    if (!snap.exists) return { success: false, error: "Coupon not found." };
 
-  const update: Record<string, unknown> = {};
-  if (data.name !== undefined) update.name = data.name.trim();
-  if (data.category !== undefined) update.category = data.category.trim();
-  if (data.logoUrl !== undefined) update.logoUrl = data.logoUrl.trim();
-  if (data.highlight !== undefined) update.highlight = data.highlight.trim();
-  if (data.description !== undefined) update.description = data.description.trim();
-  // For optional fields, omit the key entirely when the value is empty to avoid
-  // writing null/undefined to Firestore unintentionally — caller must pass the
-  // field explicitly when they want to clear it.
-  if (data.note !== undefined) update.note = data.note.trim() || null;
-  if (data.sharedValue !== undefined) update.sharedValue = data.sharedValue.trim() || null;
-  if (data.redeemUrl !== undefined) update.redeemUrl = data.redeemUrl.trim() || null;
-  if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
+    const update: Record<string, unknown> = {};
+    if (data.name !== undefined) update.name = data.name.trim();
+    if (data.category !== undefined) update.category = data.category.trim();
+    if (data.logoUrl !== undefined) update.logoUrl = data.logoUrl.trim();
+    if (data.highlight !== undefined) update.highlight = data.highlight.trim();
+    if (data.description !== undefined) update.description = data.description.trim();
+    // For optional fields, omit the key entirely when the value is empty to avoid
+    // writing null/undefined to Firestore unintentionally — caller must pass the
+    // field explicitly when they want to clear it.
+    if (data.note !== undefined) update.note = data.note.trim() || null;
+    if (data.sharedValue !== undefined) update.sharedValue = data.sharedValue.trim() || null;
+    if (data.redeemUrl !== undefined) update.redeemUrl = data.redeemUrl.trim() || null;
+    if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
 
-  // Remove undefined / null keys that weren't explicitly cleared
-  Object.keys(update).forEach((k) => {
-    if (update[k] === undefined) delete update[k];
-  });
+    // Remove undefined / null keys that weren't explicitly cleared
+    Object.keys(update).forEach((k) => {
+      if (update[k] === undefined) delete update[k];
+    });
 
-  await couponRef.update(update);
+    await couponRef.update(update);
 
-  await writeAuditLog({
-    eventId,
-    action: "coupon_updated",
-    metadata: { couponId, ...update },
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: "coupon_updated",
+      metadata: { couponId, ...update },
+      userId: session.uid,
+    });
 
-  revalidatePath(`/events/${slug}/coupons`);
-  return { success: true };
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Reorder coupons (sets contiguous sortOrder 0..n-1) ───────────────────────
@@ -184,49 +193,53 @@ export async function reorderCoupons(
     return { success: false, error: "No coupons to reorder." };
   }
 
-  const couponsSnap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .get();
-
-  const existingIds = new Set(couponsSnap.docs.map((d) => d.id));
-
-  if (orderedIds.length !== existingIds.size) {
-    return { success: false, error: "Coupon list is out of date. Refresh and try again." };
-  }
-
-  for (const id of orderedIds) {
-    if (!existingIds.has(id)) {
-      return { success: false, error: "Coupon list is out of date. Refresh and try again." };
-    }
-  }
-
-  // Reject duplicates
-  if (new Set(orderedIds).size !== orderedIds.length) {
-    return { success: false, error: "Invalid coupon order." };
-  }
-
-  const batch = adminDb.batch();
-  orderedIds.forEach((id, index) => {
-    const ref = adminDb
+  try {
+    const couponsSnap = await adminDb
       .collection("events")
       .doc(eventId)
       .collection("coupons")
-      .doc(id);
-    batch.update(ref, { sortOrder: index });
-  });
-  await batch.commit();
+      .get();
 
-  await writeAuditLog({
-    eventId,
-    action: "coupon_reordered",
-    metadata: { orderedIds },
-    userId: session.uid,
-  });
+    const existingIds = new Set(couponsSnap.docs.map((d) => d.id));
 
-  revalidatePath(`/events/${slug}/coupons`);
-  return { success: true };
+    if (orderedIds.length !== existingIds.size) {
+      return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+    }
+
+    for (const id of orderedIds) {
+      if (!existingIds.has(id)) {
+        return { success: false, error: "Coupon list is out of date. Refresh and try again." };
+      }
+    }
+
+    // Reject duplicates
+    if (new Set(orderedIds).size !== orderedIds.length) {
+      return { success: false, error: "Invalid coupon order." };
+    }
+
+    const batch = adminDb.batch();
+    orderedIds.forEach((id, index) => {
+      const ref = adminDb
+        .collection("events")
+        .doc(eventId)
+        .collection("coupons")
+        .doc(id);
+      batch.update(ref, { sortOrder: index });
+    });
+    await batch.commit();
+
+    await writeAuditLog({
+      eventId,
+      action: "coupon_reordered",
+      metadata: { orderedIds },
+      userId: session.uid,
+    });
+
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Upload a partner offer logo to Firebase Storage ──────────────────────────
@@ -311,25 +324,29 @@ export async function toggleCouponDisabled(
     .collection("coupons")
     .doc(couponId);
 
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
+  try {
+    const snap = await couponRef.get();
+    if (!snap.exists) return { success: false, error: "Coupon not found." };
 
-  await couponRef.update({ isDisabled: disabled });
+    await couponRef.update({ isDisabled: disabled });
 
-  await writeAuditLog({
-    eventId,
-    action: disabled ? "coupon_disabled" : "coupon_enabled",
-    metadata: { couponId },
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: disabled ? "coupon_disabled" : "coupon_enabled",
+      metadata: { couponId },
+      userId: session.uid,
+    });
 
-  // When re-enabling, grant to any attendees who didn't get it yet
-  if (!disabled) {
-    await assignPendingForEvent(eventId);
+    // When re-enabling, grant to any attendees who didn't get it yet
+    if (!disabled) {
+      await assignPendingForEvent(eventId);
+    }
+
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
   }
-
-  revalidatePath(`/events/${slug}/coupons`);
-  return { success: true };
 }
 
 // ─── Delete a coupon definition ────────────────────────────────────────────────
@@ -347,13 +364,14 @@ export async function deleteCoupon(
     .collection("coupons")
     .doc(couponId);
 
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
+  try {
+    const snap = await couponRef.get();
+    if (!snap.exists) return { success: false, error: "Coupon not found." };
 
-  const coupon = snap.data() as Coupon;
+    const coupon = snap.data() as Coupon;
 
-  // Release any assigned pool links back and delete them
-  if (coupon.kind === "uniqueLink") {
+    // Release any assigned pool links back and delete them
+    if (coupon.kind === "uniqueLink") {
     const linksSnap = await adminDb
       .collection("events")
       .doc(eventId)
@@ -399,17 +417,20 @@ export async function deleteCoupon(
     }
   }
 
-  await couponRef.delete();
+    await couponRef.delete();
 
-  await writeAuditLog({
-    eventId,
-    action: "coupon_deleted",
-    metadata: { couponId, name: coupon.name },
-    userId: session.uid,
-  });
+    await writeAuditLog({
+      eventId,
+      action: "coupon_deleted",
+      metadata: { couponId, name: coupon.name },
+      userId: session.uid,
+    });
 
-  revalidatePath(`/events/${slug}/coupons`);
-  return { success: true };
+    revalidatePath(`/events/${slug}/coupons`);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: getFriendlyFirestoreMessage(err) };
+  }
 }
 
 // ─── Add unique links to a coupon's pool ──────────────────────────────────────
@@ -435,79 +456,90 @@ export async function addCouponLinks(
     .collection("coupons")
     .doc(couponId);
 
-  const couponSnap = await couponRef.get();
-  if (!couponSnap.exists) {
-    return {
-      success: false,
-      imported: 0,
-      invalidSkipped: 0,
-      autoGranted: 0,
-      errors: [],
-      error: "Coupon not found.",
-    };
-  }
+  try {
+    const couponSnap = await couponRef.get();
+    if (!couponSnap.exists) {
+      return {
+        success: false,
+        imported: 0,
+        invalidSkipped: 0,
+        autoGranted: 0,
+        errors: [],
+        error: "Coupon not found.",
+      };
+    }
 
-  const coupon = couponSnap.data() as Coupon;
-  if (coupon.kind !== "uniqueLink") {
-    return {
-      success: false,
-      imported: 0,
-      invalidSkipped: 0,
-      autoGranted: 0,
-      errors: [],
-      error: "Only uniqueLink coupons have a link pool.",
-    };
-  }
+    const coupon = couponSnap.data() as Coupon;
+    if (coupon.kind !== "uniqueLink") {
+      return {
+        success: false,
+        imported: 0,
+        invalidSkipped: 0,
+        autoGranted: 0,
+        errors: [],
+        error: "Only uniqueLink coupons have a link pool.",
+      };
+    }
 
-  const { rows, invalidCount, errors } = parseCouponCsv(rawText);
+    const { rows, invalidCount, errors } = parseCouponCsv(rawText);
 
-  let imported = 0;
+    let imported = 0;
 
-  const linksRef = couponRef.collection("links");
+    const linksRef = couponRef.collection("links");
 
-  // Every uploaded link is treated as unique — no dedup against the file or
-  // the existing pool, so a fresh doc is created for each row.
-  for (const row of rows) {
-    const docId = nanoid();
+    // Every uploaded link is treated as unique — no dedup against the file or
+    // the existing pool, so a fresh doc is created for each row.
+    for (const row of rows) {
+      const docId = nanoid();
 
-    const link: CouponLink = {
-      id: docId,
-      couponId,
+      const link: CouponLink = {
+        id: docId,
+        couponId,
+        eventId,
+        url: row.couponLink,
+        status: "available",
+        assignedTo: null,
+        assignedAt: null,
+        claimedAt: null,
+      };
+
+      await linksRef.doc(docId).set(link);
+      imported++;
+    }
+
+    if (imported > 0) {
+      await couponRef.update({
+        linkTotal: FieldValue.increment(imported),
+        linkAvailable: FieldValue.increment(imported),
+      });
+    }
+
+    await writeAuditLog({
       eventId,
-      url: row.couponLink,
-      status: "available",
-      assignedTo: null,
-      assignedAt: null,
-      claimedAt: null,
-    };
-
-    await linksRef.doc(docId).set(link);
-    imported++;
-  }
-
-  if (imported > 0) {
-    await couponRef.update({
-      linkTotal: FieldValue.increment(imported),
-      linkAvailable: FieldValue.increment(imported),
+      action: "coupon_links_added",
+      metadata: { couponId, imported, invalid: invalidCount },
+      userId: session.uid,
     });
+
+    const autoGranted = imported > 0 ? await assignPendingForEvent(eventId) : 0;
+
+    revalidatePath(`/events/${slug}/coupons`);
+
+    return {
+      success: true,
+      imported,
+      invalidSkipped: invalidCount,
+      autoGranted,
+      errors,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      imported: 0,
+      invalidSkipped: 0,
+      autoGranted: 0,
+      errors: [],
+      error: getFriendlyFirestoreMessage(err),
+    };
   }
-
-  await writeAuditLog({
-    eventId,
-    action: "coupon_links_added",
-    metadata: { couponId, imported, invalid: invalidCount },
-    userId: session.uid,
-  });
-
-  const autoGranted = imported > 0 ? await assignPendingForEvent(eventId) : 0;
-
-  revalidatePath(`/events/${slug}/coupons`);
-
-  return {
-    success: true,
-    imported,
-    invalidSkipped: invalidCount,
-    autoGranted,
-    errors,
-  };
 }
