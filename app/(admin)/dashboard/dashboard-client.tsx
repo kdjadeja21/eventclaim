@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CalendarDays,
@@ -12,7 +11,6 @@ import {
   Clock,
   CheckCheck,
   Layers,
-  AlertTriangle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,11 +23,12 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/lib/utils";
-import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
+import { useCachedData } from "@/hooks/use-cached-data";
+import { cacheKeys } from "@/lib/cache-keys";
+import { DataUnavailable } from "@/components/data-unavailable";
+import { StaleDataBanner } from "@/components/stale-data-banner";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
-
-const CACHE_KEY = "eventclaim_dashboard_cache_v1";
 
 const actionLabels: Record<string, string> = {
   event_created: "Event created",
@@ -51,63 +50,17 @@ const actionLabels: Record<string, string> = {
 };
 
 export default function DashboardClient() {
-  // Intentionally start with no data on both server and client so the very
-  // first render (and hydration) is identical; the localStorage cache is a
-  // browser-only API and is applied in the effect below right after mount.
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [cachedAt, setCachedAt] = useState<string | null>(null);
-  const [isStale, setIsStale] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const cached = readLocalCache<DashboardData>(CACHE_KEY);
-
-    async function load() {
-      // Synchronizing with the browser's localStorage cache (an external
-      // system not derived from props/state), so applying it here is safe.
-      if (cached && !cancelled) {
-        setData(cached.data);
-        setCachedAt(cached.cachedAt);
-        setLoading(false);
-      }
-
-      try {
-        const res = await fetch("/api/dashboard", { cache: "no-store" });
-        if (!res.ok) throw new Error(`Request failed with ${res.status}`);
-        const fresh = (await res.json()) as DashboardData;
-        if (cancelled) return;
-        setData(fresh);
-        setCachedAt(new Date().toISOString());
-        setIsStale(false);
-        writeLocalCache(CACHE_KEY, fresh);
-      } catch {
-        // Firestore is unavailable (e.g. quota exceeded) — fall back to
-        // whatever we already had cached instead of showing an error page.
-        if (cancelled) return;
-        if (cached) setIsStale(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data, cachedAt, isStale, loading, refresh } =
+    useCachedData<DashboardData>(cacheKeys.dashboard, "/api/dashboard");
 
   if (loading && !data) return <DashboardLoading />;
 
   if (!data) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center text-muted-foreground text-sm">
-          <AlertTriangle className="h-6 w-6 text-amber-500" />
-          <p>Dashboard data is temporarily unavailable.</p>
-          <p className="text-xs">Please try again in a moment.</p>
-        </CardContent>
-      </Card>
+      <DataUnavailable
+        title="Dashboard data is temporarily unavailable"
+        onRetry={refresh}
+      />
     );
   }
 
@@ -122,16 +75,7 @@ export default function DashboardClient() {
         </p>
       </div>
 
-      {isStale && (
-        <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span>
-            Showing cached data from{" "}
-            {cachedAt ? formatDateTime(cachedAt) : "earlier"} — live data is
-            temporarily unavailable.
-          </span>
-        </div>
-      )}
+      {isStale && <StaleDataBanner cachedAt={cachedAt} />}
 
       {/* Global stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
