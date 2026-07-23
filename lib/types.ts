@@ -34,7 +34,8 @@ export type AuditAction =
   | "email_sent"
   | "email_resent"
   | "email_failed"
-  | "status_checked";
+  | "status_checked"
+  | "self_claim_lookup";
 
 // ─── Firestore Document Types ─────────────────────────────────────────────────
 
