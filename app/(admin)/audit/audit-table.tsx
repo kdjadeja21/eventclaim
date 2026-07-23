@@ -56,6 +56,7 @@ const actionVariant: Record<
   email_resent: "warning",
   email_failed: "destructive",
   status_checked: "secondary",
+  self_claim_lookup: "secondary",
 };
 
 const actionLabels: Record<AuditAction, string> = {
@@ -83,6 +84,7 @@ const actionLabels: Record<AuditAction, string> = {
   email_resent: "Email Resent",
   email_failed: "Email Failed",
   status_checked: "Status Checked",
+  self_claim_lookup: "Self Claim Lookup",
 };
 
 function stringifyMetadata(metadata: AuditLog["metadata"]): string {

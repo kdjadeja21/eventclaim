@@ -27,6 +27,7 @@ import EventStatusButton from "./event-status-button";
 import NotionGuideEditor from "./notion-guide-editor";
 import AutoSendToggle from "./auto-send-toggle";
 import EventHeroEditor from "./event-hero-editor";
+import PublicClaimLink from "./public-claim-link";
 import DeleteEventButton from "./delete-event-button";
 
 const statusVariant: Record<
@@ -167,6 +168,9 @@ export default async function EventDetailPage({ params }: Props) {
         eventId={event.id}
         autoSendEmail={event.autoSendEmail ?? false}
       />
+
+      {/* Public claim link */}
+      <PublicClaimLink slug={event.slug} />
 
       {/* Claim page hero */}
       <EventHeroEditor
