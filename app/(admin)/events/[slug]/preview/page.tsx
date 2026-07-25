@@ -14,27 +14,16 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { getPreviewStats } from "./preview-actions";
+import { getPreviewStats, type PreviewStats } from "./preview-actions";
 import { bulkSendPending, bulkResendFailed } from "../attendees/email-actions";
 import { EventSectionNav } from "../event-section-nav";
+import EmailQuotaBadge from "../attendees/email-quota-badge";
 
 type Props = { params: Promise<{ slug: string }> };
 
-type Stats = {
-  eventId: string;
-  totalAttendees: number;
-  enabledCouponCount: number;
-  attendeesWithGrants: number;
-  attendeesWithoutGrants: number;
-  poolExhausted: boolean;
-  emailsToSend: number;
-  emailsFailed: number;
-  canSend: boolean;
-};
-
 export default function PreviewPage({ params: paramsPromise }: Props) {
   const [slug, setSlug] = useState("");
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<PreviewStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
@@ -80,20 +69,34 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/events/${slug}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Preview & Send
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Validate before sending coupon emails
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" asChild>
+            <Link href={`/events/${slug}`}>
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Preview & Send
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Validate before sending coupon emails
+            </p>
+          </div>
         </div>
+
+        {stats?.quota && (
+          <EmailQuotaBadge
+            limit={stats.quota.limit}
+            used={stats.quota.used}
+            remaining={stats.quota.remaining}
+            ok={stats.quota.ok}
+            onQuotaChange={(newQuota) => {
+              setStats((prev) => (prev ? { ...prev, quota: newQuota } : null));
+            }}
+          />
+        )}
       </div>
 
       <EventSectionNav slug={slug} active="preview" />

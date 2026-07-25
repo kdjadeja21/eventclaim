@@ -58,6 +58,7 @@ Create a `.env.local` in the project root:
 | `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
 | `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
 | `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
+| `EMAILJS_MONTHLY_USED_BASELINE` | No | Extra sends used this month outside this app (e.g. EmailJS dashboard tests). Added to the audit-log count. |
 | `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
 
 ## Scripts

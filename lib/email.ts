@@ -47,6 +47,7 @@ async function mapWithConcurrency<T>(
 }
 
 // POST to EmailJS with retry + backoff on rate limiting (429) and 5xx errors.
+// Each HTTP call counts against the EmailJS monthly quota, including retries.
 async function postEmailJs(body: string): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(
@@ -68,17 +69,15 @@ async function postEmailJs(body: string): Promise<Response> {
       Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
         ? retryAfterHeader * 1000
         : Math.min(2000 * 2 ** attempt, 10_000);
-    console.warn("[postEmailJs] retrying", {
-      status: response.status,
-      attempt: attempt + 1,
-      backoffMs,
-    });
     // Add jitter to avoid synchronized retries across concurrent sends.
     await sleep(backoffMs + Math.floor(Math.random() * 250));
   }
 }
 
-// ─── EmailJS quota (history API) ───────────────────────────────────────────────
+// ─── Email quota (Firestore audit logs) ────────────────────────────────────────
+// EmailJS /history returns HTTP 200 with rows:[] for this account. We derive
+// monthly usage from auditLogs (email_sent + email_resent + email_failed), which
+// matches the EmailJS dashboard request count.
 
 export type EmailQuota = {
   limit: number;
@@ -87,15 +86,16 @@ export type EmailQuota = {
   ok: boolean;
 };
 
-type EmailJsHistoryRow = { created_at: string };
-type EmailJsHistoryResponse = {
-  is_last_page: boolean;
-  rows: EmailJsHistoryRow[];
-};
-
 const QUOTA_CACHE_TTL_MS = 60_000;
-const HISTORY_PAGE_SIZE = 100;
-const HISTORY_MAX_PAGES = 50;
+const EMAILJS_USAGE_ACTIONS = new Set([
+  "email_sent",
+  "email_resent",
+  "email_failed",
+]);
+const EMAILJS_MONTHLY_USED_BASELINE = Math.max(
+  0,
+  Number(process.env.EMAILJS_MONTHLY_USED_BASELINE) || 0
+);
 
 let quotaCache: { at: number; value: EmailQuota } | null = null;
 
@@ -104,27 +104,18 @@ function getCurrentMonthStartUtc(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-async function fetchEmailJsHistoryPage(
-  page: number
-): Promise<EmailJsHistoryResponse> {
-  const params = new URLSearchParams({
-    user_id: EMAILJS_PUBLIC_KEY,
-    accessToken: EMAILJS_PRIVATE_KEY,
-    page: String(page),
-    count: String(HISTORY_PAGE_SIZE),
-  });
+async function countMonthlyUsageFromAuditLogs(monthStart: Date): Promise<number> {
+  const snap = await adminDb
+    .collection("auditLogs")
+    .where("timestamp", ">=", monthStart.toISOString())
+    .select("action")
+    .get();
 
-  const response = await fetch(
-    `https://api.emailjs.com/api/v1.1/history?${params}`,
-    { method: "GET" }
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`EmailJS history error ${response.status}: ${body}`);
+  let count = 0;
+  for (const doc of snap.docs) {
+    if (EMAILJS_USAGE_ACTIONS.has(doc.data().action)) count++;
   }
-
-  return response.json() as Promise<EmailJsHistoryResponse>;
+  return count;
 }
 
 export function invalidateQuotaCache(): void {
@@ -161,44 +152,38 @@ export async function getEmailQuota(options?: {
     }
 
     const monthStart = getCurrentMonthStartUtc();
-    let used = 0;
-    let page = 1;
-    let done = false;
-
-    while (!done && page <= HISTORY_MAX_PAGES) {
-      if (page > 1) {
-        // History API is rate-limited to 1 request per second.
-        await sleep(1100);
-      }
-
-      const data = await fetchEmailJsHistoryPage(page);
-      const rows = data.rows ?? [];
-
-      for (const row of rows) {
-        const createdAt = new Date(row.created_at);
-        if (createdAt >= monthStart) {
-          used++;
-        } else {
-          done = true;
-          break;
-        }
-      }
-
-      if (data.is_last_page || rows.length === 0) {
-        done = true;
-      } else {
-        page++;
-      }
-    }
-
+    const logged = await countMonthlyUsageFromAuditLogs(monthStart);
+    const used = logged + EMAILJS_MONTHLY_USED_BASELINE;
     const remaining = Math.max(0, limit - used);
     const value: EmailQuota = { limit, used, remaining, ok: true };
     quotaCache = { at: Date.now(), value };
+
     return value;
-  } catch (err) {
-    console.error("[getEmailQuota] failed", err);
+  } catch {
     return { limit, used: 0, remaining: limit, ok: false };
   }
+}
+
+async function persistEmailLog(params: {
+  attendee: Attendee;
+  isResend: boolean;
+  status: "sent" | "failed";
+  error?: string;
+}): Promise<void> {
+  const logId = nanoid();
+  const now = new Date().toISOString();
+  const log: EmailLog = {
+    id: logId,
+    attendeeId: params.attendee.id,
+    eventId: params.attendee.eventId,
+    emailType: params.isResend ? "resend" : "initial",
+    sentAt: now,
+    resendCount: 0,
+    status: params.status,
+    ...(params.error ? { error: params.error } : {}),
+  };
+  await adminDb.collection("emailLogs").doc(logId).set(log);
+  invalidateQuotaCache();
 }
 
 // ─── Email Template ────────────────────────────────────────────────────────────
@@ -332,12 +317,6 @@ export async function sendCouponEmail(
 
   const claimUrl = `${APP_BASE_URL}/claim/${attendee.claimToken}`;
 
-  console.log("[sendCouponEmail] preparing send", {
-    to: attendee.email,
-    claimUrl,
-    isResend,
-  });
-
   try {
     const response = await postEmailJs(
       JSON.stringify({
@@ -359,28 +338,15 @@ export async function sendCouponEmail(
       })
     );
 
-    console.log("[sendCouponEmail] emailjs response", { status: response.status });
-
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`EmailJS error ${response.status}: ${body}`);
     }
 
-    // Persist email log
-    const logId = nanoid();
-    const now = new Date().toISOString();
-    const log: EmailLog = {
-      id: logId,
-      attendeeId: attendee.id,
-      eventId: attendee.eventId,
-      emailType: isResend ? "resend" : "initial",
-      sentAt: now,
-      resendCount: 0,
-      status: "sent",
-    };
-    await adminDb.collection("emailLogs").doc(logId).set(log);
+    await persistEmailLog({ attendee, isResend, status: "sent" });
 
     // Update attendee email status
+    const now = new Date().toISOString();
     await adminDb
       .collection("events")
       .doc(attendee.eventId)
@@ -399,15 +365,9 @@ export async function sendCouponEmail(
 
     adjustQuotaCache(1);
 
-    console.log("[sendCouponEmail] success", { attendeeId: attendee.id, email: attendee.email });
     return { success: true };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
-    console.error("[sendCouponEmail] failed", {
-      attendeeId: attendee.id,
-      email: attendee.email,
-      error: errorMsg,
-    });
 
     // Update attendee email status to failed
     await adminDb
@@ -416,6 +376,8 @@ export async function sendCouponEmail(
       .collection("attendees")
       .doc(attendee.id)
       .update({ emailStatus: "failed" });
+
+    await persistEmailLog({ attendee, isResend, status: "failed", error: errorMsg });
 
     await writeAuditLog({
       eventId: attendee.eventId,

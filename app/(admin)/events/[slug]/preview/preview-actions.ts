@@ -3,8 +3,22 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { Attendee, Coupon } from "@/lib/types";
+import { getEmailQuota, type EmailQuota } from "@/lib/email";
 
-export async function getPreviewStats(slug: string) {
+export type PreviewStats = {
+  eventId: string;
+  totalAttendees: number;
+  enabledCouponCount: number;
+  attendeesWithGrants: number;
+  attendeesWithoutGrants: number;
+  poolExhausted: boolean;
+  emailsToSend: number;
+  emailsFailed: number;
+  canSend: boolean;
+  quota: EmailQuota;
+};
+
+export async function getPreviewStats(slug: string): Promise<PreviewStats> {
   await requireSession();
 
   const eventSnap = await adminDb
@@ -16,7 +30,7 @@ export async function getPreviewStats(slug: string) {
 
   const eventId = eventSnap.docs[0].id;
 
-  const [attendeesSnap, couponsSnap] = await Promise.all([
+  const [attendeesSnap, couponsSnap, quota] = await Promise.all([
     adminDb
       .collection("events")
       .doc(eventId)
@@ -28,6 +42,7 @@ export async function getPreviewStats(slug: string) {
       .collection("coupons")
       .where("isDisabled", "==", false)
       .get(),
+    getEmailQuota(),
   ]);
 
   const enabledCouponCount = couponsSnap.size;
@@ -71,5 +86,6 @@ export async function getPreviewStats(slug: string) {
     emailsToSend,
     emailsFailed,
     canSend,
+    quota,
   };
 }
