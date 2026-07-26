@@ -5,13 +5,10 @@ import {
   CheckCircle2,
   Clock,
   MapPin,
-  Gift,
 } from "lucide-react";
 import { getClaimPageData } from "./claim-actions";
-import CopyCode from "./copy-code";
-import RedeemButton from "./redeem-button";
-import LogoImage from "./logo-image";
 import SurpriseReveal from "./surprise-reveal";
+import { PartnerOfferCard } from "./offer-card";
 
 type Props = { params: Promise<{ token: string }> };
 
@@ -109,112 +106,25 @@ export default async function ClaimPage({ params }: Props) {
         ) : (
           <div className="grid gap-5 sm:grid-cols-2">
             {activeGrants.map((g) => (
-              <OfferCard
+              <PartnerOfferCard
                 key={g.couponId}
-                grant={g}
+                couponId={g.couponId}
                 token={token}
+                status={g.status}
+                offer={{
+                  name: g.coupon.name,
+                  kind: g.coupon.kind,
+                  category: g.coupon.category,
+                  logoUrl: g.coupon.logoUrl,
+                  highlight: g.coupon.highlight,
+                  description: g.coupon.description,
+                  note: g.coupon.note,
+                  redeemUrl: g.coupon.redeemUrl,
+                  value: g.value,
+                }}
               />
             ))}
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Offer Card ───────────────────────────────────────────────────────────────
-
-function OfferCard({
-  grant,
-  token,
-}: {
-  grant: {
-    couponId: string;
-    value: string;
-    status: "assigned" | "claimed";
-    coupon: {
-      name: string;
-      kind: "uniqueLink" | "sharedCode" | "sharedLink";
-      category: string;
-      logoUrl: string;
-      highlight: string;
-      description: string;
-      note?: string;
-      redeemUrl?: string;
-    };
-  };
-  token: string;
-}) {
-  const { coupon, value, status, couponId } = grant;
-  const claimed = status === "claimed";
-
-  return (
-    <div className="group flex h-full flex-col rounded-[20px] border border-zinc-200 bg-white p-6 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all hover:-translate-y-1 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          {coupon.logoUrl ? (
-            <LogoImage src={coupon.logoUrl} alt={coupon.name} />
-          ) : (
-            <span className="text-lg font-bold tracking-tight text-zinc-900">{coupon.name}</span>
-          )}
-        </div>
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${
-            claimed
-              ? "bg-green-100 text-green-700"
-              : "bg-zinc-100 text-zinc-600"
-          }`}
-        >
-          {claimed ? "Claimed" : "Available"}
-        </span>
-      </div>
-
-      {coupon.category && (
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400">
-          {coupon.category}
-        </p>
-      )}
-
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/80 px-4 py-3.5">
-        <Gift className="h-4 w-4 shrink-0 text-zinc-400" />
-        <span className="text-sm font-bold text-zinc-900">
-          {coupon.highlight}
-        </span>
-      </div>
-
-      <p className="mb-6 flex-1 text-[16px] leading-relaxed text-zinc-800">
-        {coupon.description}
-      </p>
-
-      {coupon.note && (
-        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50 px-4 py-3.5 text-[14px] leading-relaxed text-amber-900">
-          <span className="font-bold">Note: </span>
-          {coupon.note}
-        </div>
-      )}
-
-      {coupon.redeemUrl && (
-        <div className="mb-6">
-          <a
-            href={coupon.redeemUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center text-[14px] font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
-          >
-            How to redeem →
-          </a>
-        </div>
-      )}
-
-      <div className="mt-auto">
-        {coupon.kind === "sharedCode" ? (
-          <CopyCode code={value} token={token} couponId={couponId} />
-        ) : (
-          <RedeemButton
-            href={`/claim/${encodeURIComponent(token)}/redeem/${encodeURIComponent(couponId)}`}
-            label={claimed ? "Offer redeemed" : "Redeem offer"}
-            isClaimed={claimed}
-          />
         )}
       </div>
     </div>
