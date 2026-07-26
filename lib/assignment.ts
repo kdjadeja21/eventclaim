@@ -4,6 +4,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { autoSendEmailIfEnabled } from "@/lib/auto-send";
 import { Attendee, Coupon, CouponLink, Event, Grant } from "@/lib/types";
 import { ensureClaimToken } from "@/lib/assignment-helpers";
+import type { EmailConfig } from "@/lib/settings";
 
 export { ensureClaimToken };
 
@@ -119,7 +120,8 @@ async function grantOneCoupon(
 export async function grantCouponsToAttendee(
   eventId: string,
   attendeeId: string,
-  event?: Event
+  event?: Event,
+  emailConfig?: EmailConfig
 ): Promise<number> {
   const attendeeSnap = await adminDb
     .collection("events")
@@ -171,7 +173,7 @@ export async function grantCouponsToAttendee(
     });
 
     if (event?.autoSendEmail) {
-      await autoSendEmailIfEnabled(event, attendeeId);
+      await autoSendEmailIfEnabled(event, attendeeId, emailConfig);
     }
   }
 
@@ -183,7 +185,10 @@ export async function grantCouponsToAttendee(
  * missing at least one grant (or is missing grants for newly added coupons).
  * Processes checked-in attendees first.
  */
-export async function assignPendingForEvent(eventId: string): Promise<number> {
+export async function assignPendingForEvent(
+  eventId: string,
+  emailConfig?: EmailConfig
+): Promise<number> {
   const eventDoc = await adminDb.collection("events").doc(eventId).get();
   const event = eventDoc.exists ? (eventDoc.data() as Event) : undefined;
 
@@ -210,7 +215,7 @@ export async function assignPendingForEvent(eventId: string): Promise<number> {
 
   let totalGranted = 0;
   for (const doc of sorted) {
-    const count = await grantCouponsToAttendee(eventId, doc.id, event);
+    const count = await grantCouponsToAttendee(eventId, doc.id, event, emailConfig);
     totalGranted += count;
   }
   return totalGranted;

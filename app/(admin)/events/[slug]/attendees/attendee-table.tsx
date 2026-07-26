@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { EmailQuota } from "@/lib/email";
 import { Attendee, AttendeeGrantDetail } from "@/lib/types";
+import { useAppSettings } from "@/lib/use-app-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -144,16 +145,16 @@ export default function AttendeeTable({
   eventId,
   eventSlug,
   initialLumaLastSyncedAt,
-  lumaApiEnabled = false,
   onQuotaChange,
 }: {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
   initialLumaLastSyncedAt?: string | null;
-  lumaApiEnabled?: boolean;
   onQuotaChange?: (quota: EmailQuota) => void;
 }) {
+  const { settings, lumaConfigured, emailConfig } = useAppSettings();
+  const lumaApiEnabled = lumaConfigured;
   const [attendees, setAttendees] = useState(initial);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -227,12 +228,18 @@ export default function AttendeeTable({
     inFlightRef.current = true;
     setIsFetching(true);
 
-    const res = await syncLumaGuests(eventSlug, {
-      event_id: cfg.lumaEventId,
-      approval_status: cfg.approvalStatus === "any" ? undefined : cfg.approvalStatus,
-      sort_column: cfg.sortColumn === "none" ? undefined : cfg.sortColumn,
-      sort_direction: cfg.sortDirection === "none" ? undefined : cfg.sortDirection,
-    }, cfg.checkedInOnly);
+    const res = await syncLumaGuests(
+      eventSlug,
+      {
+        event_id: cfg.lumaEventId,
+        approval_status: cfg.approvalStatus === "any" ? undefined : cfg.approvalStatus,
+        sort_column: cfg.sortColumn === "none" ? undefined : cfg.sortColumn,
+        sort_direction: cfg.sortDirection === "none" ? undefined : cfg.sortDirection,
+      },
+      cfg.checkedInOnly,
+      settings.lumaApiKey,
+      emailConfig
+    );
 
     setIsFetching(false);
     inFlightRef.current = false;
@@ -502,7 +509,7 @@ export default function AttendeeTable({
   async function handleSend(attendee: Attendee) {
     setActionPending(attendee.id + "-send");
     startTransition(async () => {
-      const res = await sendSingleEmail(eventId, attendee.id);
+      const res = await sendSingleEmail(eventId, attendee.id, emailConfig);
       if (res.quota) onQuotaChange?.(res.quota);
       if (res.success) {
         updateAttendee(attendee.id, {
@@ -521,7 +528,7 @@ export default function AttendeeTable({
   async function handleResend(attendee: Attendee) {
     setActionPending(attendee.id + "-resend");
     startTransition(async () => {
-      const res = await resendSingleEmail(eventId, attendee.id);
+      const res = await resendSingleEmail(eventId, attendee.id, emailConfig);
       if (res.quota) onQuotaChange?.(res.quota);
       if (res.success) {
         updateAttendee(attendee.id, {
@@ -565,7 +572,7 @@ export default function AttendeeTable({
     try {
       for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
         const chunkIds = ids.slice(i, i + CHUNK_SIZE);
-        const res = await bulkSendSelected(eventId, chunkIds, mode);
+        const res = await bulkSendSelected(eventId, chunkIds, mode, emailConfig);
 
         if (res.quota) onQuotaChange?.(res.quota);
 

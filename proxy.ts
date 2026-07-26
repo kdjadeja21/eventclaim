@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE_NAME = "eventclaim_session";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/events", "/audit"];
+const PROTECTED_PREFIXES = ["/dashboard", "/events", "/audit", "/settings"];
 const PUBLIC_PATHS = ["/login", "/check-status", "/claim"];
 
 export async function proxy(request: NextRequest) {

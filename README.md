@@ -53,13 +53,14 @@ Create a `.env.local` in the project root:
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase web app config |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | Firebase web app config |
 | `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification. Without it, sign-in succeeds in the client but server sessions fail. |
-| `EMAILJS_SERVICE_ID` | Yes | EmailJS service ID |
-| `EMAILJS_TEMPLATE_ID` | Yes | EmailJS template ID |
-| `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
-| `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
-| `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
-| `EMAILJS_MONTHLY_USED_BASELINE` | No | Extra sends used this month outside this app (e.g. EmailJS dashboard tests). Added to the audit-log count. |
-| `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
+
+The Luma API key and all EmailJS configuration (service ID, template ID,
+public/private keys, monthly quota, and the claim-link base URL) are **not**
+read from environment variables. Instead, sign in and open **Settings**
+(`/settings`) to enter them — they're encrypted and stored only in that
+browser's `localStorage`, and are supplied to server actions at the moment
+each button is clicked (Luma sync, send/resend email, import, coupon
+create/enable). See [Settings](#settings) below.
 
 ## Scripts
 
@@ -92,6 +93,7 @@ Create a `.env.local` in the project root:
 | `/events/[slug]/attendees` | Manage attendees and email actions |
 | `/events/[slug]/preview` | Preview and bulk-send pending emails |
 | `/audit` | Audit log viewer |
+| `/settings` | Configure the Luma API key and EmailJS credentials for this browser |
 
 ### API
 
@@ -118,6 +120,29 @@ Top-level collections:
 **Coupons:** One valid URL per line, or a CSV with a header such as `coupon_link`. Duplicate URLs in a file are skipped.
 
 Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
+
+## Settings
+
+Rather than relying on a `.env` file for the Luma API key and EmailJS
+credentials — which assumes a development background most event organizers
+don't have — this app has a **Settings** page (`/settings`, requires an admin
+session) where those values are entered directly in the browser.
+
+- Values are encrypted (`AES-GCM`, Web Crypto API) and written **only** to
+  that browser's `localStorage`. They are never sent to a server to be
+  stored, and no `.env` file is consulted for them.
+- Because they live in the browser, not on the server, they don't sync across
+  devices/browsers, and clearing site data removes them — re-enter them on
+  Settings if that happens.
+- Server actions that call the Luma or EmailJS APIs (Luma sync, send/resend
+  email, CSV import, coupon create/enable) receive these values as arguments
+  from the client at the moment they're invoked; the server itself never
+  holds a copy.
+- The encryption key is also generated per-browser and stored in
+  `localStorage`. This protects the values from being read as plain text
+  (e.g. in a `localStorage` backup or a casual look at DevTools) but, like
+  any browser-only vault with no login-time passphrase, it isn't a defense
+  against script-level XSS in the page.
 
 ## Authentication
 

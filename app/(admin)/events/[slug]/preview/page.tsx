@@ -18,6 +18,7 @@ import { getPreviewStats, type PreviewStats } from "./preview-actions";
 import { bulkSendPending, bulkResendFailed } from "../attendees/email-actions";
 import { EventSectionNav } from "../event-section-nav";
 import EmailQuotaBadge from "../attendees/email-quota-badge";
+import { useAppSettings } from "@/lib/use-app-settings";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -26,26 +27,29 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
   const [stats, setStats] = useState<PreviewStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
+  const { emailConfig, loading: settingsLoading } = useAppSettings();
 
   useEffect(() => {
+    if (settingsLoading) return;
     paramsPromise.then(async (p) => {
       setSlug(p.slug);
-      const s = await getPreviewStats(p.slug);
+      const s = await getPreviewStats(p.slug, emailConfig);
       setStats(s);
       setLoading(false);
     });
-  }, [paramsPromise]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsPromise, settingsLoading]);
 
   function handleSendPending() {
     if (!stats) return;
     startTransition(async () => {
-      const result = await bulkSendPending(stats.eventId);
+      const result = await bulkSendPending(stats.eventId, emailConfig);
       if (result.failed > 0) {
         toast.warning(`Sent: ${result.sent} · Failed: ${result.failed} · Skipped: ${result.skipped}`);
       } else {
         toast.success(`${result.sent} email${result.sent !== 1 ? "s" : ""} sent successfully`);
       }
-      const s = await getPreviewStats(slug);
+      const s = await getPreviewStats(slug, emailConfig);
       setStats(s);
     });
   }
@@ -53,7 +57,7 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
   function handleResendFailed() {
     if (!stats) return;
     startTransition(async () => {
-      const result = await bulkResendFailed(stats.eventId);
+      const result = await bulkResendFailed(stats.eventId, emailConfig);
       if (result.failed > 0 || result.skipped > 0) {
         const parts = [`Resent: ${result.sent}`];
         if (result.failed > 0) parts.push(`Still failed: ${result.failed}`);
@@ -62,7 +66,7 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
       } else {
         toast.success(`${result.sent} email${result.sent !== 1 ? "s" : ""} resent successfully`);
       }
-      const s = await getPreviewStats(slug);
+      const s = await getPreviewStats(slug, emailConfig);
       setStats(s);
     });
   }
@@ -92,6 +96,7 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
             used={stats.quota.used}
             remaining={stats.quota.remaining}
             ok={stats.quota.ok}
+            emailConfig={emailConfig}
             onQuotaChange={(newQuota) => {
               setStats((prev) => (prev ? { ...prev, quota: newQuota } : null));
             }}

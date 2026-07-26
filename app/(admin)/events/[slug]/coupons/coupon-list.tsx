@@ -58,6 +58,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useAppSettings } from "@/lib/use-app-settings";
 import {
   createCoupon,
   updateCoupon,
@@ -143,6 +144,7 @@ export default function CouponList({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const router = useRouter();
+  const { emailConfig } = useAppSettings();
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -183,7 +185,7 @@ export default function CouponList({
     setSaving(true);
 
     if (dialog?.type === "create") {
-      const res = await createCoupon(eventId, form, eventSlug);
+      const res = await createCoupon(eventId, form, eventSlug, emailConfig);
       setSaving(false);
       if (res.success) {
         toast.success("Coupon created and grants issued to existing attendees.");
@@ -229,7 +231,8 @@ export default function CouponList({
         eventId,
         coupon.id,
         !coupon.isDisabled,
-        eventSlug
+        eventSlug,
+        emailConfig
       );
       if (res.success) {
         setCoupons((prev) =>

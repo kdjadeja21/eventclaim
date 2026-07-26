@@ -4,6 +4,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { Attendee, Coupon } from "@/lib/types";
 import { getEmailQuota, type EmailQuota } from "@/lib/email";
+import type { EmailConfig } from "@/lib/settings";
 
 export type PreviewStats = {
   eventId: string;
@@ -18,7 +19,10 @@ export type PreviewStats = {
   quota: EmailQuota;
 };
 
-export async function getPreviewStats(slug: string): Promise<PreviewStats> {
+export async function getPreviewStats(
+  slug: string,
+  emailConfig: EmailConfig
+): Promise<PreviewStats> {
   await requireSession();
 
   const eventSnap = await adminDb
@@ -42,7 +46,7 @@ export async function getPreviewStats(slug: string): Promise<PreviewStats> {
       .collection("coupons")
       .where("isDisabled", "==", false)
       .get(),
-    getEmailQuota(),
+    getEmailQuota(emailConfig),
   ]);
 
   const enabledCouponCount = couponsSnap.size;

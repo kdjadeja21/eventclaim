@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseCouponCsv } from "@/lib/import";
 import { Coupon, CouponKind, CouponLink, Grant } from "@/lib/types";
+import type { EmailConfig } from "@/lib/settings";
 import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
@@ -35,7 +36,8 @@ export async function createCoupon(
     redeemUrl?: string;
     sortOrder?: number;
   },
-  slug: string
+  slug: string,
+  emailConfig?: EmailConfig
 ): Promise<{ success: boolean; couponId?: string; error?: string }> {
   const session = await requireSession();
 
@@ -104,7 +106,7 @@ export async function createCoupon(
   });
 
   // Grant this new coupon to all existing eligible attendees
-  await assignPendingForEvent(eventId);
+  await assignPendingForEvent(eventId, emailConfig);
 
   revalidatePath(`/events/${slug}/coupons`);
   return { success: true, couponId: id };
@@ -301,7 +303,8 @@ export async function toggleCouponDisabled(
   eventId: string,
   couponId: string,
   disabled: boolean,
-  slug: string
+  slug: string,
+  emailConfig?: EmailConfig
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
@@ -325,7 +328,7 @@ export async function toggleCouponDisabled(
 
   // When re-enabling, grant to any attendees who didn't get it yet
   if (!disabled) {
-    await assignPendingForEvent(eventId);
+    await assignPendingForEvent(eventId, emailConfig);
   }
 
   revalidatePath(`/events/${slug}/coupons`);
@@ -418,7 +421,8 @@ export async function addCouponLinks(
   eventId: string,
   couponId: string,
   rawText: string,
-  slug: string
+  slug: string,
+  emailConfig?: EmailConfig
 ): Promise<{
   success: boolean;
   imported: number;
@@ -499,7 +503,7 @@ export async function addCouponLinks(
     userId: session.uid,
   });
 
-  const autoGranted = imported > 0 ? await assignPendingForEvent(eventId) : 0;
+  const autoGranted = imported > 0 ? await assignPendingForEvent(eventId, emailConfig) : 0;
 
   revalidatePath(`/events/${slug}/coupons`);
 
