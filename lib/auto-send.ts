@@ -1,6 +1,7 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { sendCouponEmail } from "@/lib/email";
 import { Attendee, Event } from "@/lib/types";
+import type { EmailConfig } from "@/lib/settings";
 
 /**
  * Serializes outbound email sends within a single server process so only one
@@ -56,13 +57,29 @@ export async function claimAttendeeForAutoSend(
 
 /**
  * Sends the coupon email for an attendee when the event has auto-send enabled.
- * No-ops when auto-send is off or the attendee cannot be claimed.
+ * No-ops when auto-send is off, EmailJS isn't configured (the admin hasn't
+ * saved credentials on the Settings page yet), or the attendee cannot be
+ * claimed.
  */
 export async function autoSendEmailIfEnabled(
   event: Event,
-  attendeeId: string
+  attendeeId: string,
+  emailConfig?: EmailConfig
 ): Promise<void> {
   if (!event.autoSendEmail) return;
+  if (
+    !emailConfig ||
+    !emailConfig.serviceId ||
+    !emailConfig.templateId ||
+    !emailConfig.publicKey ||
+    !emailConfig.privateKey
+  ) {
+    console.warn(
+      "[autoSendEmailIfEnabled] skipped — EmailJS is not configured for this browser session",
+      { eventId: event.id, attendeeId }
+    );
+    return;
+  }
 
   const claimed = await claimAttendeeForAutoSend(event.id, attendeeId);
   if (!claimed) return;
@@ -72,6 +89,7 @@ export async function autoSendEmailIfEnabled(
       sendCouponEmail(
         claimed,
         event.notionGuideUrl || "",
+        emailConfig,
         false,
         event.name
       )

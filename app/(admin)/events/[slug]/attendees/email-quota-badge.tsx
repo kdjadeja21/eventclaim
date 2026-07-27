@@ -13,8 +13,10 @@ import {
   ShieldCheck,
   Send,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import type { EmailQuota } from "@/lib/email";
+import type { EmailConfig } from "@/lib/settings";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +31,7 @@ type Props = {
   used: number;
   remaining: number;
   ok: boolean;
+  emailConfig: EmailConfig;
   onQuotaChange?: (quota: EmailQuota) => void;
   className?: string;
 };
@@ -38,6 +41,7 @@ export default function EmailQuotaBadge({
   used,
   remaining,
   ok,
+  emailConfig,
   onQuotaChange,
   className = "",
 }: Props) {
@@ -47,7 +51,7 @@ export default function EmailQuotaBadge({
     e?.stopPropagation();
     startTransition(async () => {
       try {
-        const quota = await refreshEmailQuota();
+        const quota = await refreshEmailQuota(emailConfig);
         onQuotaChange?.(quota);
         toast.success("EmailJS quota refreshed", {
           description: `${quota.remaining} of ${quota.limit} emails remaining this month`,
@@ -104,7 +108,12 @@ export default function EmailQuotaBadge({
               <Info className="h-3.5 w-3.5 shrink-0 text-amber-700 dark:text-amber-400" /> API Keys Missing
             </p>
             <p className="text-amber-900/90 dark:text-amber-300 leading-relaxed">
-              To send emails via EmailJS, ensure <code className="text-[11px] bg-amber-200/80 dark:bg-amber-900/80 px-1 py-0.5 rounded font-mono font-semibold text-amber-950 dark:text-amber-100">EMAILJS_PUBLIC_KEY</code> and <code className="text-[11px] bg-amber-200/80 dark:bg-amber-900/80 px-1 py-0.5 rounded font-mono font-semibold text-amber-950 dark:text-amber-100">EMAILJS_PRIVATE_KEY</code> are set in your environment settings.
+              To send emails via EmailJS, add your Service ID, Template ID, Public
+              Key and Private Key on the{" "}
+              <Link href="/settings" className="font-semibold underline">
+                Settings
+              </Link>{" "}
+              page.
             </p>
           </div>
 

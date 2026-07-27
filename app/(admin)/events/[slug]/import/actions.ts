@@ -6,6 +6,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseLumaAttendeeCsv, attendeeDocId } from "@/lib/import";
 import { Attendee, AttendeeImportResult } from "@/lib/types";
+import type { EmailConfig } from "@/lib/settings";
 
 async function resolveEventId(slug: string): Promise<string> {
   const snap = await adminDb
@@ -20,7 +21,8 @@ async function resolveEventId(slug: string): Promise<string> {
 export async function importAttendees(
   slug: string,
   csvText: string,
-  checkedInOnly: boolean
+  checkedInOnly: boolean,
+  emailConfig?: EmailConfig
 ): Promise<AttendeeImportResult> {
   const session = await requireSession();
   const eventId = await resolveEventId(slug);
@@ -75,7 +77,7 @@ export async function importAttendees(
   });
 
   // Grant all coupons to newly-imported attendees
-  const assigned = await assignPendingForEvent(eventId);
+  const assigned = await assignPendingForEvent(eventId, emailConfig);
 
   return {
     imported,

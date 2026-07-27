@@ -3,8 +3,6 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getAttendees } from "./attendee-data-actions";
 import { getEventBySlug } from "../../actions";
-import { isLumaApiConfigured } from "@/lib/luma";
-import { getEmailQuota } from "@/lib/email";
 import { Button } from "@/components/ui/button";
 import {
   AttendeesProvider,
@@ -23,16 +21,15 @@ type Props = { params: Promise<{ slug: string }> };
 
 export default async function AttendeesPage({ params }: Props) {
   const { slug } = await params;
-  const [event, { attendees, eventId }, quota] = await Promise.all([
+  const [event, { attendees, eventId }] = await Promise.all([
     getEventBySlug(slug),
     getAttendees(slug),
-    getEmailQuota(),
   ]);
 
   if (!event) notFound();
 
   return (
-    <AttendeesProvider initialQuota={quota}>
+    <AttendeesProvider>
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3">
@@ -59,7 +56,6 @@ export default async function AttendeesPage({ params }: Props) {
           eventId={eventId}
           eventSlug={slug}
           initialLumaLastSyncedAt={event.lumaLastSyncedAt ?? null}
-          lumaApiEnabled={isLumaApiConfigured()}
         />
       </div>
     </AttendeesProvider>

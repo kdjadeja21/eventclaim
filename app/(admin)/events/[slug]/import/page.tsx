@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AttendeeImportResult } from "@/lib/types";
+import { useAppSettings } from "@/lib/use-app-settings";
 import { EventSectionNav } from "../event-section-nav";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -59,6 +60,7 @@ function AttendeeImportForm({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AttendeeImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { emailConfig } = useAppSettings();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,7 +71,7 @@ function AttendeeImportForm({ slug }: { slug: string }) {
 
     try {
       const text = await file.text();
-      const res = await importAttendees(slug, text, checkedInOnly);
+      const res = await importAttendees(slug, text, checkedInOnly, emailConfig);
       setResult(res);
       toast.success(`Imported ${res.imported} attendee${res.imported !== 1 ? "s" : ""}`);
     } catch (err) {

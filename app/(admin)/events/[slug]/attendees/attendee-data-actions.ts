@@ -11,6 +11,7 @@ import { normalizeEmail } from "@/lib/utils";
 import { z } from "zod";
 import { fetchAllLumaGuests, FetchAllGuestsParams } from "@/lib/luma";
 import { assignPendingForEvent } from "@/lib/assignment";
+import type { EmailConfig } from "@/lib/settings";
 
 async function deleteQueryInBatches(
   query: FirebaseFirestore.Query
@@ -266,7 +267,9 @@ export interface SyncLumaResult {
 export async function syncLumaGuests(
   slug: string,
   lumaParams: FetchAllGuestsParams,
-  checkedInOnly = false
+  checkedInOnly = false,
+  lumaApiKey = "",
+  emailConfig?: EmailConfig
 ): Promise<SyncLumaResult> {
   const session = await requireSession();
 
@@ -295,7 +298,7 @@ export async function syncLumaGuests(
 
   let guests;
   try {
-    guests = await fetchAllLumaGuests(lumaParams);
+    guests = await fetchAllLumaGuests(lumaParams, lumaApiKey);
   } catch (err) {
     return {
       addedCount: 0,
@@ -390,7 +393,7 @@ export async function syncLumaGuests(
 
   const syncedAt = new Date().toISOString();
 
-  await assignPendingForEvent(eventId);
+  await assignPendingForEvent(eventId, emailConfig);
 
   await adminDb.collection("events").doc(eventId).update({ lumaLastSyncedAt: syncedAt });
 

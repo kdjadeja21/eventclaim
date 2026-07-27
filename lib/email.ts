@@ -1,26 +1,15 @@
 import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { Attendee, EmailLog } from "@/lib/types";
+import type { EmailConfig } from "@/lib/settings";
 import { nanoid } from "nanoid";
 
-const APP_BASE_URL =
-  process.env.APP_BASE_URL || "http://localhost:3000";
-
-const EMAILJS_SERVICE_ID = process.env.EMAILJS_SERVICE_ID!;
-const EMAILJS_TEMPLATE_ID = process.env.EMAILJS_TEMPLATE_ID!;
-const EMAILJS_PUBLIC_KEY = process.env.EMAILJS_PUBLIC_KEY!;
-const EMAILJS_PRIVATE_KEY = process.env.EMAILJS_PRIVATE_KEY!;
-const EMAILJS_MONTHLY_QUOTA = Math.max(
-  0,
-  Number(process.env.EMAILJS_MONTHLY_QUOTA) || 200
-);
+const DEFAULT_APP_BASE_URL = "http://localhost:3000";
 
 // How many emails to send in parallel during bulk operations. Kept low to
 // respect EmailJS rate limits while still being far faster than serial sends.
-const SEND_CONCURRENCY = Math.max(
-  1,
-  Number(process.env.EMAIL_SEND_CONCURRENCY) || 5
-);
+// Not user-configurable — it's an internal safety limit, not a secret.
+const SEND_CONCURRENCY = 5;
 // Max retry attempts for a single email on transient (429 / 5xx) failures.
 const SEND_MAX_RETRIES = 3;
 
@@ -92,10 +81,6 @@ const EMAILJS_USAGE_ACTIONS = new Set([
   "email_resent",
   "email_failed",
 ]);
-const EMAILJS_MONTHLY_USED_BASELINE = Math.max(
-  0,
-  Number(process.env.EMAILJS_MONTHLY_USED_BASELINE) || 0
-);
 
 let quotaCache: { at: number; value: EmailQuota } | null = null;
 
@@ -133,10 +118,11 @@ export function adjustQuotaCache(delta: number): void {
   };
 }
 
-export async function getEmailQuota(options?: {
-  force?: boolean;
-}): Promise<EmailQuota> {
-  const limit = EMAILJS_MONTHLY_QUOTA;
+export async function getEmailQuota(
+  config: EmailConfig,
+  options?: { force?: boolean }
+): Promise<EmailQuota> {
+  const limit = config.monthlyQuota;
 
   if (
     !options?.force &&
@@ -147,13 +133,13 @@ export async function getEmailQuota(options?: {
   }
 
   try {
-    if (!EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
+    if (!config.publicKey || !config.privateKey) {
       return { limit, used: 0, remaining: limit, ok: false };
     }
 
     const monthStart = getCurrentMonthStartUtc();
     const logged = await countMonthlyUsageFromAuditLogs(monthStart);
-    const used = logged + EMAILJS_MONTHLY_USED_BASELINE;
+    const used = logged + config.monthlyUsedBaseline;
     const remaining = Math.max(0, limit - used);
     const value: EmailQuota = { limit, used, remaining, ok: true };
     quotaCache = { at: Date.now(), value };
@@ -305,6 +291,7 @@ function buildEmailHtml(params: {
 export async function sendCouponEmail(
   attendee: Attendee,
   notionGuideUrl: string,
+  config: EmailConfig,
   isResend = false,
   eventName?: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -314,16 +301,23 @@ export async function sendCouponEmail(
   if (!attendee.claimToken) {
     return { success: false, error: "No claim token — grants not assigned yet" };
   }
+  if (!config.serviceId || !config.templateId || !config.publicKey || !config.privateKey) {
+    return {
+      success: false,
+      error: "EmailJS is not configured. Add credentials on the Settings page.",
+    };
+  }
 
-  const claimUrl = `${APP_BASE_URL}/claim/${attendee.claimToken}`;
+  const baseUrl = config.appBaseUrl || DEFAULT_APP_BASE_URL;
+  const claimUrl = `${baseUrl}/claim/${attendee.claimToken}`;
 
   try {
     const response = await postEmailJs(
       JSON.stringify({
-        service_id: EMAILJS_SERVICE_ID,
-        template_id: EMAILJS_TEMPLATE_ID,
-        user_id: EMAILJS_PUBLIC_KEY,
-        accessToken: EMAILJS_PRIVATE_KEY,
+        service_id: config.serviceId,
+        template_id: config.templateId,
+        user_id: config.publicKey,
+        accessToken: config.privateKey,
         template_params: {
           to_email: attendee.email,
           to_name: attendee.name,
@@ -406,6 +400,7 @@ export interface BulkSendResult {
 export async function sendCouponEmailsConcurrent(
   attendees: Attendee[],
   notionGuideUrl: string,
+  config: EmailConfig,
   isResend: boolean
 ): Promise<BulkSendResult> {
   const results: BulkSendResult["results"] = new Array(attendees.length);
@@ -420,7 +415,7 @@ export async function sendCouponEmailsConcurrent(
       return;
     }
 
-    const result = await sendCouponEmail(attendee, notionGuideUrl, isResend);
+    const result = await sendCouponEmail(attendee, notionGuideUrl, config, isResend);
     results[i] = result.success
       ? { attendeeId: attendee.id, status: "sent" }
       : { attendeeId: attendee.id, status: "failed", error: result.error };
@@ -437,7 +432,8 @@ export async function sendCouponEmailsConcurrent(
 
 export async function sendPendingEmails(
   eventId: string,
-  notionGuideUrl: string
+  notionGuideUrl: string,
+  config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number }> {
   const snap = await adminDb
     .collection("events")
@@ -451,6 +447,7 @@ export async function sendPendingEmails(
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
     attendees,
     notionGuideUrl,
+    config,
     false
   );
 
@@ -461,7 +458,8 @@ export async function sendPendingEmails(
 
 export async function resendFailedEmails(
   eventId: string,
-  notionGuideUrl: string
+  notionGuideUrl: string,
+  config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number }> {
   const snap = await adminDb
     .collection("events")
@@ -475,6 +473,7 @@ export async function resendFailedEmails(
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
     attendees,
     notionGuideUrl,
+    config,
     true
   );
 
