@@ -35,6 +35,8 @@ Restrict who can sign in via Firebase Authentication (e.g. authorized Google acc
 
 ### Database setup (Supabase Postgres)
 
+For a full step-by-step walkthrough (create project, copy connection strings, run migrations, deploy), see **[docs/supabase-setup.md](docs/supabase-setup.md)**.
+
 1. Create a Supabase project. In **Project Settings → Database**, copy the transaction-pooler (Supavisor, port `6543`) connection string into `DATABASE_URL`, and the direct connection (port `5432`) into `DIRECT_URL`.
 2. Run the migrations: `npm run db:migrate` (uses `DIRECT_URL`). This creates all 7 tables, the counter-maintenance triggers, and locks the schema down with RLS (see `drizzle/0001_triggers_and_security.sql`).
 3. In Supabase's **API settings**, you can leave the Data API (PostgREST) on or off — either way, every table has RLS enabled with zero policies and anon/authenticated grants revoked, so the REST API cannot read or write anything. The app talks to Postgres directly over `postgres.js`, bypassing PostgREST entirely.
