@@ -1,11 +1,17 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
-import type FirebaseFirestore from "@google-cloud/firestore";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { slugify } from "@/lib/utils";
 import { Event, EventStatus } from "@/lib/types";
+import {
+  deleteEventCascade,
+  getEventById as getEventByIdRepo,
+  getEventBySlug as getEventBySlugRepo,
+  insertEvent,
+  listEvents,
+  updateEventFields,
+} from "@/lib/db/repos/events";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -62,7 +68,7 @@ export async function createEvent(
     ...(parsed.data.venue ? { venue: parsed.data.venue } : {}),
   };
 
-  await adminDb.collection("events").doc(id).set(event);
+  await insertEvent(event);
   await writeAuditLog({
     eventId: id,
     action: "event_created",
@@ -106,22 +112,16 @@ export async function updateEventHero(
     };
   }
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) return { success: false, error: "Event not found" };
-  const event = eventDoc.data() as Event;
+  const event = await getEventByIdRepo(eventId);
+  if (!event) return { success: false, error: "Event not found" };
 
-  const update: Record<string, unknown> = {
+  await updateEventFields(eventId, {
     date: parsed.data.date,
-    updatedAt: new Date().toISOString(),
-  };
-  if (parsed.data.tagline !== undefined) update.tagline = parsed.data.tagline || null;
-  if (parsed.data.description !== undefined)
-    update.description = parsed.data.description || null;
-  if (parsed.data.timeLabel !== undefined)
-    update.timeLabel = parsed.data.timeLabel || null;
-  if (parsed.data.venue !== undefined) update.venue = parsed.data.venue || null;
-
-  await adminDb.collection("events").doc(eventId).update(update);
+    tagline: parsed.data.tagline || null,
+    description: parsed.data.description || null,
+    timeLabel: parsed.data.timeLabel || null,
+    venue: parsed.data.venue || null,
+  });
 
   await writeAuditLog({
     eventId,
@@ -149,17 +149,10 @@ export async function updateEventSettings(
     };
   }
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) {
-    return { success: false, error: "Event not found" };
-  }
+  const event = await getEventByIdRepo(eventId);
+  if (!event) return { success: false, error: "Event not found" };
 
-  const event = eventDoc.data() as Event;
-
-  await adminDb.collection("events").doc(eventId).update({
-    notionGuideUrl: parsed.data.notionGuideUrl,
-    updatedAt: new Date().toISOString(),
-  });
+  await updateEventFields(eventId, { notionGuideUrl: parsed.data.notionGuideUrl });
 
   await writeAuditLog({
     eventId,
@@ -179,17 +172,10 @@ export async function setAutoSendEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) {
-    return { success: false, error: "Event not found" };
-  }
+  const event = await getEventByIdRepo(eventId);
+  if (!event) return { success: false, error: "Event not found" };
 
-  const event = eventDoc.data() as Event;
-
-  await adminDb.collection("events").doc(eventId).update({
-    autoSendEmail: enabled,
-    updatedAt: new Date().toISOString(),
-  });
+  await updateEventFields(eventId, { autoSendEmail: enabled });
 
   await writeAuditLog({
     eventId,
@@ -209,10 +195,7 @@ export async function updateEventStatus(
 ): Promise<{ success: boolean }> {
   const session = await requireSession();
 
-  await adminDb.collection("events").doc(eventId).update({
-    status,
-    updatedAt: new Date().toISOString(),
-  });
+  await updateEventFields(eventId, { status });
 
   await writeAuditLog({
     eventId,
@@ -228,46 +211,17 @@ export async function updateEventStatus(
 
 export async function getEvents(): Promise<Event[]> {
   await requireSession();
-  const snap = await adminDb
-    .collection("events")
-    .orderBy("createdAt", "desc")
-    .get();
-  return snap.docs.map((d) => d.data() as Event);
+  return listEvents();
 }
 
 export async function getEventBySlug(slug: string): Promise<Event | null> {
   await requireSession();
-  const snap = await adminDb
-    .collection("events")
-    .where("slug", "==", slug)
-    .limit(1)
-    .get();
-  if (snap.empty) return null;
-  return snap.docs[0].data() as Event;
+  return getEventBySlugRepo(slug);
 }
 
 export async function getEventById(id: string): Promise<Event | null> {
   await requireSession();
-  const doc = await adminDb.collection("events").doc(id).get();
-  if (!doc.exists) return null;
-  return doc.data() as Event;
-}
-
-async function deleteQueryInBatches(
-  query: FirebaseFirestore.Query
-): Promise<number> {
-  let totalDeleted = 0;
-  // Keep fetching and deleting until the collection is empty
-  for (;;) {
-    const snapshot = await query.limit(500).get();
-    if (snapshot.empty) break;
-    const batch = adminDb.batch();
-    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    totalDeleted += snapshot.size;
-    if (snapshot.size < 500) break;
-  }
-  return totalDeleted;
+  return getEventByIdRepo(id);
 }
 
 export async function deleteEvent(
@@ -276,25 +230,18 @@ export async function deleteEvent(
   const session = await requireSession();
 
   try {
-    const eventDoc = await adminDb.collection("events").doc(eventId).get();
-    if (!eventDoc.exists) {
+    const event = await getEventByIdRepo(eventId);
+    if (!event) {
       return { success: false, error: "Event not found." };
     }
-    const event = eventDoc.data() as Event;
 
-    // Delete top-level collections that reference this event
-    const deletedEmailLogs = await deleteQueryInBatches(
-      adminDb.collection("emailLogs").where("eventId", "==", eventId)
-    );
-    const deletedClaimTokens = await deleteQueryInBatches(
-      adminDb.collection("claimTokens").where("eventId", "==", eventId)
-    );
+    // A single DELETE cascades to attendees, coupons, coupon_links, grants,
+    // and email_logs via ON DELETE CASCADE — replacing the previous
+    // deleteQueryInBatches + recursiveDelete dance across 4+ collections.
+    await deleteEventCascade(eventId);
 
-    // Recursively delete the event doc + all subcollections (attendees, coupons)
-    await adminDb.recursiveDelete(adminDb.collection("events").doc(eventId));
-
-    // Write audit log with null eventId since the event no longer exists;
-    // original details are captured in metadata for traceability
+    // Audit log keeps eventId even though the event is gone (not a foreign
+    // key), so history survives deletion exactly as it did before.
     await writeAuditLog({
       eventId: null,
       action: "event_deleted",
@@ -302,8 +249,6 @@ export async function deleteEvent(
         deletedEventId: eventId,
         name: event.name,
         slug: event.slug,
-        deletedEmailLogs,
-        deletedClaimTokens,
       },
       userId: session.uid,
     });

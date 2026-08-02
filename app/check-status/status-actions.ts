@@ -1,9 +1,9 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
 import { normalizeEmail } from "@/lib/utils";
-import { Attendee, Event } from "@/lib/types";
+import { listNonDraftEventsNewestFirst } from "@/lib/db/repos/events";
+import { findAttendeeByEmailInEvent } from "@/lib/db/repos/attendees";
 
 export async function checkAttendeeStatus(email: string): Promise<{
   found: boolean;
@@ -17,29 +17,14 @@ export async function checkAttendeeStatus(email: string): Promise<{
 }> {
   const normalizedEmail = normalizeEmail(email);
 
-  const eventsSnap = await adminDb
-    .collection("events")
-    .where("status", "!=", "draft")
-    .orderBy("status")
-    .orderBy("createdAt", "desc")
-    .get();
+  const events = await listNonDraftEventsNewestFirst();
 
-  for (const eventDoc of eventsSnap.docs) {
-    const event = eventDoc.data() as Event;
-    const attendeesSnap = await adminDb
-      .collection("events")
-      .doc(eventDoc.id)
-      .collection("attendees")
-      .where("email", "==", normalizedEmail)
-      .limit(1)
-      .get();
-
-    if (attendeesSnap.empty) continue;
-
-    const attendee = attendeesSnap.docs[0].data() as Attendee;
+  for (const event of events) {
+    const attendee = await findAttendeeByEmailInEvent(event.id, normalizedEmail);
+    if (!attendee) continue;
 
     await writeAuditLog({
-      eventId: eventDoc.id,
+      eventId: event.id,
       action: "status_checked",
       metadata: { email: normalizedEmail },
     });

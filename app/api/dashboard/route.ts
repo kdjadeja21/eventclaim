@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase/admin";
 import { getEventCountStats } from "@/lib/event-stats";
 import { requireSession } from "@/lib/session";
+import { listRecentEvents } from "@/lib/db/repos/events";
+import { listAuditLogs } from "@/lib/db/repos/audit";
 import { Event } from "@/lib/types";
 
 export interface DashboardData {
@@ -29,13 +30,7 @@ export interface DashboardData {
 }
 
 async function fetchDashboardData(): Promise<DashboardData> {
-  const eventsSnap = await adminDb
-    .collection("events")
-    .orderBy("createdAt", "desc")
-    .limit(10)
-    .get();
-
-  const events = eventsSnap.docs.map((d) => d.data() as Event);
+  const events = await listRecentEvents(10);
 
   const eventStatsResults = await Promise.all(
     events.map(async (event) => {
@@ -67,18 +62,13 @@ async function fetchDashboardData(): Promise<DashboardData> {
     };
   });
 
-  const auditSnap = await adminDb
-    .collection("auditLogs")
-    .orderBy("timestamp", "desc")
-    .limit(5)
-    .get();
-
-  const recentActivity = auditSnap.docs.map((d) => ({
-    id: d.id,
-    action: d.data().action as string,
-    timestamp: d.data().timestamp as string,
-    eventId: d.data().eventId as string | null,
-    metadata: d.data().metadata as Record<string, unknown>,
+  const auditLogs = await listAuditLogs(5);
+  const recentActivity = auditLogs.map((l) => ({
+    id: l.id,
+    action: l.action,
+    timestamp: l.timestamp,
+    eventId: l.eventId,
+    metadata: l.metadata,
   }));
 
   return {

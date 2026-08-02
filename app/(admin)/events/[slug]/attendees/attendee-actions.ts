@@ -1,10 +1,9 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee } from "@/lib/types";
 import { revalidatePath } from "next/cache";
+import { getAttendeeById, setAttendeeBlacklisted } from "@/lib/db/repos/attendees";
 
 export async function toggleAttendeeBlacklist(
   eventId: string,
@@ -14,17 +13,10 @@ export async function toggleAttendeeBlacklist(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const attendeeRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .doc(attendeeId);
-
   try {
-    const snap = await attendeeRef.get();
-    if (!snap.exists) return { success: false, error: "Attendee not found." };
+    const attendee = await getAttendeeById(eventId, attendeeId);
+    if (!attendee) return { success: false, error: "Attendee not found." };
 
-    const attendee = snap.data() as Attendee;
     if (blacklisted && attendee.claimedAny) {
       return {
         success: false,
@@ -32,7 +24,7 @@ export async function toggleAttendeeBlacklist(
       };
     }
 
-    await attendeeRef.update({ isBlacklisted: blacklisted });
+    await setAttendeeBlacklisted(eventId, attendeeId, blacklisted);
 
     await writeAuditLog({
       eventId,
