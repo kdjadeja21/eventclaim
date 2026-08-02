@@ -1,7 +1,7 @@
-import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee, EmailLog } from "@/lib/types";
-import { nanoid } from "nanoid";
+import { Attendee } from "@/lib/types";
+import { insertEmailLog, listAttendeesByEmailStatusWithGrants } from "@/lib/db/repos/email-logs";
+import { markEmailSent, setEmailStatus } from "@/lib/db/repos/attendees";
 
 const APP_BASE_URL =
   process.env.APP_BASE_URL || "http://localhost:3000";
@@ -367,29 +367,17 @@ export async function sendCouponEmail(
     }
 
     // Persist email log
-    const logId = nanoid();
     const now = new Date().toISOString();
-    const log: EmailLog = {
-      id: logId,
+    await insertEmailLog({
       attendeeId: attendee.id,
       eventId: attendee.eventId,
       emailType: isResend ? "resend" : "initial",
       sentAt: now,
-      resendCount: 0,
       status: "sent",
-    };
-    await adminDb.collection("emailLogs").doc(logId).set(log);
+    });
 
     // Update attendee email status
-    await adminDb
-      .collection("events")
-      .doc(attendee.eventId)
-      .collection("attendees")
-      .doc(attendee.id)
-      .update({
-        emailStatus: "sent",
-        emailSentAt: now,
-      });
+    await markEmailSent(attendee.eventId, attendee.id, now);
 
     await writeAuditLog({
       eventId: attendee.eventId,
@@ -410,12 +398,7 @@ export async function sendCouponEmail(
     });
 
     // Update attendee email status to failed
-    await adminDb
-      .collection("events")
-      .doc(attendee.eventId)
-      .collection("attendees")
-      .doc(attendee.id)
-      .update({ emailStatus: "failed" });
+    await setEmailStatus(attendee.eventId, attendee.id, "failed");
 
     await writeAuditLog({
       eventId: attendee.eventId,
@@ -477,17 +460,9 @@ export async function sendPendingEmails(
   eventId: string,
   notionGuideUrl: string
 ): Promise<{ sent: number; failed: number; skipped: number }> {
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .where("emailStatus", "==", "pending")
-    .where("grantCount", ">", 0)
-    .get();
-
-  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const attendeesToSend = await listAttendeesByEmailStatusWithGrants(eventId, "pending");
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
-    attendees,
+    attendeesToSend,
     notionGuideUrl,
     false
   );
@@ -501,17 +476,9 @@ export async function resendFailedEmails(
   eventId: string,
   notionGuideUrl: string
 ): Promise<{ sent: number; failed: number; skipped: number }> {
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .where("emailStatus", "==", "failed")
-    .where("grantCount", ">", 0)
-    .get();
-
-  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const attendeesToSend = await listAttendeesByEmailStatusWithGrants(eventId, "failed");
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
-    attendees,
+    attendeesToSend,
     notionGuideUrl,
     true
   );
