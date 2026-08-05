@@ -166,14 +166,14 @@ export default function SettingsGuidePage() {
 
             <CardContent className="p-6 sm:p-8 space-y-8">
               {/* Alert Callout */}
-              <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 dark:bg-amber-950/20 dark:border-amber-800/50 p-4 flex items-start gap-3.5 text-xs text-amber-900 dark:text-amber-200">
-                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 flex items-start gap-3.5 text-xs text-foreground">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold text-amber-950 dark:text-amber-100">
+                  <p className="font-bold text-amber-800 dark:text-amber-300">
                     Important Luma Prerequisite:
                   </p>
-                  <p className="leading-relaxed">
-                    Luma API access requires a <strong>City Calendar</strong> with an active <strong>Luma Plus</strong> subscription. Personal calendars or free plans do not have API access enabled by Luma.
+                  <p className="leading-relaxed text-muted-foreground">
+                    Luma API access requires a <strong className="text-foreground">City Calendar</strong> with an active <strong className="text-foreground">Luma Plus</strong> subscription. Personal calendars or free plans do not have API access enabled by Luma.
                   </p>
                 </div>
               </div>
@@ -393,12 +393,12 @@ export default function SettingsGuidePage() {
               </div>
 
               {/* Troubleshooting Box */}
-              <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-800/50 p-4 space-y-2 text-xs">
-                <p className="font-semibold text-amber-950 dark:text-amber-100 flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-2 text-xs text-foreground">
+                <p className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                   Quick Troubleshooting Checklist
                 </p>
-                <ul className="list-disc pl-5 text-amber-900/90 dark:text-amber-200/90 space-y-1 leading-relaxed">
+                <ul className="list-disc pl-5 text-muted-foreground space-y-1 leading-relaxed">
                   <li>Verify template body uses triple braces <Code>{"{{{message_html}}}"}</Code>.</li>
                   <li>Ensure Private Key (Access Token) is copied without trailing spaces.</li>
                   <li>Check that your connected email service is active in EmailJS.</li>
