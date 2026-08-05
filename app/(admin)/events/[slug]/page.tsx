@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { getEventBySlug } from "../actions";
 import { getEventStats } from "./stats-actions";
+import { countTestAttendees } from "@/lib/db/repos/attendees";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -45,7 +46,10 @@ export default async function EventDetailPage({ params }: Props) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  const stats = await getEventStats(event.id);
+  const [stats, testAttendeeCount] = await Promise.all([
+    getEventStats(event.id),
+    countTestAttendees(event.id),
+  ]);
 
   const quickLinks = [
     {
@@ -99,7 +103,11 @@ export default async function EventDetailPage({ params }: Props) {
             {formatDate(event.date)} &middot; /{event.slug}
           </p>
         </div>
-        <EventStatusButton eventId={event.id} currentStatus={event.status} />
+        <EventStatusButton
+          eventId={event.id}
+          currentStatus={event.status}
+          hasTestAttendees={testAttendeeCount > 0}
+        />
       </div>
 
       {/* Stats grid */}

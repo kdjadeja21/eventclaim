@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useTransition, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import {
   Send,
   RefreshCw,
@@ -22,9 +23,10 @@ import {
   Settings2,
   Ban,
   CheckCircle,
+  FlaskConical,
 } from "lucide-react";
 import type { EmailQuota } from "@/lib/email";
-import { Attendee, AttendeeGrantDetail } from "@/lib/types";
+import { Attendee, AttendeeGrantDetail, EventStatus } from "@/lib/types";
 import { useAppSettings } from "@/lib/use-app-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +66,8 @@ import {
   syncLumaGuests,
 } from "./attendee-data-actions";
 import { toggleAttendeeBlacklist } from "./attendee-actions";
+import { deleteTempTestData } from "./test-attendee-actions";
+import CreateTempAttendeesDialog from "./create-temp-attendees-dialog";
 import LumaFetchDialog, {
   LumaFetchConfig,
   defaultConfig,
@@ -144,18 +148,25 @@ export default function AttendeeTable({
   attendees: initial,
   eventId,
   eventSlug,
+  eventStatus,
   initialLumaLastSyncedAt,
   onQuotaChange,
 }: {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
+  eventStatus: EventStatus;
   initialLumaLastSyncedAt?: string | null;
   onQuotaChange?: (quota: EmailQuota) => void;
 }) {
+  const router = useRouter();
   const { settings, lumaConfigured, emailConfig } = useAppSettings();
   const lumaApiEnabled = lumaConfigured;
   const [attendees, setAttendees] = useState(initial);
+  const hasTestAttendees = attendees.some((a) => a.isTest);
+  const [tempDialogOpen, setTempDialogOpen] = useState(false);
+  const [deleteTestConfirmOpen, setDeleteTestConfirmOpen] = useState(false);
+  const [deleteTestPending, setDeleteTestPending] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [sortConfig, setSortConfig] = useState<{
@@ -213,7 +224,7 @@ export default function AttendeeTable({
 
   // Auto-fetch interval
   useEffect(() => {
-    if (!lumaApiEnabled) return;
+    if (!lumaApiEnabled || hasTestAttendees) return;
     if (!lumaConfig.autoFetch || lumaConfig.intervalMinutes <= 0 || !lumaConfig.lumaEventId) {
       return;
     }
@@ -221,9 +232,21 @@ export default function AttendeeTable({
     const id = setInterval(() => runSync(lumaConfig), ms);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lumaApiEnabled, lumaConfig.autoFetch, lumaConfig.intervalMinutes, lumaConfig.lumaEventId]);
+  }, [
+    lumaApiEnabled,
+    hasTestAttendees,
+    lumaConfig.autoFetch,
+    lumaConfig.intervalMinutes,
+    lumaConfig.lumaEventId,
+  ]);
 
   async function runSync(cfg: LumaFetchConfig) {
+    if (hasTestAttendees) {
+      toast.error(
+        "Luma sync is disabled while temp test attendees exist. Delete test data first."
+      );
+      return;
+    }
     if (inFlightRef.current || !cfg.lumaEventId) return;
     inFlightRef.current = true;
     setIsFetching(true);
@@ -732,6 +755,22 @@ export default function AttendeeTable({
       ].join(" · ")
     : null;
 
+  async function handleDeleteTestData() {
+    setDeleteTestPending(true);
+    try {
+      const result = await deleteTempTestData(eventId, eventSlug);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to delete test data");
+        return;
+      }
+      toast.success("Temp attendees and fake Cursor Credits links deleted");
+      setDeleteTestConfirmOpen(false);
+      router.refresh();
+    } finally {
+      setDeleteTestPending(false);
+    }
+  }
+
   return (
     <div className={cn("space-y-4", hasSelection && "pb-20")}>
       {lumaApiEnabled && (
@@ -740,70 +779,116 @@ export default function AttendeeTable({
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-medium">Luma sync</p>
-                {lumaConfig.lumaEventId ? (
+                {hasTestAttendees ? (
+                  <Badge variant="warning">Paused for test data</Badge>
+                ) : lumaConfig.lumaEventId ? (
                   <Badge variant="outline">Configured</Badge>
                 ) : (
                   <Badge variant="warning">Setup needed</Badge>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>
-                  Last updated:{" "}
-                  <span className="font-medium text-foreground">
-                    {lastSyncedAt ? formatDateTime(lastSyncedAt) : "Never"}
-                  </span>
-                </span>
-                {lumaLastRunSummary && (
+                {hasTestAttendees ? (
                   <span>
-                    Last run:{" "}
-                    <span className="font-medium text-foreground">
-                      {lumaLastRunSummary}
-                    </span>
+                    Luma sync is disabled while temp test attendees exist. Delete
+                    test data to resume syncing.
                   </span>
-                )}
-                {!lumaConfig.lumaEventId && (
-                  <span>Connect a Luma event to fetch attendees.</span>
+                ) : (
+                  <>
+                    <span>
+                      Last updated:{" "}
+                      <span className="font-medium text-foreground">
+                        {lastSyncedAt ? formatDateTime(lastSyncedAt) : "Never"}
+                      </span>
+                    </span>
+                    {lumaLastRunSummary && (
+                      <span>
+                        Last run:{" "}
+                        <span className="font-medium text-foreground">
+                          {lumaLastRunSummary}
+                        </span>
+                      </span>
+                    )}
+                    {!lumaConfig.lumaEventId && (
+                      <span>Connect a Luma event to fetch attendees.</span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            {lumaConfig.lumaEventId ? (
-              <div className="flex shrink-0 items-center gap-1">
+            {!hasTestAttendees &&
+              (lumaConfig.lumaEventId ? (
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => runSync(lumaConfig)}
+                    disabled={isFetching}
+                  >
+                    {isFetching ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    {isFetching ? "Fetching…" : "Fetch Now"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLumaDialogOpen(true)}
+                    disabled={isFetching}
+                    title="Luma fetch settings"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => runSync(lumaConfig)}
-                  disabled={isFetching}
-                >
-                  {isFetching ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  {isFetching ? "Fetching…" : "Fetch Now"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                  className="shrink-0"
                   onClick={() => setLumaDialogOpen(true)}
-                  disabled={isFetching}
-                  title="Luma fetch settings"
                 >
                   <Settings2 className="h-4 w-4" />
+                  Configure Luma
                 </Button>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setLumaDialogOpen(true)}
-              >
-                <Settings2 className="h-4 w-4" />
-                Configure Luma
-              </Button>
-            )}
+              ))}
           </div>
+        </div>
+      )}
+
+      {eventStatus === "draft" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3">
+          <div className="min-w-0 space-y-0.5">
+            <p className="text-sm font-medium">Test email data</p>
+            <p className="text-xs text-muted-foreground">
+              {hasTestAttendees
+                ? "Temp attendees and fake Cursor Credits links are ready for email testing."
+                : "Create two temp attendees with fake Cursor Credits links to test claim emails."}
+            </p>
+          </div>
+          {hasTestAttendees ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 text-destructive hover:text-destructive"
+              onClick={() => setDeleteTestConfirmOpen(true)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete test data
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setTempDialogOpen(true)}
+            >
+              <FlaskConical className="h-4 w-4" />
+              Create temp users
+            </Button>
+          )}
         </div>
       )}
 
@@ -1450,7 +1535,7 @@ export default function AttendeeTable({
         </DialogContent>
       </Dialog>
 
-      {lumaApiEnabled && (
+      {lumaApiEnabled && !hasTestAttendees && (
         <LumaFetchDialog
           open={lumaDialogOpen}
           onOpenChange={setLumaDialogOpen}
@@ -1463,6 +1548,49 @@ export default function AttendeeTable({
           onFetchNow={() => runSync(lumaConfig)}
         />
       )}
+
+      {eventStatus === "draft" && (
+        <CreateTempAttendeesDialog
+          open={tempDialogOpen}
+          onOpenChange={setTempDialogOpen}
+          eventId={eventId}
+          eventSlug={eventSlug}
+          onCreated={() => router.refresh()}
+        />
+      )}
+
+      <Dialog open={deleteTestConfirmOpen} onOpenChange={setDeleteTestConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete test data?</DialogTitle>
+            <DialogDescription>
+              This removes the two temp attendees and their fake Cursor Credits
+              links. You can create them again while the event stays in draft.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTestConfirmOpen(false)}
+              disabled={deleteTestPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTestData}
+              disabled={deleteTestPending}
+            >
+              {deleteTestPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete test data
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

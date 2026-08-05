@@ -21,6 +21,7 @@ function toAttendee(row: typeof attendees.$inferSelect): Attendee {
     registeredAt: row.registeredAt,
     checkedInAt: row.checkedInAt,
     isBlacklisted: row.isBlacklisted,
+    isTest: row.isTest,
   };
 }
 
@@ -79,6 +80,8 @@ export async function bulkInsertAttendees(
     registeredAt?: string | null;
     checkedInAt?: string | null;
     isBlacklisted?: boolean;
+    isTest?: boolean;
+    claimToken?: string | null;
   }>
 ): Promise<{ inserted: Attendee[]; insertedCount: number; skippedCount: number }> {
   if (rows.length === 0) return { inserted: [], insertedCount: 0, skippedCount: 0 };
@@ -95,6 +98,8 @@ export async function bulkInsertAttendees(
         registeredAt: r.registeredAt ?? null,
         checkedInAt: r.checkedInAt ?? null,
         isBlacklisted: r.isBlacklisted ?? false,
+        isTest: r.isTest ?? false,
+        claimToken: r.claimToken ?? null,
       }))
     )
     .onConflictDoNothing({ target: [attendees.eventId, attendees.email] })
@@ -105,6 +110,22 @@ export async function bulkInsertAttendees(
     insertedCount: inserted.length,
     skippedCount: rows.length - inserted.length,
   };
+}
+
+export async function countTestAttendees(eventId: string): Promise<number> {
+  const rows = await db
+    .select({ id: attendees.id })
+    .from(attendees)
+    .where(and(eq(attendees.eventId, eventId), eq(attendees.isTest, true)));
+  return rows.length;
+}
+
+export async function listTestAttendees(eventId: string): Promise<Attendee[]> {
+  const rows = await db
+    .select()
+    .from(attendees)
+    .where(and(eq(attendees.eventId, eventId), eq(attendees.isTest, true)));
+  return rows.map(toAttendee);
 }
 
 export async function setAttendeeBlacklisted(

@@ -37,6 +37,8 @@ const actionLabels: Record<string, string> = {
   event_hero_updated: "Hero updated",
   attendee_imported: "Attendees imported",
   attendee_deleted: "Attendee deleted",
+  test_attendees_created: "Temp attendees created",
+  test_data_deleted: "Test data deleted",
   coupon_created: "Coupon created",
   coupon_updated: "Coupon updated",
   coupon_deleted: "Coupon deleted",

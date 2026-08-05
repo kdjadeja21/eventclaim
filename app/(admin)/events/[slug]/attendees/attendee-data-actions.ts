@@ -11,6 +11,7 @@ import { assignPendingForEvent } from "@/lib/assignment";
 import {
   blacklistIfPastAndNotCheckedIn,
   bulkInsertAttendees,
+  countTestAttendees,
   deleteAttendeeCascade,
   getAttendeeById,
   listAttendeesForEvent,
@@ -174,6 +175,24 @@ export async function syncLumaGuests(
     };
   }
   const eventId = event.id;
+
+  const testCount = await countTestAttendees(eventId);
+  if (testCount > 0) {
+    return {
+      addedCount: 0,
+      skipped: 0,
+      totalFetched: 0,
+      checkedInCount: 0,
+      noCheckedInRecords: false,
+      blacklistedCount: 0,
+      invalid: 0,
+      syncedAt: "",
+      added: [],
+      error:
+        "Luma sync is disabled while temp test attendees exist. Delete test data first.",
+    };
+  }
+
   const eventIsPast = new Date(event.date) < new Date();
 
   let guests;
