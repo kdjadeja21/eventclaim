@@ -160,7 +160,7 @@ export default function AttendeeTable({
   onQuotaChange?: (quota: EmailQuota) => void;
 }) {
   const router = useRouter();
-  const { settings, lumaConfigured, emailConfig } = useAppSettings();
+  const { settings, lumaConfigured, emailConfigured, emailConfig } = useAppSettings();
   const lumaApiEnabled = lumaConfigured;
   const [attendees, setAttendees] = useState(initial);
   const hasTestAttendees = attendees.some((a) => a.isTest);
@@ -529,7 +529,16 @@ export default function AttendeeTable({
     }
   }
 
+  function requireEmailJsConfigured(): boolean {
+    if (emailConfigured) return true;
+    toast.error(
+      "EmailJS is not configured. Add credentials on the Settings page before sending test emails."
+    );
+    return false;
+  }
+
   async function handleSend(attendee: Attendee) {
+    if (!requireEmailJsConfigured()) return;
     setActionPending(attendee.id + "-send");
     startTransition(async () => {
       const res = await sendSingleEmail(eventId, attendee.id, emailConfig);
@@ -542,13 +551,16 @@ export default function AttendeeTable({
         toast.success(`Email sent to ${attendee.name}`);
       } else {
         updateAttendee(attendee.id, { emailStatus: "failed" });
-        toast.error(`Failed to send to ${attendee.name}`);
+        toast.error(
+          res.error ?? `Failed to send to ${attendee.name}`
+        );
       }
       setActionPending(null);
     });
   }
 
   async function handleResend(attendee: Attendee) {
+    if (!requireEmailJsConfigured()) return;
     setActionPending(attendee.id + "-resend");
     startTransition(async () => {
       const res = await resendSingleEmail(eventId, attendee.id, emailConfig);
@@ -561,7 +573,9 @@ export default function AttendeeTable({
         toast.success(`Email resent to ${attendee.name}`);
       } else {
         updateAttendee(attendee.id, { emailStatus: "failed" });
-        toast.error(`Failed to resend to ${attendee.name}`);
+        toast.error(
+          res.error ?? `Failed to resend to ${attendee.name}`
+        );
       }
       setActionPending(null);
     });
@@ -571,6 +585,8 @@ export default function AttendeeTable({
     mode: "send" | "resend",
     predicate: (a: Attendee) => boolean
   ) {
+    if (!requireEmailJsConfigured()) return;
+
     const targets = attendees.filter(
       (a) => selectedIds.has(a.id) && predicate(a)
     );
@@ -863,9 +879,11 @@ export default function AttendeeTable({
           <div className="min-w-0 space-y-0.5">
             <p className="text-sm font-medium">Test email data</p>
             <p className="text-xs text-muted-foreground">
-              {hasTestAttendees
-                ? "Temp attendees and fake Cursor Credits links are ready for email testing."
-                : "Create two temp attendees with fake Cursor Credits links to test claim emails."}
+              {!emailConfigured
+                ? "Configure EmailJS on the Settings page before creating temp users and sending test emails."
+                : hasTestAttendees
+                  ? "Temp attendees and fake Cursor Credits links are ready for email testing. EmailJS must stay configured to send."
+                  : "Create two temp attendees with fake Cursor Credits links to test claim emails. EmailJS is required to send."}
             </p>
           </div>
           {hasTestAttendees ? (
@@ -883,7 +901,16 @@ export default function AttendeeTable({
               variant="outline"
               size="sm"
               className="shrink-0"
-              onClick={() => setTempDialogOpen(true)}
+              disabled={!emailConfigured}
+              title={
+                emailConfigured
+                  ? undefined
+                  : "Configure EmailJS on Settings before creating temp users"
+              }
+              onClick={() => {
+                if (!requireEmailJsConfigured()) return;
+                setTempDialogOpen(true);
+              }}
             >
               <FlaskConical className="h-4 w-4" />
               Create temp users
@@ -1075,7 +1102,13 @@ export default function AttendeeTable({
                             variant="default"
                             onClick={() => handleSend(attendee)}
                             disabled={
+                              !emailConfigured ||
                               actionPending === attendee.id + "-send"
+                            }
+                            title={
+                              emailConfigured
+                                ? undefined
+                                : "Configure EmailJS on Settings before sending"
                             }
                           >
                             {actionPending === attendee.id + "-send" ? (
@@ -1093,7 +1126,13 @@ export default function AttendeeTable({
                           variant="outline"
                           onClick={() => handleResend(attendee)}
                           disabled={
+                            !emailConfigured ||
                             actionPending === attendee.id + "-resend"
+                          }
+                          title={
+                            emailConfigured
+                              ? undefined
+                              : "Configure EmailJS on Settings before sending"
                           }
                         >
                           {actionPending === attendee.id + "-resend" ? (
@@ -1111,7 +1150,13 @@ export default function AttendeeTable({
                           variant="destructive"
                           onClick={() => handleResend(attendee)}
                           disabled={
+                            !emailConfigured ||
                             actionPending === attendee.id + "-resend"
+                          }
+                          title={
+                            emailConfigured
+                              ? undefined
+                              : "Configure EmailJS on Settings before sending"
                           }
                         >
                           {actionPending === attendee.id + "-resend" ? (
@@ -1189,7 +1234,14 @@ export default function AttendeeTable({
             </span>
             <Button
               size="sm"
-              disabled={bulkActionPending || bulkSendCount === 0}
+              disabled={
+                !emailConfigured || bulkActionPending || bulkSendCount === 0
+              }
+              title={
+                emailConfigured
+                  ? undefined
+                  : "Configure EmailJS on Settings before sending"
+              }
               onClick={() =>
                 handleBulk(
                   "send",
@@ -1208,7 +1260,14 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="outline"
-              disabled={bulkActionPending || bulkResendCount === 0}
+              disabled={
+                !emailConfigured || bulkActionPending || bulkResendCount === 0
+              }
+              title={
+                emailConfigured
+                  ? undefined
+                  : "Configure EmailJS on Settings before sending"
+              }
               onClick={() =>
                 handleBulk("resend", (a) => a.emailStatus === "sent")
               }
@@ -1224,7 +1283,14 @@ export default function AttendeeTable({
             <Button
               size="sm"
               variant="destructive"
-              disabled={bulkActionPending || bulkRetryCount === 0}
+              disabled={
+                !emailConfigured || bulkActionPending || bulkRetryCount === 0
+              }
+              title={
+                emailConfigured
+                  ? undefined
+                  : "Configure EmailJS on Settings before sending"
+              }
               onClick={() =>
                 handleBulk("resend", (a) => a.emailStatus === "failed")
               }

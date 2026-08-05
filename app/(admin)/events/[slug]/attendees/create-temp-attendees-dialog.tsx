@@ -71,7 +71,8 @@ export default function CreateTempAttendeesDialog({
           <DialogTitle>Create temp users</DialogTitle>
           <DialogDescription>
             Create two draft-only test attendees with fake Cursor Credits links
-            so you can send and verify claim emails. Names are stored with a{" "}
+            so you can send and verify claim emails. EmailJS must be configured
+            on Settings before you can send. Names are stored with a{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">test_</code>{" "}
             prefix.
           </DialogDescription>
