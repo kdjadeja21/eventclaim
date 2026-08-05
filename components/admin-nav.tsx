@@ -80,7 +80,7 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon, tourId }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
@@ -105,7 +105,7 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
         })}
       </nav>
 
-      <div className="p-3 space-y-3">
+      <div className="p-3 space-y-2 shrink-0 border-t border-sidebar-border">
         <GettingStarted
           steps={steps}
           completedRequired={progress.completedRequired}

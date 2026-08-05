@@ -5,9 +5,9 @@ import Link from "next/link";
 import {
   BookOpen,
   Check,
-  ChevronUp,
   Circle,
   HelpCircle,
+  ListChecks,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,25 +27,23 @@ function ChecklistBody({
   totalRequired,
   onDismiss,
   onReplayTour,
-  compact = false,
 }: {
   steps: ChecklistStep[];
   completedRequired: number;
   totalRequired: number;
   onDismiss: () => void;
   onReplayTour: () => void;
-  compact?: boolean;
 }) {
   const firstIncompleteIndex = steps.findIndex((step) => !step.done);
 
   return (
-    <div className={cn("space-y-3", compact && "space-y-2")}>
+    <div className="space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-semibold text-white tracking-wide uppercase">
+          <p className="text-xs font-semibold tracking-wide uppercase text-foreground">
             Getting started
           </p>
-          <p className="text-[11px] text-white/55 mt-0.5">
+          <p className="text-[11px] text-muted-foreground mt-0.5">
             {completedRequired}/{totalRequired} required steps
           </p>
         </div>
@@ -53,7 +51,7 @@ function ChecklistBody({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0 text-white/50 hover:text-white hover:bg-white/10"
+          className="h-7 w-7 shrink-0 text-muted-foreground"
           onClick={onDismiss}
           aria-label="Dismiss getting started checklist"
         >
@@ -61,7 +59,7 @@ function ChecklistBody({
         </Button>
       </div>
 
-      <ol className="space-y-1.5">
+      <ol className="space-y-1">
         {steps.map((step, index) => {
           const isCurrent = index === firstIncompleteIndex;
           return (
@@ -71,20 +69,20 @@ function ChecklistBody({
                 className={cn(
                   "flex items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
                   step.done
-                    ? "text-white/45 hover:bg-white/5"
-                    : "text-white/85 hover:bg-white/10",
-                  isCurrent && "tour-checklist-current bg-white/5",
+                    ? "text-muted-foreground hover:bg-muted/60"
+                    : "text-foreground hover:bg-muted",
+                  isCurrent && "tour-checklist-current bg-primary/5",
                   step.optional && !step.done && "opacity-80"
                 )}
               >
                 <span className="mt-0.5 shrink-0">
                   {step.done ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
                   ) : (
                     <Circle
                       className={cn(
                         "h-3.5 w-3.5",
-                        isCurrent ? "text-primary" : "text-white/35"
+                        isCurrent ? "text-primary" : "text-muted-foreground/50"
                       )}
                     />
                   )}
@@ -93,16 +91,16 @@ function ChecklistBody({
                   <span className="block text-xs font-medium leading-snug">
                     {step.title}
                     {step.optional ? (
-                      <span className="ml-1 text-[10px] font-normal text-white/40">
+                      <span className="ml-1 text-[10px] font-normal text-muted-foreground">
                         optional
                       </span>
                     ) : null}
                   </span>
-                  <span className="block text-[11px] text-white/45 leading-snug mt-0.5">
+                  <span className="block text-[11px] text-muted-foreground leading-snug mt-0.5">
                     {step.description}
                   </span>
                   {step.hint && !step.done ? (
-                    <span className="block text-[11px] text-amber-200/80 leading-snug mt-0.5">
+                    <span className="block text-[11px] text-amber-700 leading-snug mt-0.5">
                       {step.hint}
                     </span>
                   ) : null}
@@ -113,18 +111,16 @@ function ChecklistBody({
         })}
       </ol>
 
-      <div className="flex flex-col gap-1.5 pt-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 justify-start px-2 text-xs text-white/70 hover:text-white hover:bg-white/10"
-          onClick={onReplayTour}
-        >
-          <HelpCircle className="h-3.5 w-3.5 mr-2" />
-          Replay tour
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-8 w-full justify-start px-2 text-xs text-muted-foreground"
+        onClick={onReplayTour}
+      >
+        <HelpCircle className="h-3.5 w-3.5 mr-2" />
+        Replay tour
+      </Button>
     </div>
   );
 }
@@ -144,11 +140,12 @@ export default function GettingStarted({
   onDismiss: () => void;
   onReplayTour: () => void;
 }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const currentStep = steps.find((step) => !step.done);
 
   if (!visible) {
     return (
-      <div className="space-y-1" data-tour="getting-started">
+      <div className="space-y-1 shrink-0" data-tour="getting-started">
         <Button
           type="button"
           variant="ghost"
@@ -175,62 +172,26 @@ export default function GettingStarted({
   }
 
   return (
-    <div className="space-y-2" data-tour="getting-started">
-      {/* Desktop / wide sidebar panel */}
-      <div className="hidden sm:block rounded-lg border border-white/10 bg-white/5 p-3">
-        <div>
-          <ChecklistBody
-            steps={steps}
-            completedRequired={completedRequired}
-            totalRequired={totalRequired}
-            onDismiss={onDismiss}
-            onReplayTour={onReplayTour}
-          />
-        </div>
-      </div>
-
-      {/* Narrow / mobile compact control */}
-      <div className="sm:hidden">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-full justify-between text-sidebar-foreground hover:text-white hover:bg-white/10"
-          onClick={() => setMobileOpen(true)}
-        >
-          <span className="inline-flex items-center gap-2">
-            <HelpCircle className="h-4 w-4" />
+    <div className="space-y-1 shrink-0" data-tour="getting-started">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className={cn(
+          "w-full justify-between text-sidebar-foreground hover:text-white hover:bg-white/10",
+          currentStep && "tour-checklist-current"
+        )}
+        onClick={() => setOpen(true)}
+      >
+        <span className="inline-flex items-center gap-2 min-w-0">
+          <ListChecks className="h-4 w-4 shrink-0" />
+          <span className="truncate">
             Setup ({completedRequired}/{totalRequired})
           </span>
-          <ChevronUp className="h-3.5 w-3.5 opacity-50 rotate-180" />
-        </Button>
-        <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-          <DialogContent className="sm:max-w-md bg-sidebar text-sidebar-foreground border-sidebar-border">
-            <DialogHeader>
-              <DialogTitle className="text-white">Getting started</DialogTitle>
-              <DialogDescription className="text-white/55">
-                Follow these steps from setup to a safe test email.
-              </DialogDescription>
-            </DialogHeader>
-            <ChecklistBody
-              steps={steps}
-              completedRequired={completedRequired}
-              totalRequired={totalRequired}
-              onDismiss={() => {
-                setMobileOpen(false);
-                onDismiss();
-              }}
-              onReplayTour={() => {
-                setMobileOpen(false);
-                onReplayTour();
-              }}
-              compact
-            />
-          </DialogContent>
-        </Dialog>
-      </div>
+        </span>
+        <span className="text-[10px] text-white/45 shrink-0 ml-2">Open</span>
+      </Button>
 
-      {/* Always in-flow so the orientation tour can highlight it on any breakpoint */}
       <Button
         asChild
         variant="ghost"
@@ -242,6 +203,31 @@ export default function GettingStarted({
           Setup guide
         </Link>
       </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Getting started</DialogTitle>
+            <DialogDescription>
+              Follow these steps from setup to a safe test email, then go live
+              when ready.
+            </DialogDescription>
+          </DialogHeader>
+          <ChecklistBody
+            steps={steps}
+            completedRequired={completedRequired}
+            totalRequired={totalRequired}
+            onDismiss={() => {
+              setOpen(false);
+              onDismiss();
+            }}
+            onReplayTour={() => {
+              setOpen(false);
+              onReplayTour();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
