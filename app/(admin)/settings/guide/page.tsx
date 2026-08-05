@@ -1,0 +1,536 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  BookOpen,
+  ExternalLink,
+  KeyRound,
+  Mail,
+  AlertTriangle,
+  CheckCircle2,
+  Sparkles,
+  ArrowRight,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+function StepItem({
+  number,
+  title,
+  isLast = false,
+  children,
+}: {
+  number: number;
+  title: string;
+  isLast?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative flex gap-4">
+      {!isLast && (
+        <span
+          className="absolute left-4 top-9 -bottom-5 w-0.5 bg-border"
+          aria-hidden="true"
+        />
+      )}
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-semibold text-sm shadow-sm ring-4 ring-background z-10">
+        {number}
+      </div>
+      <div className="min-w-0 flex-1 space-y-2 pb-6">
+        <h3 className="text-base font-semibold tracking-tight text-foreground">
+          {title}
+        </h3>
+        <div className="text-sm text-muted-foreground leading-relaxed space-y-2.5">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Code({ children }: { children: ReactNode }) {
+  return (
+    <code className="rounded-md border bg-muted/60 px-1.5 py-0.5 font-mono text-xs text-foreground font-medium">
+      {children}
+    </code>
+  );
+}
+
+function Callout({
+  title,
+  children,
+  icon = "info",
+}: {
+  title?: string;
+  children: ReactNode;
+  icon?: "info" | "warn";
+}) {
+  const Icon = icon === "warn" ? AlertTriangle : CheckCircle2;
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex items-start gap-3.5 text-xs">
+      <Icon className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+      <div className="space-y-1 min-w-0">
+        {title ? (
+          <p className="font-bold text-foreground">{title}</p>
+        ) : null}
+        <div className="leading-relaxed text-muted-foreground">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function getInitialTab(): "luma" | "emailjs" {
+  if (typeof window === "undefined") return "luma";
+  const hash = window.location.hash.replace("#", "");
+  return hash === "emailjs" ? "emailjs" : "luma";
+}
+
+function scrollGuideToTop() {
+  const main = document.querySelector("main");
+  if (main instanceof HTMLElement) {
+    main.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}
+
+export default function SettingsGuidePage() {
+  const [activeTab, setActiveTab] = useState<"luma" | "emailjs">(getInitialTab);
+  const [animKey, setAnimKey] = useState(0);
+
+  function switchTab(next: "luma" | "emailjs", opts?: { scrollTop?: boolean }) {
+    setActiveTab(next);
+    setAnimKey((k) => k + 1);
+    window.history.replaceState(null, "", `#${next}`);
+    if (opts?.scrollTop) {
+      // Let the tab content mount, then scroll the admin main pane.
+      requestAnimationFrame(() => scrollGuideToTop());
+    }
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="-ml-2 text-muted-foreground hover:text-foreground"
+        >
+          <Link href="/settings">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Settings
+          </Link>
+        </Button>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6">
+          <div className="flex items-start gap-3.5">
+            <div className="p-2.5 rounded-2xl bg-primary/10 text-primary shrink-0">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                Integration Setup Guide
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Clear step-by-step instructions to quickly configure Luma API
+                and EmailJS for EventClaim.
+              </p>
+            </div>
+          </div>
+
+          <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
+            <Link href="/settings">
+              Go to Settings
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => switchTab(val as "luma" | "emailjs")}
+        className="space-y-6"
+      >
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <TabsList className="grid grid-cols-2 w-full sm:w-auto h-11 p-1 bg-muted/80 rounded-xl">
+            <TabsTrigger
+              value="luma"
+              className="gap-2 rounded-lg text-sm font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm px-5"
+            >
+              <KeyRound className="h-4 w-4" />
+              Luma API Guide
+            </TabsTrigger>
+            <TabsTrigger
+              value="emailjs"
+              className="gap-2 rounded-lg text-sm font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm px-5"
+            >
+              <Mail className="h-4 w-4" />
+              EmailJS Guide
+            </TabsTrigger>
+          </TabsList>
+
+          <span className="text-xs text-muted-foreground">
+            Takes ~2-3 minutes per service &middot; No code required
+          </span>
+        </div>
+
+        <div key={animKey} className="guide-tab-enter">
+          {/* ── LUMA TAB ─────────────────────────────────────────────────── */}
+          <TabsContent value="luma" className="mt-0 space-y-6 outline-none">
+            <Card className="border shadow-sm rounded-2xl overflow-hidden">
+              <CardHeader className="bg-muted/30 border-b p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <KeyRound className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">
+                        1. Connect Luma API Key
+                      </CardTitle>
+                      <CardDescription>
+                        Required to automatically fetch and sync guests from
+                        your Luma events.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+                    <Sparkles className="h-3.5 w-3.5" /> Luma Sync
+                  </span>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 sm:p-8 space-y-8">
+                <Callout title="Important Luma Prerequisite:" icon="warn">
+                  <p>
+                    Luma API access works on a{" "}
+                    <strong className="text-foreground">City Calendar</strong>.
+                    City calendars created by the Cursor team already include{" "}
+                    <strong className="text-foreground">Luma Plus</strong> —
+                    confirm yours by looking for the{" "}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Plus
+                    </span>{" "}
+                    badge next to the calendar name. Personal calendars do not
+                    have API access.
+                  </p>
+                </Callout>
+
+                <div className="pt-2">
+                  <StepItem number={1} title="Sign in to your Luma Account">
+                    <p>
+                      Go to{" "}
+                      <a
+                        href="https://luma.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        luma.com
+                        <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      and log in with the account that manages your community
+                      events.
+                    </p>
+                  </StepItem>
+
+                  <StepItem number={2} title="Select your City Calendar">
+                    <p>
+                      Navigate to{" "}
+                      <a
+                        href="https://luma.com/home/calendars"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        Calendars Home
+                        <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      and select your <strong>City Calendar</strong> — not a
+                      personal calendar. Cursor City Calendars already have Plus;
+                      you can confirm by the{" "}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 text-primary px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase">
+                        <Sparkles className="h-2.5 w-2.5" />
+                        Plus
+                      </span>{" "}
+                      badge beside the calendar name.
+                    </p>
+                  </StepItem>
+
+                  <StepItem
+                    number={3}
+                    title="Open Developer Settings & Generate Key"
+                  >
+                    <p>
+                      Under your City Calendar settings, go to{" "}
+                      <strong>Settings &rarr; Developer</strong> or open{" "}
+                      <a
+                        href="https://luma.com/calendar/manage/api-keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        Manage API Keys
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      . Create or copy your API key (formatted like{" "}
+                      <Code>secret-…</Code>).
+                    </p>
+                  </StepItem>
+
+                  <StepItem number={4} title="Paste Key into EventClaim Settings">
+                    <p>
+                      Copy the key, return to{" "}
+                      <Link
+                        href="/settings"
+                        className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        Settings
+                      </Link>{" "}
+                      in this app, paste it into <strong>Luma API Key</strong>,
+                      and click <strong>Save Settings</strong>.
+                    </p>
+                  </StepItem>
+
+                  <StepItem
+                    number={5}
+                    title="Pro Tip: Locating your Luma Event ID"
+                    isLast
+                  >
+                    <p>
+                      When syncing attendees on a specific event page, you will
+                      also be prompted for a <strong>Luma Event ID</strong>{" "}
+                      (starts with <Code>evt-…</Code>). You can copy this
+                      directly from your Luma event URL bar or event dashboard.
+                    </p>
+                  </StepItem>
+                </div>
+
+                <div className="pt-4 border-t flex items-center justify-between gap-4 flex-wrap">
+                  <p className="text-xs text-muted-foreground">
+                    Need to configure EmailJS next?
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => switchTab("emailjs", { scrollTop: true })}
+                    className="gap-2"
+                  >
+                    Continue to EmailJS Guide
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── EMAILJS TAB ──────────────────────────────────────────────── */}
+          <TabsContent value="emailjs" className="mt-0 space-y-6 outline-none">
+            <Card className="border shadow-sm rounded-2xl overflow-hidden">
+              <CardHeader className="bg-muted/30 border-b p-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <Mail className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">
+                        2. Configure EmailJS Transactional Service
+                      </CardTitle>
+                      <CardDescription>
+                        Required to send instant claim links and dynamic coupon
+                        emails to attendees.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> HTML Delivery
+                  </span>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 sm:p-8 space-y-8">
+                <Callout>
+                  <p>
+                    EventClaim automatically handles all rich email design and
+                    HTML generation. In EmailJS, you only need to setup a basic
+                    wrapper template matching the exact variable names shown
+                    below.
+                  </p>
+                </Callout>
+
+                <div className="pt-2">
+                  <StepItem number={1} title="Sign in to EmailJS">
+                    <p>
+                      Open{" "}
+                      <a
+                        href="https://www.emailjs.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        emailjs.com
+                        <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      and log in to your dashboard (or create a free account).
+                    </p>
+                  </StepItem>
+
+                  <StepItem number={2} title="Connect an Email Service">
+                    <p>
+                      Go to{" "}
+                      <strong>Email Services &rarr; Add New Service</strong>{" "}
+                      (e.g. Gmail or Outlook). Connect the exact email account
+                      from which you want attendees to receive emails. Copy the
+                      generated <strong>Service ID</strong> (looks like{" "}
+                      <Code>service_…</Code>).
+                    </p>
+                  </StepItem>
+
+                  <StepItem
+                    number={3}
+                    title="Create Template from 'Contact Us' Starter"
+                  >
+                    <p>
+                      Click{" "}
+                      <strong>Email Templates &rarr; Create New Template</strong>
+                      . From the available starter templates list, select{" "}
+                      <strong>&ldquo;Contact Us&rdquo;</strong> and click{" "}
+                      <strong>Create Template</strong>.
+                    </p>
+                    <p className="pt-1">
+                      Edit the template fields to match these{" "}
+                      <strong>exact variable names</strong>:
+                    </p>
+
+                    <div className="mt-3 rounded-xl border bg-card p-4 space-y-2.5 text-xs shadow-xs">
+                      <div className="flex items-center justify-between border-b pb-2">
+                        <span className="font-semibold text-foreground">
+                          Setting Field
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          Exact Variable / Value
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-0.5">
+                        <span className="text-muted-foreground font-medium">
+                          To Email
+                        </span>
+                        <span className="sm:col-span-2">
+                          <Code>{"{{to_email}}"}</Code>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-0.5">
+                        <span className="text-muted-foreground font-medium">
+                          Subject
+                        </span>
+                        <span className="sm:col-span-2">
+                          <Code>{"{{subject}}"}</Code>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 py-0.5">
+                        <span className="text-muted-foreground font-medium">
+                          Content / Body
+                        </span>
+                        <span className="sm:col-span-2">
+                          <Code>{"{{{message_html}}}"}</Code>
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t text-muted-foreground leading-relaxed space-y-2">
+                        <p>
+                          <strong className="text-foreground">Crucial:</strong>{" "}
+                          Use <strong className="text-foreground">three curly braces</strong>{" "}
+                          <Code>{"{{{message_html}}}"}</Code> for the content
+                          body. Two braces will output raw unformatted HTML
+                          instead of the styled email.
+                        </p>
+                        <p>
+                          After the variables are set, click{" "}
+                          <strong className="text-foreground">Save</strong>, then
+                          move to the <strong className="text-foreground">Settings</strong>{" "}
+                          tab (same row as Content) for the next step.
+                        </p>
+                      </div>
+                    </div>
+                  </StepItem>
+
+                  <StepItem number={4} title="Locate & Copy Template ID">
+                    <p>
+                      After saving, click the <strong>Settings</strong> menu from
+                      the <strong>same row where Content is selected</strong>. From
+                      there you can see the <strong>Template ID</strong> — copy
+                      that one (looks like <Code>template_…</Code>).
+                    </p>
+                  </StepItem>
+
+                  <StepItem number={5} title="Copy Account API Keys">
+                    <p>
+                      Navigate to your EmailJS Account{" "}
+                      <strong>API Keys</strong> section. Copy both your{" "}
+                      <strong>Public Key</strong> (User ID) and{" "}
+                      <strong>Private Key</strong> (Access Token).
+                    </p>
+                  </StepItem>
+
+                  <StepItem number={6} title="Save in EventClaim Settings" isLast>
+                    <p>
+                      Return to{" "}
+                      <Link
+                        href="/settings"
+                        className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+                      >
+                        Settings
+                      </Link>{" "}
+                      and fill in Service ID, Template ID, Public Key, and
+                      Private Key. Adjust your{" "}
+                      <strong>Monthly Send Quota</strong> (e.g. 200 for free
+                      plan) and click <strong>Save Settings</strong>.
+                    </p>
+                  </StepItem>
+                </div>
+
+                <Callout title="Quick Troubleshooting Checklist" icon="warn">
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>
+                      Verify template body uses triple braces{" "}
+                      <Code>{"{{{message_html}}}"}</Code>.
+                    </li>
+                    <li>
+                      Ensure Private Key (Access Token) is copied without
+                      trailing spaces.
+                    </li>
+                    <li>
+                      Check that your connected email service is active in
+                      EmailJS.
+                    </li>
+                  </ul>
+                </Callout>
+
+                <div className="pt-4 border-t flex items-center justify-between gap-4 flex-wrap">
+                  <Button asChild size="default">
+                    <Link href="/settings">
+                      All Done &mdash; Return to Settings
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </div>
+      </Tabs>
+    </div>
+  );
+}

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   Eye,
   EyeOff,
+  ExternalLink,
   KeyRound,
   Loader2,
   Mail,
@@ -105,16 +107,27 @@ function SettingsForm() {
       {/* Luma */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <KeyRound className="h-4 w-4" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base">Luma API</CardTitle>
+                <CardDescription>
+                  Used to sync guests from a Luma event into Attendees.
+                </CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-base">Luma API</CardTitle>
-              <CardDescription>
-                Used to sync guests from a Luma event into Attendees.
-              </CardDescription>
-            </div>
+            <Link
+              href="/settings/guide#luma"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:underline underline-offset-2"
+            >
+              Setup guide
+              <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -129,7 +142,16 @@ function SettingsForm() {
               onChange={(e) => set("lumaApiKey", e.target.value.trim())}
             />
             <p className="text-xs text-muted-foreground">
-              Find this in your Luma account under Settings &rarr; API.
+              From your Luma <strong>City Calendar</strong> with Luma Plus:
+              Settings &rarr; Developer &rarr; API Keys.{" "}
+              <Link
+                href="/settings/guide#luma"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-2"
+              >
+                Setup guide
+              </Link>
             </p>
           </div>
         </CardContent>
@@ -138,16 +160,27 @@ function SettingsForm() {
       {/* EmailJS */}
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <Mail className="h-4 w-4" />
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+                <Mail className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base">EmailJS</CardTitle>
+                <CardDescription>
+                  Used to send claim emails to attendees.
+                </CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-base">EmailJS</CardTitle>
-              <CardDescription>
-                Used to send claim emails to attendees.
-              </CardDescription>
-            </div>
+            <Link
+              href="/settings/guide#emailjs"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:underline underline-offset-2"
+            >
+              Setup guide
+              <ExternalLink className="h-3 w-3" />
+            </Link>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">

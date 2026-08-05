@@ -111,6 +111,7 @@ create/enable). See [Settings](#settings) below.
 | `/events/[slug]/preview` | Preview and bulk-send pending emails |
 | `/audit` | Audit log viewer |
 | `/settings` | Configure the Luma API key and EmailJS credentials for this browser |
+| `/settings/guide` | Step-by-step Luma API and EmailJS setup guide |
 
 ### API
 
