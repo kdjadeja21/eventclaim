@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import type { EmailQuota } from "@/lib/email";
-import { Attendee } from "@/lib/types";
+import { Attendee, EventStatus } from "@/lib/types";
 import { useAppSettings } from "@/lib/use-app-settings";
 import AttendeeTable from "./attendee-table";
 import EmailQuotaBadge from "./email-quota-badge";
@@ -79,6 +79,7 @@ type TableProps = {
   attendees: Attendee[];
   eventId: string;
   eventSlug: string;
+  eventStatus: EventStatus;
   initialLumaLastSyncedAt?: string | null;
 };
 
@@ -86,15 +87,20 @@ export function AttendeesTable({
   attendees,
   eventId,
   eventSlug,
+  eventStatus,
   initialLumaLastSyncedAt,
 }: TableProps) {
   const { setQuota } = useAttendeesQuota();
+  // Remount when server-provided test attendees change after create/delete.
+  const tableKey = `${attendees.filter((a) => a.isTest).length}:${attendees.length}`;
 
   return (
     <AttendeeTable
+      key={tableKey}
       attendees={attendees}
       eventId={eventId}
       eventSlug={eventSlug}
+      eventStatus={eventStatus}
       initialLumaLastSyncedAt={initialLumaLastSyncedAt}
       onQuotaChange={setQuota}
     />

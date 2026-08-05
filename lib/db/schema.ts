@@ -68,6 +68,7 @@ export const attendees = pgTable(
     registeredAt: text("registered_at"),
     checkedInAt: text("checked_in_at"),
     isBlacklisted: boolean("is_blacklisted").notNull().default(false),
+    isTest: boolean("is_test").notNull().default(false),
   },
   (table) => [
     uniqueIndex("attendees_event_email_key").on(table.eventId, table.email),
@@ -124,6 +125,7 @@ export const couponLinks = pgTable(
     assignedAt: text("assigned_at"),
     claimedAt: text("claimed_at"),
     isDisabled: boolean("is_disabled").notNull().default(false),
+    isTest: boolean("is_test").notNull().default(false),
   },
   (table) => [
     index("coupon_links_coupon_id_idx").on(table.couponId),

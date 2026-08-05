@@ -15,6 +15,7 @@ function toCouponLink(row: typeof couponLinks.$inferSelect): CouponLink {
     assignedAt: row.assignedAt,
     claimedAt: row.claimedAt,
     isDisabled: row.isDisabled,
+    isTest: row.isTest,
   };
 }
 
@@ -71,12 +72,27 @@ export async function listUnassignedAttendees(eventId: string, couponId: string)
 /** Bulk-inserts pool links for a uniqueLink coupon. Every uploaded link is
  * treated as unique (matches the existing no-dedup behavior). */
 export async function bulkInsertCouponLinks(
-  links: Array<{ id: string; couponId: string; eventId: string; url: string }>
+  links: Array<{
+    id: string;
+    couponId: string;
+    eventId: string;
+    url: string;
+    isTest?: boolean;
+  }>
 ): Promise<number> {
   if (links.length === 0) return 0;
   const inserted = await db
     .insert(couponLinks)
-    .values(links.map((l) => ({ ...l, status: "available" as const })))
+    .values(
+      links.map((l) => ({
+        id: l.id,
+        couponId: l.couponId,
+        eventId: l.eventId,
+        url: l.url,
+        status: "available" as const,
+        isTest: l.isTest ?? false,
+      }))
+    )
     .returning({ id: couponLinks.id });
   return inserted.length;
 }

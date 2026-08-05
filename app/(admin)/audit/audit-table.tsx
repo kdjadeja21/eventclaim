@@ -41,6 +41,8 @@ const actionVariant: Record<
   attendee_luma_synced: "info",
   attendee_blacklisted: "warning",
   attendee_unblacklisted: "success",
+  test_attendees_created: "info",
+  test_data_deleted: "destructive",
   coupon_created: "success",
   coupon_updated: "info",
   coupon_deleted: "destructive",
@@ -68,6 +70,8 @@ const actionLabels: Record<AuditAction, string> = {
   attendee_luma_synced: "Luma Sync",
   attendee_blacklisted: "Attendee Blacklisted",
   attendee_unblacklisted: "Attendee Unblacklisted",
+  test_attendees_created: "Temp Attendees Created",
+  test_data_deleted: "Test Data Deleted",
   coupon_created: "Coupon Created",
   coupon_updated: "Coupon Updated",
   coupon_deleted: "Coupon Deleted",
@@ -243,10 +247,26 @@ function getAuditMessage(log: AuditLog): string {
       return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was blacklisted.`;
     case "attendee_unblacklisted":
       return `Attendee ${email ? `<${email}> ` : attendeeId ? `${attendeeId} ` : ""}was unblacklisted.`;
+    case "test_attendees_created": {
+      const emails = metadata?.emails;
+      const count = Array.isArray(emails) ? emails.length : 2;
+      return `${count} temp test attendees were created with fake Cursor Credits links.`;
+    }
+    case "test_data_deleted": {
+      const deletedAttendees = getMetadataNumber(metadata, "deletedAttendees");
+      const deletedLinks = getMetadataNumber(metadata, "deletedLinks");
+      const reason = getMetadataString(metadata, "reason");
+      return `Test data deleted (${deletedAttendees ?? "?"} attendees, ${
+        deletedLinks ?? "?"
+      } links)${reason === "status_change" ? " on status change" : ""}.`;
+    }
     case "status_checked":
       return `Claim status was checked${email ? ` for ${email}` : ""}.`;
-    default:
+    default: {
+      const _exhaustive: never = log.action;
+      void _exhaustive;
       return JSON.stringify(metadata);
+    }
   }
 }
 

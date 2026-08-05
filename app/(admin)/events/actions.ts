@@ -12,6 +12,8 @@ import {
   listEvents,
   updateEventFields,
 } from "@/lib/db/repos/events";
+import { ensureDefaultCursorCreditsCoupon } from "@/lib/default-offers";
+import { deleteTempTestDataForEvent } from "@/lib/db/repos/test-data";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -69,10 +71,23 @@ export async function createEvent(
   };
 
   await insertEvent(event);
+
+  const defaultOffer = await ensureDefaultCursorCreditsCoupon(id);
   await writeAuditLog({
     eventId: id,
     action: "event_created",
     metadata: { name: event.name, slug },
+    userId: session.uid,
+  });
+  await writeAuditLog({
+    eventId: id,
+    action: "coupon_created",
+    metadata: {
+      couponId: defaultOffer.id,
+      name: defaultOffer.name,
+      kind: defaultOffer.kind,
+      defaultOffer: true,
+    },
     userId: session.uid,
   });
 
@@ -195,17 +210,40 @@ export async function updateEventStatus(
 ): Promise<{ success: boolean }> {
   const session = await requireSession();
 
+  const event = await getEventByIdRepo(eventId);
+  if (!event) return { success: false };
+
+  // Leaving draft always strips draft-only temp test attendees and fake links.
+  let deletedTestData = false;
+  if (event.status === "draft" && status !== "draft") {
+    const result = await deleteTempTestDataForEvent(eventId);
+    deletedTestData = result.deletedAttendees > 0 || result.deletedLinks > 0;
+    if (deletedTestData) {
+      await writeAuditLog({
+        eventId,
+        action: "test_data_deleted",
+        metadata: {
+          reason: "status_change",
+          deletedAttendees: result.deletedAttendees,
+          deletedLinks: result.deletedLinks,
+        },
+        userId: session.uid,
+      });
+    }
+  }
+
   await updateEventFields(eventId, { status });
 
   await writeAuditLog({
     eventId,
     action: "event_updated",
-    metadata: { status },
+    metadata: { status, deletedTestData },
     userId: session.uid,
   });
 
   revalidatePath("/events");
-  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${event.slug}`);
+  revalidatePath(`/events/${event.slug}/attendees`);
   return { success: true };
 }
 

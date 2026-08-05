@@ -15,6 +15,13 @@
       "when": 1785682315020,
       "tag": "0001_triggers_and_security",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785943800000,
+      "tag": "0002_test_flags",
+      "breakpoints": true
     }
   ]
 }

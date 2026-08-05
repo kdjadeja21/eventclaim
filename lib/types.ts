@@ -20,6 +20,8 @@ export type AuditAction =
   | "attendee_luma_synced"
   | "attendee_blacklisted"
   | "attendee_unblacklisted"
+  | "test_attendees_created"
+  | "test_data_deleted"
   | "coupon_created"
   | "coupon_updated"
   | "coupon_deleted"
@@ -73,6 +75,8 @@ export interface Attendee {
   registeredAt?: string | null;
   checkedInAt?: string | null;
   isBlacklisted?: boolean;
+  /** Draft-only temp attendees used for email send testing. */
+  isTest?: boolean;
 }
 
 /**
@@ -116,6 +120,8 @@ export interface CouponLink {
   assignedAt: string | null;
   claimedAt: string | null;
   isDisabled?: boolean;
+  /** Fake pool links created for draft email testing. */
+  isTest?: boolean;
 }
 
 /**
