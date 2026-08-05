@@ -56,11 +56,12 @@ export default function NewEventPage() {
         </div>
       </div>
 
-      <Card>
+      <Card data-tour="new-event-form">
         <CardHeader>
           <CardTitle className="text-lg">Event Details</CardTitle>
           <CardDescription>
             Fill in the details for your event. A slug will be auto-generated.
+            A Cursor Credits offer is added automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>

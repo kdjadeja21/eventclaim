@@ -1,6 +1,7 @@
 const TOUR_SEEN_KEY = "eventclaim_tour_seen_v1";
 const CHECKLIST_DISMISSED_KEY = "eventclaim_checklist_dismissed_v1";
 const LAST_EVENT_SLUG_KEY = "eventclaim_tour_last_event_slug_v1";
+const ACTIVE_TOUR_KEY = "eventclaim_active_feature_tour_v1";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -83,4 +84,45 @@ export function setLastEventSlug(slug: string | null): void {
   } catch {
     // best-effort
   }
+}
+
+export type ActiveFeatureTour = {
+  stepIndex: number;
+};
+
+export function getActiveFeatureTour(): ActiveFeatureTour | null {
+  if (!isBrowser()) return null;
+  try {
+    const raw = window.sessionStorage.getItem(ACTIVE_TOUR_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ActiveFeatureTour;
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      typeof parsed.stepIndex !== "number"
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveFeatureTour(tour: ActiveFeatureTour | null): void {
+  if (!isBrowser()) return;
+  try {
+    if (!tour) {
+      window.sessionStorage.removeItem(ACTIVE_TOUR_KEY);
+    } else {
+      window.sessionStorage.setItem(ACTIVE_TOUR_KEY, JSON.stringify(tour));
+    }
+    emit();
+  } catch {
+    // best-effort
+  }
+}
+
+export function isFeatureTourActive(): boolean {
+  return getActiveFeatureTour() !== null;
 }

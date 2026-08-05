@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -117,6 +117,18 @@ export default function SettingsGuidePage() {
     }
   }
 
+  useEffect(() => {
+    function syncFromHash() {
+      const hash = window.location.hash.replace("#", "");
+      if (hash === "emailjs" || hash === "luma") {
+        setActiveTab(hash);
+        setAnimKey((k) => k + 1);
+      }
+    }
+    window.addEventListener("hashchange", syncFromHash);
+    return () => window.removeEventListener("hashchange", syncFromHash);
+  }, []);
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-12">
       <div className="space-y-4">
@@ -165,7 +177,7 @@ export default function SettingsGuidePage() {
         onValueChange={(val) => switchTab(val as "luma" | "emailjs")}
         className="space-y-6"
       >
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap" data-tour="guide-tabs">
           <TabsList className="grid grid-cols-2 w-full sm:w-auto h-11 p-1 bg-muted/80 rounded-xl">
             <TabsTrigger
               value="luma"

@@ -30,8 +30,9 @@ export default function WelcomeDialog({
           <DialogTitle>Welcome to Cursor Community Event Coupons</DialogTitle>
           <DialogDescription className="text-sm leading-relaxed">
             This tool helps you give Cursor credits and partner offers to event
-            guests by email. We&apos;ll show you the map, then a short checklist
-            takes you from setup to a safe test email.
+            guests by email. We&apos;ll walk you through the real workflow —
+            connect email, create an event, practice with temp guests, and send
+            a test claim email.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-0">
@@ -39,7 +40,7 @@ export default function WelcomeDialog({
             I&apos;ll explore on my own
           </Button>
           <Button type="button" onClick={onStartTour}>
-            Show me how
+            Walk me through it
           </Button>
         </DialogFooter>
       </DialogContent>

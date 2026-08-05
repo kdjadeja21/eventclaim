@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAppSettings } from "@/lib/use-app-settings";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import {
@@ -25,8 +25,16 @@ import {
   setChecklistDismissed,
   setLastEventSlug,
   subscribeTourStorage,
+  getActiveFeatureTour,
 } from "@/lib/tour/storage";
-import { destroyTour, startOrientationTour } from "@/components/tour/run-tour";
+import {
+  configureFeatureTour,
+  destroyTourHighlight,
+  endFeatureTour,
+  resumeFeatureTourIfNeeded,
+  startFeatureTour,
+  syncFeatureTourContext,
+} from "@/components/tour/run-tour";
 import WelcomeDialog from "@/components/tour/welcome-dialog";
 
 type TourContextValue = {
@@ -53,6 +61,7 @@ function useChecklistDismissedFlag(): boolean {
 
 export function TourProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { emailConfigured, lumaConfigured, loading: settingsLoading } =
     useAppSettings();
 
@@ -106,31 +115,53 @@ export function TourProvider({ children }: { children: ReactNode }) {
     }
   }, [progress.firstDraftEventSlug, progress.firstEventSlug]);
 
+  // Keep the tour engine wired to Next navigation + latest event context.
+  useEffect(() => {
+    configureFeatureTour({
+      navigate: (path) => {
+        router.push(path);
+      },
+      context: {
+        draftEventSlug: progress.firstDraftEventSlug,
+        eventSlug: progress.firstEventSlug,
+      },
+    });
+  }, [router, progress.firstDraftEventSlug, progress.firstEventSlug]);
+
+  useEffect(() => {
+    syncFeatureTourContext({
+      draftEventSlug: progress.firstDraftEventSlug,
+      eventSlug: progress.firstEventSlug,
+    });
+  }, [progress.firstDraftEventSlug, progress.firstEventSlug]);
+
   useEffect(() => {
     return () => {
-      destroyTour();
+      destroyTourHighlight();
     };
   }, []);
 
+  // Resume multi-page tour after client navigations (do not wipe active tour).
   useEffect(() => {
-    destroyTour();
+    if (!getActiveFeatureTour()) {
+      destroyTourHighlight();
+      return;
+    }
+    resumeFeatureTourIfNeeded(pathname);
   }, [pathname]);
 
   const startTour = useCallback(() => {
     markTourSeen();
     window.requestAnimationFrame(() => {
       window.setTimeout(() => {
-        startOrientationTour({
-          onDestroyed: () => {
-            markTourSeen();
-          },
-        });
+        startFeatureTour();
       }, 80);
     });
   }, []);
 
   const skipWelcome = useCallback(() => {
     markTourSeen();
+    endFeatureTour();
   }, []);
 
   const dismissChecklist = useCallback(() => {

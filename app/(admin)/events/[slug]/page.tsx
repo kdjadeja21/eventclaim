@@ -103,11 +103,13 @@ export default async function EventDetailPage({ params }: Props) {
             {formatDate(event.date)} &middot; /{event.slug}
           </p>
         </div>
-        <EventStatusButton
-          eventId={event.id}
-          currentStatus={event.status}
-          hasTestAttendees={testAttendeeCount > 0}
-        />
+        <div data-tour="event-status">
+          <EventStatusButton
+            eventId={event.id}
+            currentStatus={event.status}
+            hasTestAttendees={testAttendeeCount > 0}
+          />
+        </div>
       </div>
 
       {/* Stats grid */}
@@ -140,7 +142,10 @@ export default async function EventDetailPage({ params }: Props) {
       </div>
 
       {/* Quick links */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        data-tour="event-quick-links"
+      >
         {quickLinks.map(({ href, label, icon: Icon, description }) => (
           <Link key={href} href={href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">

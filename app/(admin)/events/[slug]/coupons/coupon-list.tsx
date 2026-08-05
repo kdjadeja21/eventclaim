@@ -318,7 +318,7 @@ export default function CouponList({
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="partner-offers">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
@@ -326,7 +326,7 @@ export default function CouponList({
             ? "No partner offers yet."
             : `${coupons.length} offer${coupons.length !== 1 ? "s" : ""} · every eligible attendee receives all offers`}
         </p>
-        <Button size="sm" onClick={openCreate}>
+        <Button size="sm" onClick={openCreate} data-tour="new-offer">
           <Plus className="h-4 w-4" />
           New Offer
         </Button>

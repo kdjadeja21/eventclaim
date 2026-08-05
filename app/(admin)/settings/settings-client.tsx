@@ -305,7 +305,12 @@ function SettingsForm() {
             <Trash2 className="h-4 w-4" />
             Clear All
           </Button>
-          <Button type="button" onClick={handleSave} disabled={saving || !hasUnsavedChanges}>
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || !hasUnsavedChanges}
+            data-tour="settings-save"
+          >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Save Settings
           </Button>
