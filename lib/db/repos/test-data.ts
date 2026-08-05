@@ -1,15 +1,21 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
-import { nanoid } from "nanoid";
+import { customAlphabet, nanoid } from "nanoid";
 import { db } from "@/lib/db/client";
 import { attendees, couponLinks, emailLogs, grants } from "@/lib/db/schema";
 import { reserveSpecificLinkGrant } from "@/lib/db/repos/grants";
 import { attendeeDocId } from "@/lib/import";
 import type { Attendee } from "@/lib/types";
 
-/** Same URL shape as the admin link-upload placeholder. */
-export function fakeCursorCreditsLinkUrl(id: string): string {
-  return `https://example.com/coupon/${id}`;
+/** Matches real Cursor Credits links, e.g. https://cursor.com/referral?code=Y2YNAAENRTGDG */
+const generateReferralCode = customAlphabet(
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+  12
+);
+
+export function fakeCursorCreditsLinkUrl(code?: string): string {
+  const referralCode = code ?? generateReferralCode();
+  return `https://cursor.com/referral?code=${referralCode}`;
 }
 
 export async function createTempTestAttendeesWithLinks(params: {
@@ -38,7 +44,7 @@ export async function createTempTestAttendeesWithLinks(params: {
       id,
       couponId,
       eventId,
-      url: fakeCursorCreditsLinkUrl(id),
+      url: fakeCursorCreditsLinkUrl(),
       isTest: true as const,
     };
   });
