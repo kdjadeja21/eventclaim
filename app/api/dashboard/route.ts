@@ -3,6 +3,7 @@ import { getEventCountStats } from "@/lib/event-stats";
 import { requireSession } from "@/lib/session";
 import { listRecentEvents } from "@/lib/db/repos/events";
 import { listAuditLogs } from "@/lib/db/repos/audit";
+import { hasAnyTestAttendees } from "@/lib/db/repos/attendees";
 import { Event } from "@/lib/types";
 
 export interface DashboardData {
@@ -12,6 +13,8 @@ export interface DashboardData {
   totalEmailsSent: number;
   totalClaimed: number;
   overallClaimRate: number;
+  /** True when any draft temp/test attendee exists (onboarding checklist). */
+  hasTestAttendees: boolean;
   perEventStats: {
     event: Event;
     attendees: number;
@@ -62,7 +65,10 @@ async function fetchDashboardData(): Promise<DashboardData> {
     };
   });
 
-  const auditLogs = await listAuditLogs(5);
+  const [auditLogs, hasTestAttendees] = await Promise.all([
+    listAuditLogs(5),
+    hasAnyTestAttendees(),
+  ]);
   const recentActivity = auditLogs.map((l) => ({
     id: l.id,
     action: l.action,
@@ -79,6 +85,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     totalClaimed,
     overallClaimRate:
       totalGranted > 0 ? (totalClaimed / totalGranted) * 100 : 0,
+    hasTestAttendees,
     perEventStats,
     recentActivity,
   };

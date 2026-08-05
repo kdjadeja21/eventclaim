@@ -105,7 +105,7 @@ function SettingsForm() {
       </div>
 
       {/* Luma */}
-      <Card>
+      <Card data-tour="settings-luma">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -123,6 +123,7 @@ function SettingsForm() {
               href="/settings/guide#luma"
               target="_blank"
               rel="noopener noreferrer"
+              data-tour="settings-guide-luma"
               className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:underline underline-offset-2"
             >
               Setup guide
@@ -158,7 +159,7 @@ function SettingsForm() {
       </Card>
 
       {/* EmailJS */}
-      <Card>
+      <Card data-tour="settings-emailjs">
         <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -176,6 +177,7 @@ function SettingsForm() {
               href="/settings/guide#emailjs"
               target="_blank"
               rel="noopener noreferrer"
+              data-tour="settings-guide-emailjs"
               className="inline-flex items-center gap-1 shrink-0 text-xs font-medium text-primary hover:underline underline-offset-2"
             >
               Setup guide

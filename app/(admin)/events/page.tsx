@@ -34,7 +34,7 @@ export default async function EventsPage() {
             Manage coupon distribution events
           </p>
         </div>
-        <Button asChild>
+        <Button asChild data-tour="new-event">
           <Link href="/events/new">
             <Plus className="h-4 w-4" />
             New Event
@@ -43,14 +43,15 @@ export default async function EventsPage() {
       </div>
 
       {events.length === 0 ? (
-        <Card className="py-16">
+        <Card className="py-16" data-tour="events-empty">
           <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
             <CalendarDays className="h-10 w-10 text-muted-foreground/50" />
             <p className="font-medium">No events yet</p>
             <p className="text-sm text-muted-foreground">
-              Create your first event to get started.
+              Create your first event to get started. A Cursor Credits offer is
+              added automatically.
             </p>
-            <Button asChild size="sm" className="mt-2">
+            <Button asChild size="sm" className="mt-2" data-tour="new-event-empty">
               <Link href="/events/new">
                 <Plus className="h-4 w-4" />
                 Create Event

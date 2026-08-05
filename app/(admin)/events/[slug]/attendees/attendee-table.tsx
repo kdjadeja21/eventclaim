@@ -875,7 +875,10 @@ export default function AttendeeTable({
       )}
 
       {eventStatus === "draft" && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3"
+          data-tour="create-temp-users"
+        >
           <div className="min-w-0 space-y-0.5">
             <p className="text-sm font-medium">Test email data</p>
             <p className="text-xs text-muted-foreground">
@@ -901,6 +904,7 @@ export default function AttendeeTable({
               variant="outline"
               size="sm"
               className="shrink-0"
+              data-tour="create-temp-users-button"
               disabled={!emailConfigured}
               title={
                 emailConfigured

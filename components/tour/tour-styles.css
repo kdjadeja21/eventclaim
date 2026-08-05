@@ -1,0 +1,86 @@
+/* Brand-aligned driver.js overrides for EventClaim onboarding */
+.driver-popover.eventclaim-tour-popover {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  max-width: 320px;
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-progress-text {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-navigation-btns {
+  gap: 0.5rem;
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-prev-btn,
+.driver-popover.eventclaim-tour-popover .driver-popover-next-btn,
+.driver-popover.eventclaim-tour-popover .driver-popover-close-btn {
+  border-radius: calc(var(--radius) - 2px);
+  text-shadow: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-prev-btn {
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  text-shadow: none;
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-next-btn {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: 1px solid hsl(var(--primary));
+  text-shadow: none;
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-close-btn {
+  color: hsl(var(--muted-foreground));
+}
+
+.driver-popover.eventclaim-tour-popover .driver-popover-arrow-side-left,
+.driver-popover.eventclaim-tour-popover .driver-popover-arrow-side-right,
+.driver-popover.eventclaim-tour-popover .driver-popover-arrow-side-top,
+.driver-popover.eventclaim-tour-popover .driver-popover-arrow-side-bottom {
+  border-color: hsl(var(--card));
+}
+
+@keyframes eventclaim-tour-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.12);
+  }
+}
+
+.tour-checklist-current {
+  animation: eventclaim-tour-pulse 2s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-checklist-current {
+    animation: none;
+  }
+}

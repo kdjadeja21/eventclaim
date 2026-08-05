@@ -14,18 +14,47 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import GettingStarted from "@/components/tour/getting-started";
+import { useTour } from "@/components/tour/tour-provider";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/events", label: "Events", icon: CalendarDays },
-  { href: "/audit", label: "Audit Logs", icon: ClipboardList },
-  { href: "/tools", label: "Tools", icon: Wrench },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    tourId: "nav-dashboard",
+  },
+  {
+    href: "/events",
+    label: "Events",
+    icon: CalendarDays,
+    tourId: "nav-events",
+  },
+  {
+    href: "/audit",
+    label: "Audit Logs",
+    icon: ClipboardList,
+    tourId: null,
+  },
+  {
+    href: "/tools",
+    label: "Tools",
+    icon: Wrench,
+    tourId: null,
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: Settings,
+    tourId: "nav-settings",
+  },
+] as const;
 
 export default function AdminNav({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { steps, progress, checklistVisible, startTour, dismissChecklist } =
+    useTour();
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -34,7 +63,10 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
 
   return (
     <aside className="w-60 flex flex-col border-r border-sidebar-border bg-sidebar h-full">
-      <div className="gradient-hero p-4 flex items-center gap-3 border-b border-white/10">
+      <div
+        className="gradient-hero p-4 flex items-center gap-3 border-b border-white/10"
+        data-tour="brand"
+      >
         <div className="h-8 w-8 rounded-full gradient-brand flex items-center justify-center shrink-0 shadow-md">
           <span className="text-white font-bold text-sm">C</span>
         </div>
@@ -48,13 +80,14 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 p-3 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {navItems.map(({ href, label, icon: Icon, tourId }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
+              data-tour={tourId ?? undefined}
               className={cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all",
                 active
@@ -72,8 +105,16 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
         })}
       </nav>
 
-      <div className="p-3">
-        <Separator className="mb-3 bg-sidebar-border" />
+      <div className="p-3 space-y-3">
+        <GettingStarted
+          steps={steps}
+          completedRequired={progress.completedRequired}
+          totalRequired={progress.totalRequired}
+          visible={checklistVisible}
+          onDismiss={dismissChecklist}
+          onReplayTour={startTour}
+        />
+        <Separator className="bg-sidebar-border" />
         <Button
           variant="ghost"
           size="sm"

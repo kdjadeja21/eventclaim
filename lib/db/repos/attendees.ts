@@ -120,6 +120,16 @@ export async function countTestAttendees(eventId: string): Promise<number> {
   return rows.length;
 }
 
+/** True if any draft test attendee exists across events (for onboarding progress). */
+export async function hasAnyTestAttendees(): Promise<boolean> {
+  const rows = await db
+    .select({ id: attendees.id })
+    .from(attendees)
+    .where(eq(attendees.isTest, true))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function listTestAttendees(eventId: string): Promise<Attendee[]> {
   const rows = await db
     .select()
