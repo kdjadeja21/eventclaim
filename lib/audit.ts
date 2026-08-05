@@ -1,6 +1,5 @@
-import { adminDb } from "@/lib/firebase/admin";
-import { AuditAction, AuditLog } from "@/lib/types";
-import { nanoid } from "nanoid";
+import { writeAuditLog as writeAuditLogRepo } from "@/lib/db/repos/audit";
+import { AuditAction } from "@/lib/types";
 
 export async function writeAuditLog(params: {
   eventId: string | null;
@@ -8,14 +7,5 @@ export async function writeAuditLog(params: {
   metadata?: Record<string, unknown>;
   userId?: string;
 }): Promise<void> {
-  const { eventId, action, metadata = {}, userId = "admin" } = params;
-  const log: AuditLog = {
-    id: nanoid(),
-    eventId,
-    action,
-    metadata,
-    userId,
-    timestamp: new Date().toISOString(),
-  };
-  await adminDb.collection("auditLogs").doc(log.id).set(log);
+  await writeAuditLogRepo(params);
 }

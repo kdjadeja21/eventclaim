@@ -1,13 +1,21 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseCouponCsv } from "@/lib/import";
-import { Coupon, CouponKind, CouponLink, Grant } from "@/lib/types";
+import { Coupon, CouponKind } from "@/lib/types";
+import { bulkInsertCouponLinks } from "@/lib/db/repos/links";
+import {
+  deleteCouponCascade,
+  getCouponById,
+  getMaxSortOrder,
+  insertCoupon,
+  listCouponsForEvent,
+  reorderCoupons as reorderCouponsRepo,
+  updateCouponFields,
+} from "@/lib/db/repos/coupons";
 import type { EmailConfig } from "@/lib/settings";
-import { FieldValue } from "firebase-admin/firestore";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { readdir } from "fs/promises";
@@ -51,21 +59,10 @@ export async function createCoupon(
   }
 
   const id = nanoid();
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .orderBy("sortOrder", "desc")
-    .limit(1)
-    .get();
+  const maxOrder = await getMaxSortOrder(eventId);
+  const trimOrNull = (v?: string) => v?.trim() || undefined;
 
-  const maxOrder = snap.empty
-    ? 0
-    : (snap.docs[0].data() as Coupon).sortOrder ?? 0;
-
-  const trimOrNull = (v?: string) => v?.trim() || null;
-
-  const couponData: Record<string, unknown> = {
+  const coupon: Coupon = {
     id,
     eventId,
     name: data.name.trim(),
@@ -74,31 +71,16 @@ export async function createCoupon(
     logoUrl: data.logoUrl.trim(),
     highlight: data.highlight.trim(),
     description: data.description.trim(),
+    note: trimOrNull(data.note),
+    sharedValue: trimOrNull(data.sharedValue),
+    redeemUrl: trimOrNull(data.redeemUrl),
     sortOrder: data.sortOrder ?? maxOrder + 1,
     isDisabled: false,
     createdAt: new Date().toISOString(),
+    ...(data.kind === "uniqueLink" ? { linkTotal: 0, linkAvailable: 0 } : {}),
   };
 
-  // Only include optional fields when they have a value — Firestore rejects `undefined`
-  const note = trimOrNull(data.note);
-  if (note) couponData.note = note;
-  const sharedValue = trimOrNull(data.sharedValue);
-  if (sharedValue) couponData.sharedValue = sharedValue;
-  const redeemUrl = trimOrNull(data.redeemUrl);
-  if (redeemUrl) couponData.redeemUrl = redeemUrl;
-  if (data.kind === "uniqueLink") {
-    couponData.linkTotal = 0;
-    couponData.linkAvailable = 0;
-  }
-
-  const coupon = couponData as unknown as Coupon;
-
-  await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(id)
-    .set(coupon);
+  await insertCoupon(coupon);
 
   await writeAuditLog({
     eventId,
@@ -134,14 +116,8 @@ export async function updateCoupon(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const couponRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(couponId);
-
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
+  const existing = await getCouponById(eventId, couponId);
+  if (!existing) return { success: false, error: "Coupon not found." };
 
   const update: Record<string, unknown> = {};
   if (data.name !== undefined) update.name = data.name.trim();
@@ -149,20 +125,12 @@ export async function updateCoupon(
   if (data.logoUrl !== undefined) update.logoUrl = data.logoUrl.trim();
   if (data.highlight !== undefined) update.highlight = data.highlight.trim();
   if (data.description !== undefined) update.description = data.description.trim();
-  // For optional fields, omit the key entirely when the value is empty to avoid
-  // writing null/undefined to Firestore unintentionally — caller must pass the
-  // field explicitly when they want to clear it.
   if (data.note !== undefined) update.note = data.note.trim() || null;
   if (data.sharedValue !== undefined) update.sharedValue = data.sharedValue.trim() || null;
   if (data.redeemUrl !== undefined) update.redeemUrl = data.redeemUrl.trim() || null;
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
 
-  // Remove undefined / null keys that weren't explicitly cleared
-  Object.keys(update).forEach((k) => {
-    if (update[k] === undefined) delete update[k];
-  });
-
-  await couponRef.update(update);
+  await updateCouponFields(eventId, couponId, update);
 
   await writeAuditLog({
     eventId,
@@ -188,13 +156,8 @@ export async function reorderCoupons(
     return { success: false, error: "No coupons to reorder." };
   }
 
-  const couponsSnap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .get();
-
-  const existingIds = new Set(couponsSnap.docs.map((d) => d.id));
+  const existingCoupons = await listCouponsForEvent(eventId);
+  const existingIds = new Set(existingCoupons.map((c) => c.id));
 
   if (orderedIds.length !== existingIds.size) {
     return { success: false, error: "Coupon list is out of date. Refresh and try again." };
@@ -206,21 +169,11 @@ export async function reorderCoupons(
     }
   }
 
-  // Reject duplicates
   if (new Set(orderedIds).size !== orderedIds.length) {
     return { success: false, error: "Invalid coupon order." };
   }
 
-  const batch = adminDb.batch();
-  orderedIds.forEach((id, index) => {
-    const ref = adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("coupons")
-      .doc(id);
-    batch.update(ref, { sortOrder: index });
-  });
-  await batch.commit();
+  await reorderCouponsRepo(eventId, orderedIds);
 
   await writeAuditLog({
     eventId,
@@ -266,16 +219,10 @@ export async function toggleCouponDisabled(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const couponRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(couponId);
+  const existing = await getCouponById(eventId, couponId);
+  if (!existing) return { success: false, error: "Coupon not found." };
 
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
-
-  await couponRef.update({ isDisabled: disabled });
+  await updateCouponFields(eventId, couponId, { isDisabled: disabled });
 
   await writeAuditLog({
     eventId,
@@ -302,65 +249,13 @@ export async function deleteCoupon(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const couponRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(couponId);
+  const coupon = await getCouponById(eventId, couponId);
+  if (!coupon) return { success: false, error: "Coupon not found." };
 
-  const snap = await couponRef.get();
-  if (!snap.exists) return { success: false, error: "Coupon not found." };
-
-  const coupon = snap.data() as Coupon;
-
-  // Release any assigned pool links back and delete them
-  if (coupon.kind === "uniqueLink") {
-    const linksSnap = await adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("coupons")
-      .doc(couponId)
-      .collection("links")
-      .get();
-
-    const BATCH_SIZE = 400;
-    for (let i = 0; i < linksSnap.docs.length; i += BATCH_SIZE) {
-      const batch = adminDb.batch();
-      linksSnap.docs.slice(i, i + BATCH_SIZE).forEach((d) => {
-        batch.delete(d.ref);
-      });
-      await batch.commit();
-    }
-  }
-
-  // Remove all grants for this coupon across all attendees
-  const grantsSnap = await adminDb
-    .collectionGroup("grants")
-    .where("couponId", "==", couponId)
-    .where("eventId", "==", eventId)
-    .get();
-
-  if (!grantsSnap.empty) {
-    const BATCH_SIZE = 400;
-    for (let i = 0; i < grantsSnap.docs.length; i += BATCH_SIZE) {
-      const batch = adminDb.batch();
-      grantsSnap.docs.slice(i, i + BATCH_SIZE).forEach((d) => {
-        batch.delete(d.ref);
-        // Decrement grantCount on the attendee
-        const attendeeRef = adminDb
-          .collection("events")
-          .doc(eventId)
-          .collection("attendees")
-          .doc((d.data() as Grant).attendeeId);
-        batch.update(attendeeRef, {
-          grantCount: FieldValue.increment(-1),
-        });
-      });
-      await batch.commit();
-    }
-  }
-
-  await couponRef.delete();
+  // ON DELETE CASCADE on coupon_links.coupon_id and grants.coupon_id handles
+  // releasing/removing pool links and grants; the counter triggers on
+  // attendees.grant_count / claimed_count fire per removed grant row.
+  await deleteCouponCascade(eventId, couponId);
 
   await writeAuditLog({
     eventId,
@@ -391,14 +286,8 @@ export async function addCouponLinks(
 }> {
   const session = await requireSession();
 
-  const couponRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("coupons")
-    .doc(couponId);
-
-  const couponSnap = await couponRef.get();
-  if (!couponSnap.exists) {
+  const coupon = await getCouponById(eventId, couponId);
+  if (!coupon) {
     return {
       success: false,
       imported: 0,
@@ -409,7 +298,6 @@ export async function addCouponLinks(
     };
   }
 
-  const coupon = couponSnap.data() as Coupon;
   if (coupon.kind !== "uniqueLink") {
     return {
       success: false,
@@ -423,36 +311,17 @@ export async function addCouponLinks(
 
   const { rows, invalidCount, errors } = parseCouponCsv(rawText);
 
-  let imported = 0;
-
-  const linksRef = couponRef.collection("links");
-
   // Every uploaded link is treated as unique — no dedup against the file or
-  // the existing pool, so a fresh doc is created for each row.
-  for (const row of rows) {
-    const docId = nanoid();
-
-    const link: CouponLink = {
-      id: docId,
+  // the existing pool, so a fresh row is created for each; linkTotal /
+  // linkAvailable update automatically via the coupon_links trigger.
+  const imported = await bulkInsertCouponLinks(
+    rows.map((row) => ({
+      id: nanoid(),
       couponId,
       eventId,
       url: row.couponLink,
-      status: "available",
-      assignedTo: null,
-      assignedAt: null,
-      claimedAt: null,
-    };
-
-    await linksRef.doc(docId).set(link);
-    imported++;
-  }
-
-  if (imported > 0) {
-    await couponRef.update({
-      linkTotal: FieldValue.increment(imported),
-      linkAvailable: FieldValue.increment(imported),
-    });
-  }
+    }))
+  );
 
   await writeAuditLog({
     eventId,

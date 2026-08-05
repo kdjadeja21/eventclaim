@@ -1,7 +1,11 @@
 import { initializeApp, getApps, cert, App } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getStorage } from "firebase-admin/storage";
+
+// Firestore is no longer used by this app — all data storage/CRUD now lives
+// in Supabase Postgres (see lib/db/). This module is scoped to what's
+// deliberately staying on Firebase: Auth (session cookies) and Storage
+// (coupon logo uploads).
 
 function getAdminApp(): App {
   if (getApps().length > 0) return getApps()[0];
@@ -11,9 +15,7 @@ function getAdminApp(): App {
 
   if (!serviceAccountJson) {
     // Allow dev without service account — Firebase Admin can initialise with
-    // just the project ID and will work for Firestore reads/writes in a real
-    // project when running as an authenticated service (e.g. Cloud Run, Vercel
-    // with GOOGLE_APPLICATION_CREDENTIALS).  Session-cookie verification will
+    // just the project ID for Auth/Storage. Session-cookie verification will
     // fail until you add the service account key.
     console.warn(
       "[firebase-admin] FIREBASE_SERVICE_ACCOUNT is not set. " +
@@ -33,6 +35,5 @@ function getAdminApp(): App {
 }
 
 const adminApp = getAdminApp();
-export const adminDb = getFirestore(adminApp);
 export const adminAuth = getAuth(adminApp);
 export const adminBucket = getStorage(adminApp).bucket();

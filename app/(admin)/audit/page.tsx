@@ -1,16 +1,11 @@
-import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
+import { listAuditLogs } from "@/lib/db/repos/audit";
 import { AuditLog } from "@/lib/types";
 import { AuditTable } from "./audit-table";
 
 async function getAuditLogs(): Promise<AuditLog[]> {
   await requireSession();
-  const snap = await adminDb
-    .collection("auditLogs")
-    .orderBy("timestamp", "desc")
-    .limit(200)
-    .get();
-  return snap.docs.map((d) => d.data() as AuditLog);
+  return listAuditLogs(200);
 }
 
 export default async function AuditPage() {

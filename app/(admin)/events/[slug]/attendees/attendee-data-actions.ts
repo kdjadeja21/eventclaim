@@ -1,57 +1,35 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
-import { FieldValue } from "firebase-admin/firestore";
 import { writeAuditLog } from "@/lib/audit";
 import { requireSession } from "@/lib/session";
-import { Attendee, AttendeeGrantDetail, Coupon, Event, Grant } from "@/lib/types";
-import { revalidatePath } from "next/cache";
+import { Attendee, AttendeeGrantDetail } from "@/lib/types";
 import { attendeeDocId } from "@/lib/import";
 import { normalizeEmail } from "@/lib/utils";
 import { z } from "zod";
 import { fetchAllLumaGuests, FetchAllGuestsParams } from "@/lib/luma";
 import { assignPendingForEvent } from "@/lib/assignment";
+import {
+  blacklistIfPastAndNotCheckedIn,
+  bulkInsertAttendees,
+  deleteAttendeeCascade,
+  getAttendeeById,
+  listAttendeesForEvent,
+} from "@/lib/db/repos/attendees";
+import { listEmailLogsForAttendee } from "@/lib/db/repos/email-logs";
+import { listGrantsForAttendee } from "@/lib/db/repos/grants";
+import { getCouponById } from "@/lib/db/repos/coupons";
+import { getEventBySlug, updateEventFields } from "@/lib/db/repos/events";
 import type { EmailConfig } from "@/lib/settings";
-
-async function deleteQueryInBatches(
-  query: FirebaseFirestore.Query
-): Promise<number> {
-  let totalDeleted = 0;
-  for (;;) {
-    const snapshot = await query.limit(500).get();
-    if (snapshot.empty) break;
-    const batch = adminDb.batch();
-    snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-    await batch.commit();
-    totalDeleted += snapshot.size;
-    if (snapshot.size < 500) break;
-  }
-  return totalDeleted;
-}
+import { revalidatePath } from "next/cache";
 
 export async function getAttendees(slug: string): Promise<{ attendees: Attendee[]; eventId: string }> {
   await requireSession();
 
-  const eventSnap = await adminDb
-    .collection("events")
-    .where("slug", "==", slug)
-    .limit(1)
-    .get();
-  if (eventSnap.empty) throw new Error("Event not found");
+  const event = await getEventBySlug(slug);
+  if (!event) throw new Error("Event not found");
 
-  const eventId = eventSnap.docs[0].id;
-
-  const attendeesSnap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .orderBy("createdAt", "desc")
-    .get();
-
-  return {
-    attendees: attendeesSnap.docs.map((d) => d.data() as Attendee),
-    eventId,
-  };
+  const attendees = await listAttendeesForEvent(event.id);
+  return { attendees, eventId: event.id };
 }
 
 export async function getAttendeeDetail(
@@ -69,52 +47,23 @@ export async function getAttendeeDetail(
 }> {
   await requireSession();
 
-  const attendeeRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .doc(attendeeId);
+  const attendee = await getAttendeeById(eventId, attendeeId);
+  if (!attendee) throw new Error("Attendee not found");
 
-  const [attendeeSnap, logsSnap, grantsSnap] = await Promise.all([
-    attendeeRef.get(),
-    adminDb
-      .collection("emailLogs")
-      .where("attendeeId", "==", attendeeId)
-      .orderBy("sentAt", "desc")
-      .limit(20)
-      .get(),
-    attendeeRef.collection("grants").get(),
+  const [logRows, grantRows] = await Promise.all([
+    listEmailLogsForAttendee(attendeeId, 20),
+    listGrantsForAttendee(eventId, attendeeId),
   ]);
 
-  if (!attendeeSnap.exists) throw new Error("Attendee not found");
-
-  let attendee = attendeeSnap.data() as Attendee;
   const grants: AttendeeGrantDetail[] = [];
-
-  if (!grantsSnap.empty) {
-    const couponIds = [
-      ...new Set(grantsSnap.docs.map((d) => (d.data() as Grant).couponId)),
-    ];
-
-    const couponDocs = await Promise.all(
-      couponIds.map((id) =>
-        adminDb
-          .collection("events")
-          .doc(eventId)
-          .collection("coupons")
-          .doc(id)
-          .get()
-      )
-    );
-
+  if (grantRows.length > 0) {
+    const couponIds = [...new Set(grantRows.map((g) => g.couponId))];
+    const couponDocs = await Promise.all(couponIds.map((id) => getCouponById(eventId, id)));
     const couponMap = new Map(
-      couponDocs
-        .filter((d) => d.exists)
-        .map((d) => [d.id, d.data() as Coupon])
+      couponDocs.filter((c) => c !== null).map((c) => [c!.id, c!])
     );
 
-    for (const grantDoc of grantsSnap.docs) {
-      const grant = grantDoc.data() as Grant;
+    for (const grant of grantRows) {
       const coupon = couponMap.get(grant.couponId);
       if (!coupon) continue;
 
@@ -131,27 +80,20 @@ export async function getAttendeeDetail(
     }
 
     grants.sort((a, b) => a.couponName.localeCompare(b.couponName));
-
-    const actualClaimedCount = grants.filter((g) => g.status === "claimed").length;
-    const storedClaimedCount = attendee.claimedCount ?? 0;
-
-    if (actualClaimedCount !== storedClaimedCount) {
-      await attendeeRef.update({ claimedCount: actualClaimedCount });
-      attendee = { ...attendee, claimedCount: actualClaimedCount };
-    }
-  } else if ((attendee.claimedCount ?? 0) !== 0) {
-    await attendeeRef.update({ claimedCount: 0 });
-    attendee = { ...attendee, claimedCount: 0 };
   }
+
+  // claimedCount is now trigger-maintained on every grant status change, so
+  // it can never drift — the previous recompute-and-repair logic here is no
+  // longer needed.
 
   return {
     attendee,
     grants,
-    emailLogs: logsSnap.docs.map((d) => ({
-      id: d.id,
-      emailType: d.data().emailType,
-      sentAt: d.data().sentAt,
-      status: d.data().status,
+    emailLogs: logRows.map((l) => ({
+      id: l.id,
+      emailType: l.emailType,
+      sentAt: l.sentAt,
+      status: l.status,
     })),
   };
 }
@@ -163,70 +105,13 @@ export async function deleteAttendee(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const attendeeRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .doc(attendeeId);
-
   try {
-    const snap = await attendeeRef.get();
-    if (!snap.exists) {
+    const attendee = await getAttendeeById(eventId, attendeeId);
+    if (!attendee) {
       return { success: false, error: "Attendee not found." };
     }
 
-    const attendee = snap.data() as Attendee;
-
-    // Release any uniqueLink pool grants before deleting
-    const grantsSnap = await adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("attendees")
-      .doc(attendeeId)
-      .collection("grants")
-      .get();
-
-    if (!grantsSnap.empty) {
-      const batch = adminDb.batch();
-      for (const grantDoc of grantsSnap.docs) {
-        const grant = grantDoc.data();
-        if (grant.linkId) {
-          const linkRef = adminDb
-            .collection("events")
-            .doc(eventId)
-            .collection("coupons")
-            .doc(grant.couponId)
-            .collection("links")
-            .doc(grant.linkId);
-          batch.update(linkRef, {
-            status: "available",
-            assignedTo: null,
-            assignedAt: null,
-          });
-          // Increment linkAvailable back on the coupon definition
-          const couponRef = adminDb
-            .collection("events")
-            .doc(eventId)
-            .collection("coupons")
-            .doc(grant.couponId);
-          batch.update(couponRef, {
-            linkAvailable: FieldValue.increment(1),
-          });
-        }
-        batch.delete(grantDoc.ref);
-      }
-      await batch.commit();
-    }
-
-    const deletedEmailLogs = await deleteQueryInBatches(
-      adminDb.collection("emailLogs").where("attendeeId", "==", attendeeId)
-    );
-
-    if (attendee.claimToken) {
-      await adminDb.collection("claimTokens").doc(attendee.claimToken).delete();
-    }
-
-    await attendeeRef.delete();
+    const { deletedEmailLogs } = await deleteAttendeeCascade(eventId, attendeeId);
 
     await writeAuditLog({
       eventId,
@@ -273,12 +158,8 @@ export async function syncLumaGuests(
 ): Promise<SyncLumaResult> {
   const session = await requireSession();
 
-  const eventSnap = await adminDb
-    .collection("events")
-    .where("slug", "==", slug)
-    .limit(1)
-    .get();
-  if (eventSnap.empty) {
+  const event = await getEventBySlug(slug);
+  if (!event) {
     return {
       addedCount: 0,
       skipped: 0,
@@ -292,9 +173,8 @@ export async function syncLumaGuests(
       error: "Event not found.",
     };
   }
-  const eventId = eventSnap.docs[0].id;
-  const eventData = eventSnap.docs[0].data() as Event;
-  const eventIsPast = new Date(eventData.date) < new Date();
+  const eventId = event.id;
+  const eventIsPast = new Date(event.date) < new Date();
 
   let guests;
   try {
@@ -316,21 +196,32 @@ export async function syncLumaGuests(
 
   const totalFetched = guests.length;
 
-  // Apply checked-in filter before deduplication
   if (checkedInOnly) {
     guests = guests.filter((g) => g.checked_in_at !== null && g.checked_in_at !== "");
   }
   const checkedInCount = guests.length;
   const noCheckedInRecords = checkedInOnly && checkedInCount === 0;
 
-  const attendeesRef = adminDb.collection("events").doc(eventId).collection("attendees");
   const seenEmails = new Set<string>();
-
-  let addedCount = 0;
-  let skipped = 0;
   let invalid = 0;
+  let skipped = 0;
   let blacklistedCount = 0;
-  const added: Attendee[] = [];
+
+  const existingAttendeesByEmail = new Map(
+    (await listAttendeesForEvent(eventId)).map((a) => [a.email, a])
+  );
+
+  const now = new Date().toISOString();
+  const rowsToInsert: Array<{
+    id: string;
+    eventId: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    registeredAt?: string | null;
+    checkedInAt?: string | null;
+    isBlacklisted?: boolean;
+  }> = [];
 
   for (const guest of guests) {
     const rawEmail = guest.user_email ?? "";
@@ -347,55 +238,46 @@ export async function syncLumaGuests(
     }
     seenEmails.add(email);
 
-    const name =
-      (guest.user_name ?? "").trim() ||
-      `${(guest.user_first_name ?? "").trim()} ${(guest.user_last_name ?? "").trim()}`.trim() ||
-      email;
-
-    const docId = attendeeDocId(eventId, email);
-    const docRef = attendeesRef.doc(docId);
-    const existing = await docRef.get();
-
-    if (existing.exists) {
-      const existingData = existing.data() as Attendee;
-      if (eventIsPast && !existingData.checkedInAt && !existingData.isBlacklisted) {
-        await docRef.update({ isBlacklisted: true });
-        blacklistedCount++;
+    const existing = existingAttendeesByEmail.get(email);
+    if (existing) {
+      if (eventIsPast && !existing.checkedInAt && !existing.isBlacklisted) {
+        const didBlacklist = await blacklistIfPastAndNotCheckedIn(eventId, existing.id);
+        if (didBlacklist) blacklistedCount++;
       }
       skipped++;
       continue;
     }
 
-    const now = new Date().toISOString();
+    const name =
+      (guest.user_name ?? "").trim() ||
+      `${(guest.user_first_name ?? "").trim()} ${(guest.user_last_name ?? "").trim()}`.trim() ||
+      email;
+
     const isBlacklisted = eventIsPast && !guest.checked_in_at;
-    const attendee: Attendee = {
-      id: docId,
+    if (isBlacklisted) blacklistedCount++;
+
+    rowsToInsert.push({
+      id: attendeeDocId(eventId, email),
       eventId,
       name,
       email,
-      grantCount: 0,
-      claimedCount: 0,
-      claimedAny: false,
-      emailStatus: "pending",
-      emailSentAt: null,
-      claimToken: null,
       createdAt: now,
       registeredAt: guest.registered_at ?? null,
       checkedInAt: guest.checked_in_at ?? null,
-      ...(isBlacklisted ? { isBlacklisted: true } : {}),
-    };
-
-    await docRef.set(attendee);
-    added.push(attendee);
-    addedCount++;
-    if (isBlacklisted) blacklistedCount++;
+      isBlacklisted,
+    });
   }
+
+  // Bulk insert every new attendee in one statement instead of one
+  // get()-then-set() round trip per row.
+  const { inserted: added, insertedCount: addedCount, skippedCount: raceSkipped } =
+    await bulkInsertAttendees(rowsToInsert);
+  skipped += raceSkipped;
 
   const syncedAt = new Date().toISOString();
 
   await assignPendingForEvent(eventId, emailConfig);
-
-  await adminDb.collection("events").doc(eventId).update({ lumaLastSyncedAt: syncedAt });
+  await updateEventFields(eventId, { lumaLastSyncedAt: syncedAt });
 
   await writeAuditLog({
     eventId,

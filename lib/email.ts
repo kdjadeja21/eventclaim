@@ -1,8 +1,9 @@
-import { adminDb } from "@/lib/firebase/admin";
 import { writeAuditLog } from "@/lib/audit";
-import { Attendee, EmailLog } from "@/lib/types";
+import { Attendee } from "@/lib/types";
+import { insertEmailLog, listAttendeesByEmailStatusWithGrants } from "@/lib/db/repos/email-logs";
+import { markEmailSent, setEmailStatus } from "@/lib/db/repos/attendees";
+import { countEmailUsageSince } from "@/lib/db/repos/audit";
 import type { EmailConfig } from "@/lib/settings";
-import { nanoid } from "nanoid";
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3000";
 
@@ -63,9 +64,9 @@ async function postEmailJs(body: string): Promise<Response> {
   }
 }
 
-// ─── Email quota (Firestore audit logs) ────────────────────────────────────────
+// ─── Email quota (Postgres audit logs) ───────────────────────────────────────
 // EmailJS /history returns HTTP 200 with rows:[] for this account. We derive
-// monthly usage from auditLogs (email_sent + email_resent + email_failed), which
+// monthly usage from audit_logs (email_sent + email_resent + email_failed), which
 // matches the EmailJS dashboard request count.
 
 export type EmailQuota = {
@@ -76,31 +77,12 @@ export type EmailQuota = {
 };
 
 const QUOTA_CACHE_TTL_MS = 60_000;
-const EMAILJS_USAGE_ACTIONS = new Set([
-  "email_sent",
-  "email_resent",
-  "email_failed",
-]);
 
 let quotaCache: { at: number; value: EmailQuota } | null = null;
 
 function getCurrentMonthStartUtc(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-async function countMonthlyUsageFromAuditLogs(monthStart: Date): Promise<number> {
-  const snap = await adminDb
-    .collection("auditLogs")
-    .where("timestamp", ">=", monthStart.toISOString())
-    .select("action")
-    .get();
-
-  let count = 0;
-  for (const doc of snap.docs) {
-    if (EMAILJS_USAGE_ACTIONS.has(doc.data().action)) count++;
-  }
-  return count;
 }
 
 export function invalidateQuotaCache(): void {
@@ -138,7 +120,7 @@ export async function getEmailQuota(
     }
 
     const monthStart = getCurrentMonthStartUtc();
-    const logged = await countMonthlyUsageFromAuditLogs(monthStart);
+    const logged = await countEmailUsageSince(monthStart);
     const used = logged + config.monthlyUsedBaseline;
     const remaining = Math.max(0, limit - used);
     const value: EmailQuota = { limit, used, remaining, ok: true };
@@ -156,19 +138,15 @@ async function persistEmailLog(params: {
   status: "sent" | "failed";
   error?: string;
 }): Promise<void> {
-  const logId = nanoid();
   const now = new Date().toISOString();
-  const log: EmailLog = {
-    id: logId,
+  await insertEmailLog({
     attendeeId: params.attendee.id,
     eventId: params.attendee.eventId,
     emailType: params.isResend ? "resend" : "initial",
     sentAt: now,
-    resendCount: 0,
     status: params.status,
     ...(params.error ? { error: params.error } : {}),
-  };
-  await adminDb.collection("emailLogs").doc(logId).set(log);
+  });
   invalidateQuotaCache();
 }
 
@@ -337,19 +315,9 @@ export async function sendCouponEmail(
       throw new Error(`EmailJS error ${response.status}: ${body}`);
     }
 
-    await persistEmailLog({ attendee, isResend, status: "sent" });
-
-    // Update attendee email status
     const now = new Date().toISOString();
-    await adminDb
-      .collection("events")
-      .doc(attendee.eventId)
-      .collection("attendees")
-      .doc(attendee.id)
-      .update({
-        emailStatus: "sent",
-        emailSentAt: now,
-      });
+    await persistEmailLog({ attendee, isResend, status: "sent" });
+    await markEmailSent(attendee.eventId, attendee.id, now);
 
     await writeAuditLog({
       eventId: attendee.eventId,
@@ -364,12 +332,7 @@ export async function sendCouponEmail(
     const errorMsg = err instanceof Error ? err.message : "Unknown error";
 
     // Update attendee email status to failed
-    await adminDb
-      .collection("events")
-      .doc(attendee.eventId)
-      .collection("attendees")
-      .doc(attendee.id)
-      .update({ emailStatus: "failed" });
+    await setEmailStatus(attendee.eventId, attendee.id, "failed");
 
     await persistEmailLog({ attendee, isResend, status: "failed", error: errorMsg });
 
@@ -435,17 +398,9 @@ export async function sendPendingEmails(
   notionGuideUrl: string,
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number }> {
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .where("emailStatus", "==", "pending")
-    .where("grantCount", ">", 0)
-    .get();
-
-  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const attendeesToSend = await listAttendeesByEmailStatusWithGrants(eventId, "pending");
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
-    attendees,
+    attendeesToSend,
     notionGuideUrl,
     config,
     false
@@ -461,17 +416,9 @@ export async function resendFailedEmails(
   notionGuideUrl: string,
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number }> {
-  const snap = await adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees")
-    .where("emailStatus", "==", "failed")
-    .where("grantCount", ">", 0)
-    .get();
-
-  const attendees = snap.docs.map((doc) => doc.data() as Attendee);
+  const attendeesToSend = await listAttendeesByEmailStatusWithGrants(eventId, "failed");
   const { sent, failed, skipped } = await sendCouponEmailsConcurrent(
-    attendees,
+    attendeesToSend,
     notionGuideUrl,
     config,
     true

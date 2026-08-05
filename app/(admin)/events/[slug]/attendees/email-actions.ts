@@ -1,6 +1,5 @@
 "use server";
 
-import { adminDb } from "@/lib/firebase/admin";
 import { requireSession } from "@/lib/session";
 import {
   sendCouponEmail,
@@ -11,26 +10,20 @@ import {
   type AttendeeSendStatus,
   type EmailQuota,
 } from "@/lib/email";
+import { getAttendeeById, listAttendeesByIds } from "@/lib/db/repos/attendees";
+import { getEventById } from "@/lib/db/repos/events";
 import { Attendee } from "@/lib/types";
 import type { EmailConfig } from "@/lib/settings";
 import { revalidatePath } from "next/cache";
 
 async function getEventAndAttendee(eventId: string, attendeeId: string) {
-  const [eventDoc, attendeeDoc] = await Promise.all([
-    adminDb.collection("events").doc(eventId).get(),
-    adminDb
-      .collection("events")
-      .doc(eventId)
-      .collection("attendees")
-      .doc(attendeeId)
-      .get(),
+  const [event, attendee] = await Promise.all([
+    getEventById(eventId),
+    getAttendeeById(eventId, attendeeId),
   ]);
-  if (!eventDoc.exists) throw new Error("Event not found");
-  if (!attendeeDoc.exists) throw new Error("Attendee not found");
-  return {
-    event: eventDoc.data()!,
-    attendee: attendeeDoc.data() as Attendee,
-  };
+  if (!event) throw new Error("Event not found");
+  if (!attendee) throw new Error("Attendee not found");
+  return { event, attendee };
 }
 
 export async function refreshEmailQuota(config: EmailConfig): Promise<EmailQuota> {
@@ -85,9 +78,9 @@ export async function bulkSendPending(
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
   await requireSession();
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) throw new Error("Event not found");
-  const result = await sendPendingEmails(eventId, eventDoc.data()!.notionGuideUrl || "", config);
+  const event = await getEventById(eventId);
+  if (!event) throw new Error("Event not found");
+  const result = await sendPendingEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
   const quota = await getEmailQuota(config);
   return { ...result, quota };
@@ -98,9 +91,9 @@ export async function bulkResendFailed(
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
   await requireSession();
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) throw new Error("Event not found");
-  const result = await resendFailedEmails(eventId, eventDoc.data()!.notionGuideUrl || "", config);
+  const event = await getEventById(eventId);
+  if (!event) throw new Error("Event not found");
+  const result = await resendFailedEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
   const quota = await getEmailQuota(config);
   return { ...result, quota };
@@ -122,18 +115,14 @@ export async function bulkSendSelected(
   // instead of once per attendee.
   await requireSession();
 
-  const eventDoc = await adminDb.collection("events").doc(eventId).get();
-  if (!eventDoc.exists) throw new Error("Event not found");
-  const notionGuideUrl = eventDoc.data()!.notionGuideUrl || "";
+  const event = await getEventById(eventId);
+  if (!event) throw new Error("Event not found");
+  const notionGuideUrl = event.notionGuideUrl || "";
 
   const isResend = mode === "resend";
-  const attendeesRef = adminDb
-    .collection("events")
-    .doc(eventId)
-    .collection("attendees");
 
-  // Batch-read all selected attendees. Firestore getAll accepts many refs; we
-  // chunk defensively to keep individual reads bounded.
+  // Batch-read all selected attendees in one query (chunked defensively for
+  // very large selections) instead of Firestore's getAll-per-chunk pattern.
   const results: {
     attendeeId: string;
     status: AttendeeSendStatus;
@@ -141,22 +130,18 @@ export async function bulkSendSelected(
   }[] = [];
   const toSend: Attendee[] = [];
 
-  const READ_CHUNK = 300;
+  const READ_CHUNK = 1000;
   for (let i = 0; i < attendeeIds.length; i += READ_CHUNK) {
     const idsChunk = attendeeIds.slice(i, i + READ_CHUNK);
-    const refs = idsChunk.map((id) => attendeesRef.doc(id));
-    const docs = await adminDb.getAll(...refs);
+    const rows = await listAttendeesByIds(idsChunk);
+    const byId = new Map(rows.map((a) => [a.id, a]));
 
-    for (const doc of docs) {
-      if (!doc.exists) {
-        results.push({
-          attendeeId: doc.id,
-          status: "skipped",
-          error: "Attendee not found",
-        });
+    for (const id of idsChunk) {
+      const attendee = byId.get(id);
+      if (!attendee) {
+        results.push({ attendeeId: id, status: "skipped", error: "Attendee not found" });
         continue;
       }
-      const attendee = doc.data() as Attendee;
       if (!attendee.grantCount) {
         results.push({
           attendeeId: attendee.id,
@@ -167,11 +152,7 @@ export async function bulkSendSelected(
       }
       // In "send" mode, never re-send to someone already marked sent.
       if (!isResend && attendee.emailStatus === "sent") {
-        results.push({
-          attendeeId: attendee.id,
-          status: "skipped",
-          error: "Already sent",
-        });
+        results.push({ attendeeId: attendee.id, status: "skipped", error: "Already sent" });
         continue;
       }
       if (attendee.emailStatus === "sending") {
