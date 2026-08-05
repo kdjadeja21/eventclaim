@@ -114,6 +114,10 @@ async function showStepAt(index: number): Promise<void> {
   const total = steps.length;
   const isFirst = index === 0;
   const isLast = index === total - 1;
+  // We drive one spotlight at a time across routes, so driver.js always treats
+  // the active popover as its "last" step and renders doneBtnText. Keep that
+  // label in sync with the real feature-tour position.
+  const primaryBtnText = isLast ? "Finish" : "Next";
 
   activeDriver = driver({
     showProgress: true,
@@ -123,9 +127,9 @@ async function showStepAt(index: number): Promise<void> {
     stagePadding: 8,
     stageRadius: 8,
     popoverClass: "eventclaim-tour-popover",
-    nextBtnText: isLast ? "Finish" : "Next",
+    nextBtnText: primaryBtnText,
     prevBtnText: "Back",
-    doneBtnText: "Finish",
+    doneBtnText: primaryBtnText,
     progressText: `Step ${index + 1} of ${total}`,
     steps: [
       {
@@ -167,11 +171,6 @@ async function showStepAt(index: number): Promise<void> {
       activeDriver = null;
     },
   });
-
-  // If Back on first step would be confusing, driver still shows it; onPrev keeps us on 0.
-  if (isFirst) {
-    // no-op; handled in onPrevClick
-  }
 
   activeDriver.drive();
 }
