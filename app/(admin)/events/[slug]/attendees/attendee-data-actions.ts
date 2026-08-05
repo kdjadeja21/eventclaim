@@ -19,6 +19,7 @@ import { listEmailLogsForAttendee } from "@/lib/db/repos/email-logs";
 import { listGrantsForAttendee } from "@/lib/db/repos/grants";
 import { getCouponById } from "@/lib/db/repos/coupons";
 import { getEventBySlug, updateEventFields } from "@/lib/db/repos/events";
+import type { EmailConfig } from "@/lib/settings";
 import { revalidatePath } from "next/cache";
 
 export async function getAttendees(slug: string): Promise<{ attendees: Attendee[]; eventId: string }> {
@@ -151,7 +152,9 @@ export interface SyncLumaResult {
 export async function syncLumaGuests(
   slug: string,
   lumaParams: FetchAllGuestsParams,
-  checkedInOnly = false
+  checkedInOnly = false,
+  lumaApiKey = "",
+  emailConfig?: EmailConfig
 ): Promise<SyncLumaResult> {
   const session = await requireSession();
 
@@ -175,7 +178,7 @@ export async function syncLumaGuests(
 
   let guests;
   try {
-    guests = await fetchAllLumaGuests(lumaParams);
+    guests = await fetchAllLumaGuests(lumaParams, lumaApiKey);
   } catch (err) {
     return {
       addedCount: 0,
@@ -273,7 +276,7 @@ export async function syncLumaGuests(
 
   const syncedAt = new Date().toISOString();
 
-  await assignPendingForEvent(eventId);
+  await assignPendingForEvent(eventId, emailConfig);
   await updateEventFields(eventId, { lumaLastSyncedAt: syncedAt });
 
   await writeAuditLog({

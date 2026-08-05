@@ -13,6 +13,7 @@ import {
 import { getAttendeeById, listAttendeesByIds } from "@/lib/db/repos/attendees";
 import { getEventById } from "@/lib/db/repos/events";
 import { Attendee } from "@/lib/types";
+import type { EmailConfig } from "@/lib/settings";
 import { revalidatePath } from "next/cache";
 
 async function getEventAndAttendee(eventId: string, attendeeId: string) {
@@ -25,101 +26,84 @@ async function getEventAndAttendee(eventId: string, attendeeId: string) {
   return { event, attendee };
 }
 
-export async function refreshEmailQuota(): Promise<EmailQuota> {
+export async function refreshEmailQuota(config: EmailConfig): Promise<EmailQuota> {
   await requireSession();
-  return getEmailQuota({ force: true });
+  return getEmailQuota(config, { force: true });
 }
 
 export async function sendSingleEmail(
   eventId: string,
-  attendeeId: string
+  attendeeId: string,
+  config: EmailConfig
 ): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
-  console.log("[sendSingleEmail] start", { eventId, attendeeId });
   await requireSession();
   const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
-  console.log("[sendSingleEmail] attendee fetched", {
-    attendeeEmail: attendee.email,
-    emailStatus: attendee.emailStatus,
-    hasGrants: attendee.grantCount ?? 0,
-    hasClaimToken: !!attendee.claimToken,
-    notionGuideUrl: event.notionGuideUrl || "(none)",
-  });
   if (!attendee.grantCount) {
-    const quota = await getEmailQuota();
+    const quota = await getEmailQuota(config);
     return { success: false, error: "No offers granted — cannot send email", quota };
   }
   if (attendee.emailStatus === "sending") {
-    const quota = await getEmailQuota();
+    const quota = await getEmailQuota(config);
     return { success: false, error: "Email is already being sent", quota };
   }
-  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", false, event.name);
-  console.log("[sendSingleEmail] result", result);
+  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", config, false, event.name);
   revalidatePath(`/events`);
-  const quota = await getEmailQuota();
+  const quota = await getEmailQuota(config);
   return { ...result, quota };
 }
 
 export async function resendSingleEmail(
   eventId: string,
-  attendeeId: string
+  attendeeId: string,
+  config: EmailConfig
 ): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
-  console.log("[resendSingleEmail] start", { eventId, attendeeId });
   await requireSession();
   const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
-  console.log("[resendSingleEmail] attendee fetched", {
-    attendeeEmail: attendee.email,
-    emailStatus: attendee.emailStatus,
-    hasGrants: attendee.grantCount ?? 0,
-    hasClaimToken: !!attendee.claimToken,
-    notionGuideUrl: event.notionGuideUrl || "(none)",
-  });
   if (!attendee.grantCount) {
-    const quota = await getEmailQuota();
+    const quota = await getEmailQuota(config);
     return { success: false, error: "No offers granted — cannot resend email", quota };
   }
   if (attendee.emailStatus === "sending") {
-    const quota = await getEmailQuota();
+    const quota = await getEmailQuota(config);
     return { success: false, error: "Email is already being sent", quota };
   }
-  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", true, event.name);
-  console.log("[resendSingleEmail] result", result);
+  const result = await sendCouponEmail(attendee, event.notionGuideUrl || "", config, true, event.name);
   revalidatePath(`/events`);
-  const quota = await getEmailQuota();
+  const quota = await getEmailQuota(config);
   return { ...result, quota };
 }
 
 export async function bulkSendPending(
-  eventId: string
+  eventId: string,
+  config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
-  console.log("[bulkSendPending] start", { eventId });
   await requireSession();
   const event = await getEventById(eventId);
   if (!event) throw new Error("Event not found");
-  const result = await sendPendingEmails(eventId, event.notionGuideUrl || "");
-  console.log("[bulkSendPending] result", result);
+  const result = await sendPendingEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
-  const quota = await getEmailQuota();
+  const quota = await getEmailQuota(config);
   return { ...result, quota };
 }
 
 export async function bulkResendFailed(
-  eventId: string
+  eventId: string,
+  config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
-  console.log("[bulkResendFailed] start", { eventId });
   await requireSession();
   const event = await getEventById(eventId);
   if (!event) throw new Error("Event not found");
-  const result = await resendFailedEmails(eventId, event.notionGuideUrl || "");
-  console.log("[bulkResendFailed] result", result);
+  const result = await resendFailedEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
-  const quota = await getEmailQuota();
+  const quota = await getEmailQuota(config);
   return { ...result, quota };
 }
 
 export async function bulkSendSelected(
   eventId: string,
   attendeeIds: string[],
-  mode: "send" | "resend"
+  mode: "send" | "resend",
+  config: EmailConfig
 ): Promise<{
   success: number;
   failed: number;
@@ -127,11 +111,6 @@ export async function bulkSendSelected(
   quota: EmailQuota;
   results: { attendeeId: string; status: AttendeeSendStatus; error?: string }[];
 }> {
-  console.log("[bulkSendSelected] start", {
-    eventId,
-    count: attendeeIds.length,
-    mode,
-  });
   // Validate the session and load the event a single time for the whole batch,
   // instead of once per attendee.
   await requireSession();
@@ -191,6 +170,7 @@ export async function bulkSendSelected(
   const sendResult = await sendCouponEmailsConcurrent(
     toSend,
     notionGuideUrl,
+    config,
     isResend
   );
   results.push(...sendResult.results);
@@ -201,7 +181,6 @@ export async function bulkSendSelected(
   const failed = results.filter((r) => r.status === "failed").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
 
-  console.log("[bulkSendSelected] result", { success, failed, skipped });
-  const quota = await getEmailQuota();
+  const quota = await getEmailQuota(config);
   return { success, failed, skipped, results, quota };
 }

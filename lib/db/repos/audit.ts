@@ -1,9 +1,15 @@
 import "server-only";
-import { desc } from "drizzle-orm";
+import { and, desc, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { auditLogs } from "@/lib/db/schema";
 import { AuditAction, AuditLog } from "@/lib/types";
 import { nanoid } from "nanoid";
+
+const EMAILJS_USAGE_ACTIONS = [
+  "email_sent",
+  "email_resent",
+  "email_failed",
+] as const satisfies readonly AuditAction[];
 
 function toAuditLog(row: typeof auditLogs.$inferSelect): AuditLog {
   return {
@@ -39,4 +45,18 @@ export async function listAuditLogs(limit: number): Promise<AuditLog[]> {
     .orderBy(desc(auditLogs.timestamp))
     .limit(limit);
   return rows.map(toAuditLog);
+}
+
+/** Counts EmailJS-related audit rows since `monthStart` (for monthly quota). */
+export async function countEmailUsageSince(monthStart: Date): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(auditLogs)
+    .where(
+      and(
+        gte(auditLogs.timestamp, monthStart),
+        inArray(auditLogs.action, [...EMAILJS_USAGE_ACTIONS])
+      )
+    );
+  return row?.count ?? 0;
 }

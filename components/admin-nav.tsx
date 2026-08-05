@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardList,
   Wrench,
+  Settings,
   LogOut,
   ChevronRight,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/events", label: "Events", icon: CalendarDays },
   { href: "/audit", label: "Audit Logs", icon: ClipboardList },
   { href: "/tools", label: "Tools", icon: Wrench },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AdminNav({ userEmail }: { userEmail?: string }) {

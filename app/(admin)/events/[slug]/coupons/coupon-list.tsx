@@ -23,6 +23,7 @@ import {
   ArrowDown,
   Eye,
   MoreHorizontal,
+  ScanEye,
 } from "lucide-react";
 import { CouponWithStats, CouponKind } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useAppSettings } from "@/lib/use-app-settings";
 import {
   createCoupon,
   updateCoupon,
@@ -66,6 +68,11 @@ import {
   reorderCoupons,
 } from "./coupon-actions";
 import { LogoField } from "./logo-field";
+import {
+  OfferPreviewDialog,
+  toPreviewOffer,
+} from "./offer-preview-dialog";
+import type { PartnerOfferCardData } from "@/app/claim/[token]/offer-card";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -141,8 +148,32 @@ export default function CouponList({
   const [saving, setSaving] = useState(false);
   const [reorderingId, setReorderingId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [previewOffer, setPreviewOffer] = useState<PartnerOfferCardData | null>(
+    null
+  );
   const [, startTransition] = useTransition();
   const router = useRouter();
+  const { emailConfig } = useAppSettings();
+
+  function openFormPreview() {
+    setPreviewOffer(toPreviewOffer(form));
+  }
+
+  function openCouponPreview(coupon: CouponWithStats) {
+    setPreviewOffer(
+      toPreviewOffer({
+        name: coupon.name,
+        kind: coupon.kind,
+        category: coupon.category,
+        logoUrl: coupon.logoUrl,
+        highlight: coupon.highlight,
+        description: coupon.description,
+        note: coupon.note,
+        redeemUrl: coupon.redeemUrl,
+        sharedValue: coupon.sharedValue,
+      })
+    );
+  }
 
   function openCreate() {
     setForm(EMPTY_FORM);
@@ -183,7 +214,7 @@ export default function CouponList({
     setSaving(true);
 
     if (dialog?.type === "create") {
-      const res = await createCoupon(eventId, form, eventSlug);
+      const res = await createCoupon(eventId, form, eventSlug, emailConfig);
       setSaving(false);
       if (res.success) {
         toast.success("Coupon created and grants issued to existing attendees.");
@@ -229,7 +260,8 @@ export default function CouponList({
         eventId,
         coupon.id,
         !coupon.isDisabled,
-        eventSlug
+        eventSlug,
+        emailConfig
       );
       if (res.success) {
         setCoupons((prev) =>
@@ -425,6 +457,12 @@ export default function CouponList({
                             <Edit className="h-4 w-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => openCouponPreview(coupon)}
+                          >
+                            <ScanEye className="h-4 w-4 mr-2" />
+                            Preview claim card
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleToggle(coupon)}>
                             {coupon.isDisabled ? (
                               <CheckCircle className="h-4 w-4 mr-2" />
@@ -543,7 +581,6 @@ export default function CouponList({
             </div>
 
             <LogoField
-              eventId={eventId}
               value={form.logoUrl}
               onChange={(logoUrl) => setForm((f) => ({ ...f, logoUrl }))}
             />
@@ -628,12 +665,29 @@ export default function CouponList({
               {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {dialog?.type === "create" ? "Create Offer" : "Save Changes"}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openFormPreview}
+              disabled={saving}
+            >
+              <ScanEye className="h-4 w-4 mr-1.5" />
+              Preview
+            </Button>
             <Button variant="outline" onClick={() => setDialog(null)} disabled={saving}>
               Cancel
             </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <OfferPreviewDialog
+        open={!!previewOffer}
+        onOpenChange={(open) => {
+          if (!open) setPreviewOffer(null);
+        }}
+        offer={previewOffer}
+      />
 
       {/* ─── Delete Confirm Dialog ────────────────────────────────────────────── */}
       <Dialog

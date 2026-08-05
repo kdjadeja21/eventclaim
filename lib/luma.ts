@@ -49,15 +49,16 @@ export interface FetchAllGuestsParams {
 const LUMA_API_BASE = "https://public-api.luma.com";
 const MAX_PAGES = 200; // safety cap: 200 × 50 = 10 000 guests max
 
-export function isLumaApiConfigured(): boolean {
-  return Boolean(process.env.LUMA_API_KEY?.trim());
-}
-
 export async function fetchAllLumaGuests(
-  params: FetchAllGuestsParams
+  params: FetchAllGuestsParams,
+  apiKey: string
 ): Promise<LumaGuest[]> {
-  const apiKey = process.env.LUMA_API_KEY?.trim();
-  if (!apiKey) throw new Error("LUMA_API_KEY is not set in environment.");
+  const trimmedKey = apiKey?.trim();
+  if (!trimmedKey) {
+    throw new Error(
+      "Luma API key is not configured. Add it on the Settings page."
+    );
+  }
 
   const all: LumaGuest[] = [];
   let cursor: string | undefined;
@@ -70,7 +71,7 @@ export async function fetchAllLumaGuests(
     if (cursor) qs.set("pagination_cursor", cursor);
 
     const res = await fetch(`${LUMA_API_BASE}/v1/event/get-guests?${qs.toString()}`, {
-      headers: { "x-luma-api-key": apiKey },
+      headers: { "x-luma-api-key": trimmedKey },
       cache: "no-store",
     });
 

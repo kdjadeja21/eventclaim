@@ -1,10 +1,19 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import type { EmailQuota } from "@/lib/email";
 import { Attendee } from "@/lib/types";
+import { useAppSettings } from "@/lib/use-app-settings";
 import AttendeeTable from "./attendee-table";
 import EmailQuotaBadge from "./email-quota-badge";
+import { refreshEmailQuota } from "./email-actions";
+
+const UNCONFIGURED_QUOTA: EmailQuota = {
+  limit: 0,
+  used: 0,
+  remaining: 0,
+  ok: false,
+};
 
 type QuotaContextValue = {
   quota: EmailQuota;
@@ -22,12 +31,26 @@ function useAttendeesQuota() {
 }
 
 type ProviderProps = {
-  initialQuota: EmailQuota;
   children: React.ReactNode;
 };
 
-export function AttendeesProvider({ initialQuota, children }: ProviderProps) {
-  const [quota, setQuota] = useState(initialQuota);
+export function AttendeesProvider({ children }: ProviderProps) {
+  const [quota, setQuota] = useState<EmailQuota>(UNCONFIGURED_QUOTA);
+  const { loading, emailConfigured, emailConfig } = useAppSettings();
+
+  // Fetch the real quota once settings have loaded from localStorage — the
+  // server has no way to know the EmailJS config ahead of time.
+  useEffect(() => {
+    if (loading || !emailConfigured) return;
+    let mounted = true;
+    refreshEmailQuota(emailConfig).then((q) => {
+      if (mounted) setQuota(q);
+    });
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, emailConfigured]);
 
   return (
     <AttendeesQuotaContext.Provider value={{ quota, setQuota }}>
@@ -38,6 +61,7 @@ export function AttendeesProvider({ initialQuota, children }: ProviderProps) {
 
 export function AttendeesQuotaBadge() {
   const { quota, setQuota } = useAttendeesQuota();
+  const { emailConfig } = useAppSettings();
 
   return (
     <EmailQuotaBadge
@@ -45,6 +69,7 @@ export function AttendeesQuotaBadge() {
       used={quota.used}
       remaining={quota.remaining}
       ok={quota.ok}
+      emailConfig={emailConfig}
       onQuotaChange={setQuota}
     />
   );
@@ -55,7 +80,6 @@ type TableProps = {
   eventId: string;
   eventSlug: string;
   initialLumaLastSyncedAt?: string | null;
-  lumaApiEnabled?: boolean;
 };
 
 export function AttendeesTable({
@@ -63,7 +87,6 @@ export function AttendeesTable({
   eventId,
   eventSlug,
   initialLumaLastSyncedAt,
-  lumaApiEnabled = false,
 }: TableProps) {
   const { setQuota } = useAttendeesQuota();
 
@@ -73,7 +96,6 @@ export function AttendeesTable({
       eventId={eventId}
       eventSlug={eventSlug}
       initialLumaLastSyncedAt={initialLumaLastSyncedAt}
-      lumaApiEnabled={lumaApiEnabled}
       onQuotaChange={setQuota}
     />
   );

@@ -3,6 +3,7 @@ import { autoSendEmailIfEnabled } from "@/lib/auto-send";
 import { ensureClaimToken } from "@/lib/assignment-helpers";
 import { getEventById } from "@/lib/db/repos/events";
 import { assignPendingForEvent as assignPendingForEventRepo } from "@/lib/db/repos/grants";
+import type { EmailConfig } from "@/lib/settings";
 
 export { ensureClaimToken };
 
@@ -14,7 +15,10 @@ export { ensureClaimToken };
  * read/write volume in the app. Returns the number of attendees who
  * received at least one new grant.
  */
-export async function assignPendingForEvent(eventId: string): Promise<number> {
+export async function assignPendingForEvent(
+  eventId: string,
+  emailConfig?: EmailConfig
+): Promise<number> {
   const touchedAttendeeIds = await assignPendingForEventRepo(eventId);
   if (touchedAttendeeIds.length === 0) return 0;
 
@@ -28,7 +32,7 @@ export async function assignPendingForEvent(eventId: string): Promise<number> {
 
   if (event?.autoSendEmail) {
     for (const attendeeId of touchedAttendeeIds) {
-      await autoSendEmailIfEnabled(event, attendeeId);
+      await autoSendEmailIfEnabled(event, attendeeId, emailConfig);
     }
   }
 

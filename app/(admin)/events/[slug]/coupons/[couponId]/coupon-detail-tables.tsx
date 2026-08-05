@@ -37,6 +37,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Coupon, CouponLink, Grant } from "@/lib/types";
+import { useAppSettings } from "@/lib/use-app-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -266,6 +267,7 @@ function LinkPoolTable({
   const couponId = coupon.id;
   const [links, setLinks] = useState(initial);
   const router = useRouter();
+  const { emailConfig } = useAppSettings();
 
   useEffect(() => {
     setLinks(initial);
@@ -586,7 +588,7 @@ function LinkPoolTable({
   async function handleAddLinks() {
     if (!addText.trim()) return;
     setAddPending(true);
-    const res = await addCouponLinks(eventId, couponId, addText, eventSlug);
+    const res = await addCouponLinks(eventId, couponId, addText, eventSlug, emailConfig);
     setAddPending(false);
     if (res.success) {
       const parts: string[] = [];

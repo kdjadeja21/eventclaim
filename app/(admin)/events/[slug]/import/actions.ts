@@ -7,11 +7,13 @@ import { parseLumaAttendeeCsv, attendeeDocId } from "@/lib/import";
 import { AttendeeImportResult } from "@/lib/types";
 import { bulkInsertAttendees } from "@/lib/db/repos/attendees";
 import { resolveEventId } from "@/lib/db/repos/events";
+import type { EmailConfig } from "@/lib/settings";
 
 export async function importAttendees(
   slug: string,
   csvText: string,
-  checkedInOnly: boolean
+  checkedInOnly: boolean,
+  emailConfig?: EmailConfig
 ): Promise<AttendeeImportResult> {
   const session = await requireSession();
   const eventId = await resolveEventId(slug);
@@ -38,7 +40,7 @@ export async function importAttendees(
 
   // Grant all coupons to newly-imported attendees — one set-based statement
   // per enabled coupon instead of one insert per (attendee, coupon) pair.
-  const assigned = await assignPendingForEvent(eventId);
+  const assigned = await assignPendingForEvent(eventId, emailConfig);
 
   return {
     imported,

@@ -4,15 +4,34 @@ import { requireSession } from "@/lib/session";
 import { resolveEventId } from "@/lib/db/repos/events";
 import { listAttendeesForEvent } from "@/lib/db/repos/attendees";
 import { listEnabledCouponsForEvent } from "@/lib/db/repos/coupons";
+import { getEmailQuota, type EmailQuota } from "@/lib/email";
+import type { EmailConfig } from "@/lib/settings";
 
-export async function getPreviewStats(slug: string) {
+export type PreviewStats = {
+  eventId: string;
+  totalAttendees: number;
+  enabledCouponCount: number;
+  attendeesWithGrants: number;
+  attendeesWithoutGrants: number;
+  poolExhausted: boolean;
+  emailsToSend: number;
+  emailsFailed: number;
+  canSend: boolean;
+  quota: EmailQuota;
+};
+
+export async function getPreviewStats(
+  slug: string,
+  emailConfig: EmailConfig
+): Promise<PreviewStats> {
   await requireSession();
 
   const eventId = await resolveEventId(slug);
 
-  const [attendees, enabledCoupons] = await Promise.all([
+  const [attendees, enabledCoupons, quota] = await Promise.all([
     listAttendeesForEvent(eventId),
     listEnabledCouponsForEvent(eventId),
+    getEmailQuota(emailConfig),
   ]);
 
   const enabledCouponCount = enabledCoupons.length;
@@ -49,5 +68,6 @@ export async function getPreviewStats(slug: string) {
     emailsToSend,
     emailsFailed,
     canSend,
+    quota,
   };
 }

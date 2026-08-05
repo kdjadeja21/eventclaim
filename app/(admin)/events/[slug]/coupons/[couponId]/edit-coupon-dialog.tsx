@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Edit } from "lucide-react";
-import { Coupon, CouponKind } from "@/lib/types";
+import { Loader2, Edit, ScanEye } from "lucide-react";
+import { Coupon } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +19,11 @@ import {
 } from "@/components/ui/dialog";
 import { updateCoupon } from "../coupon-actions";
 import { LogoField } from "../logo-field";
+import {
+  OfferPreviewDialog,
+  toPreviewOffer,
+} from "../offer-preview-dialog";
+import type { PartnerOfferCardData } from "@/app/claim/[token]/offer-card";
 
 export function EditCouponDialog({
   eventId,
@@ -33,6 +38,9 @@ export function EditCouponDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [previewOffer, setPreviewOffer] = useState<PartnerOfferCardData | null>(
+    null
+  );
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -67,6 +75,7 @@ export function EditCouponDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-muted-foreground hover:text-foreground">
@@ -105,7 +114,6 @@ export function EditCouponDialog({
           </div>
 
           <LogoField
-            eventId={eventId}
             value={form.logoUrl}
             onChange={(logoUrl) => setForm((f) => ({ ...f, logoUrl }))}
           />
@@ -183,11 +191,29 @@ export function EditCouponDialog({
             {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Save Changes
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPreviewOffer(toPreviewOffer(form))}
+            disabled={saving}
+          >
+            <ScanEye className="h-4 w-4 mr-1.5" />
+            Preview
+          </Button>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>
             Cancel
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+
+    <OfferPreviewDialog
+      open={!!previewOffer}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) setPreviewOffer(null);
+      }}
+      offer={previewOffer}
+    />
+    </>
   );
 }

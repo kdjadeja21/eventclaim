@@ -66,12 +66,14 @@ Create a `.env.local` in the project root:
 | `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification and Storage uploads. Without it, sign-in succeeds in the client but server sessions fail. |
 | `DATABASE_URL` | Yes | Supabase Supavisor **transaction pooler** connection string, port `6543`. Used by the app at runtime — must keep `prepare=false` (already set in `lib/db/client.ts`). |
 | `DIRECT_URL` | Yes | Supabase **direct** Postgres connection string, port `5432`. Used only by `drizzle-kit` (migrations/introspection) and the backfill script. |
-| `EMAILJS_SERVICE_ID` | Yes | EmailJS service ID |
-| `EMAILJS_TEMPLATE_ID` | Yes | EmailJS template ID |
-| `EMAILJS_PUBLIC_KEY` | Yes | EmailJS public key |
-| `EMAILJS_PRIVATE_KEY` | Yes | EmailJS private key (server-side sends) |
-| `EMAILJS_MONTHLY_QUOTA` | No | Monthly EmailJS send limit for quota display (default: `200`) |
-| `APP_BASE_URL` | No | Public base URL for claim links in emails (default: `http://localhost:3000`) |
+
+The Luma API key and all EmailJS configuration (service ID, template ID,
+public/private keys, monthly quota, and the claim-link base URL) are **not**
+read from environment variables. Instead, sign in and open **Settings**
+(`/settings`) to enter them — they're encrypted and stored only in that
+browser's `localStorage`, and are supplied to server actions at the moment
+each button is clicked (Luma sync, send/resend email, import, coupon
+create/enable). See [Settings](#settings) below.
 
 ## Scripts
 
@@ -108,6 +110,7 @@ Create a `.env.local` in the project root:
 | `/events/[slug]/attendees` | Manage attendees and email actions |
 | `/events/[slug]/preview` | Preview and bulk-send pending emails |
 | `/audit` | Audit log viewer |
+| `/settings` | Configure the Luma API key and EmailJS credentials for this browser |
 
 ### API
 
@@ -140,6 +143,29 @@ Every table has row-level security enabled with zero policies, so the app connec
 
 Re-importing the same attendee email or coupon link for an event is idempotent (deterministic document IDs).
 
+## Settings
+
+Rather than relying on a `.env` file for the Luma API key and EmailJS
+credentials — which assumes a development background most event organizers
+don't have — this app has a **Settings** page (`/settings`, requires an admin
+session) where those values are entered directly in the browser.
+
+- Values are encrypted (`AES-GCM`, Web Crypto API) and written **only** to
+  that browser's `localStorage`. They are never sent to a server to be
+  stored, and no `.env` file is consulted for them.
+- Because they live in the browser, not on the server, they don't sync across
+  devices/browsers, and clearing site data removes them — re-enter them on
+  Settings if that happens.
+- Server actions that call the Luma or EmailJS APIs (Luma sync, send/resend
+  email, CSV import, coupon create/enable) receive these values as arguments
+  from the client at the moment they're invoked; the server itself never
+  holds a copy.
+- The encryption key is also generated per-browser and stored in
+  `localStorage`. This protects the values from being read as plain text
+  (e.g. in a `localStorage` backup or a casual look at DevTools) but, like
+  any browser-only vault with no login-time passphrase, it isn't a defense
+  against script-level XSS in the page.
+
 ## Authentication
 
 1. Admin signs in with Google (Firebase client SDK).
@@ -149,7 +175,7 @@ Re-importing the same attendee email or coupon link for an event is idempotent (
 
 ## Deployment
 
-Standard Next.js deployment (e.g. [Vercel](https://vercel.com)) works. Set all environment variables in the hosting provider, including `APP_BASE_URL` for production claim links, and `DATABASE_URL` (pooler, 6543) / `DIRECT_URL` (direct, 5432) for Supabase. Ensure `FIREBASE_SERVICE_ACCOUNT` (or equivalent credentials) is available to the server runtime.
+Standard Next.js deployment (e.g. [Vercel](https://vercel.com)) works. Set Firebase and Supabase environment variables in the hosting provider (`DATABASE_URL` pooler on 6543, `DIRECT_URL` direct on 5432). Ensure `FIREBASE_SERVICE_ACCOUNT` (or equivalent credentials) is available to the server runtime. Configure Luma and EmailJS (including the claim-link base URL) per browser on **Settings** after deploy.
 
 There is no project-specific `vercel.json` or Docker configuration in this repository.
 
