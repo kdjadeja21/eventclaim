@@ -52,8 +52,8 @@ function Code({ children }: { children: ReactNode }) {
 
 export default function SettingsGuidePage() {
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="space-y-4">
+    <div className="w-full max-w-full space-y-6">
+      <div className="space-y-4 max-w-3xl">
         <Button variant="ghost" size="sm" asChild className="-ml-2">
           <Link href="/settings">
             <ArrowLeft className="h-4 w-4" />
@@ -96,8 +96,9 @@ export default function SettingsGuidePage() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-start">
       {/* ── Luma ─────────────────────────────────────────────────────────── */}
-      <Card id="luma" className="scroll-mt-6">
+      <Card id="luma" className="scroll-mt-6 h-full min-w-0">
         <CardHeader>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -228,7 +229,7 @@ export default function SettingsGuidePage() {
       </Card>
 
       {/* ── EmailJS ──────────────────────────────────────────────────────── */}
-      <Card id="emailjs" className="scroll-mt-6">
+      <Card id="emailjs" className="scroll-mt-6 h-full min-w-0">
         <CardHeader>
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -403,6 +404,7 @@ export default function SettingsGuidePage() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       <div className="pb-8">
         <Button asChild>
