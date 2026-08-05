@@ -289,10 +289,16 @@ export default function SettingsGuidePage() {
 
             <Step number={3} title="Create the Email Template (exact settings)">
               <p>
-                Create a new <strong>Email Template</strong>. EventClaim already
-                created the email content in the portal — your EmailJS template
-                must use these <strong>exact</strong> settings so the dynamic
-                template is visible:
+                In the EmailJS dashboard, go to{" "}
+                <strong>Email Templates → Create New Template</strong>. From the
+                list of templates, select the default one{" "}
+                <strong>&ldquo;Contact Us&rdquo;</strong> and click{" "}
+                <strong>Create Template</strong>.
+              </p>
+              <p>
+                EventClaim already created the email content in the portal —
+                edit this template to use these <strong>exact</strong> settings
+                so the dynamic template is visible:
               </p>
               <div className="rounded-lg border bg-background p-3 space-y-2 text-xs">
                 <p>
