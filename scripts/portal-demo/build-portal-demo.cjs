@@ -2,13 +2,15 @@
  * Enterprise portal demo builder
  *
  * - Title/end cards (no login chrome in the cut)
- * - Strict waits so skeleton/loading frames never enter the final video
- * - Per-section Playwright recordVideo clipped to exact TTS duration (A/V lock)
+ * - PNG still-holds for static sections (crisp UI text)
+ * - recordVideo only for interactive beats (scroll / autosend / temp users)
+ * - Strict main-scoped waits + auto-fail skeleton/content probe gate
  * - Soft WebVTT captions aligned to narration sentence timing
- * - Brief Create temp users coverage (draft-only email verification workflow)
  *
  * Prerequisites: see .cursor/skills/portal-demo-video/SKILL.md
  * Auth: scripts/portal-demo/storageState.json (from save-storage-state.cjs)
+ *
+ * DEMO_PROBE_ONLY=1 — capture/verify probes then exit (no final concat)
  */
 const fs = require("fs");
 const path = require("path");
@@ -39,11 +41,45 @@ const BASE = process.env.DEMO_BASE_URL || "http://127.0.0.1:3000";
 const SLUG = "cursor-community-meetup";
 const WORK = process.env.DEMO_WORK_DIR || "/tmp/demo-video/build";
 const EDGE = process.env.EDGE_TTS_BIN || path.join(process.env.HOME || "", ".local/bin/edge-tts");
-const VOICE = "en-US-JennyNeural";
+const VOICE = process.env.DEMO_TTS_VOICE || "en-US-AvaNeural";
+const VOICE_RATE = process.env.DEMO_TTS_RATE || "+0%";
 const OUT_MP4 = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.mp4");
 const OUT_VTT = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.vtt");
 const DRAFT_DIR = path.join(REPO_ROOT, "public/demo/draft");
 const STORAGE_STATE = path.join(__dirname, "storageState.json");
+const PROBE_ONLY = process.env.DEMO_PROBE_ONLY === "1";
+const ARTIFACT_PROBES = "/opt/cursor/artifacts/demo-probes";
+
+const VIDEO_ENCODE = [
+  "-c:v",
+  "libx264",
+  "-pix_fmt",
+  "yuv420p",
+  "-preset",
+  "slow",
+  "-crf",
+  "14",
+  "-b:v",
+  "4M",
+  "-maxrate",
+  "6M",
+  "-bufsize",
+  "8M",
+];
+
+/** Required substrings that must appear in <main> after waits (probe gate). */
+const REQUIRED_MAIN_TEXT = {
+  settings: ["Luma API", "EmailJS", "Save settings"],
+  guide: ["Integration Setup Guide"],
+  dashboard: ["Dashboard", "Total Events", "Cursor Community Meetup"],
+  events: ["Cursor Community Meetup"],
+  overview: ["Cursor Community Meetup", "Auto-send emails", "Claim Rate"],
+  import: ["Import Attendees from Luma"],
+  attendees: ["Alex Rivera"],
+  coupons: ["Cursor Credits"],
+  "coupon-detail": ["Cursor Credits"],
+  audit: ["Audit Logs", "Event Created"],
+};
 
 const SECTIONS = [
   {
@@ -212,6 +248,14 @@ async function pause(ms) {
   await new Promise((r) => setTimeout(r, ms));
 }
 
+function mainLocator(page) {
+  return page.locator("main");
+}
+
+function isInteractive(section) {
+  return Boolean(section.interact);
+}
+
 async function generateAudio() {
   fs.mkdirSync(path.join(WORK, "audio"), { recursive: true });
   const meta = [];
@@ -224,7 +268,7 @@ async function generateAudio() {
       "--voice",
       VOICE,
       "--rate",
-      "+4%",
+      VOICE_RATE,
       "--file",
       txt,
       "--write-media",
@@ -261,7 +305,6 @@ async function generateAudio() {
     narration,
   ]);
 
-  // Sentence-weighted cues keep captions aligned with spoken phrasing.
   const vttLines = ["WEBVTT", "", "NOTE EventClaim portal demo captions", ""];
   let cueIndex = 1;
   for (const m of meta) {
@@ -285,79 +328,153 @@ async function generateAudio() {
 }
 
 async function assertNoSkeleton(page) {
-  // Fail the section if a loading skeleton is still visible after waits.
-  const skeleton = page.locator(".animate-pulse, [data-slot='skeleton']");
-  const count = await skeleton.count();
-  if (count > 0) {
-    const visible = await skeleton.first().isVisible().catch(() => false);
-    if (visible) {
-      throw new Error("Skeleton still visible — refusing to record loading state");
-    }
+  const root = mainLocator(page);
+  const skeletonVisible = root.locator(
+    ".animate-pulse:visible, [data-slot='skeleton']:visible"
+  );
+  if ((await skeletonVisible.count()) > 0) {
+    throw new Error("Skeleton still visible in main — refusing to record loading state");
   }
-  const spinner = page.locator(".animate-spin");
-  if ((await spinner.count()) > 0) {
-    const visible = await spinner.first().isVisible().catch(() => false);
-    if (visible) {
-      throw new Error("Spinner still visible — refusing to record loading state");
+  const spinnerVisible = root.locator(".animate-spin:visible");
+  if ((await spinnerVisible.count()) > 0) {
+    throw new Error("Spinner still visible in main — refusing to record loading state");
+  }
+}
+
+async function assertRequiredMainText(page, section) {
+  const keys = REQUIRED_MAIN_TEXT[section.wait];
+  if (!keys || !keys.length) return;
+  const text = await mainLocator(page).innerText();
+  for (const needle of keys) {
+    if (!text.includes(needle)) {
+      throw new Error(
+        `Probe gate failed for ${section.id}: main is missing required text "${needle}"`
+      );
     }
   }
 }
 
+async function saveProbe(page, sectionId) {
+  const probesDir = path.join(WORK, "probes");
+  fs.mkdirSync(probesDir, { recursive: true });
+  fs.mkdirSync(ARTIFACT_PROBES, { recursive: true });
+  const png = path.join(probesDir, `${sectionId}.png`);
+  await page.screenshot({ path: png, type: "png" });
+  fs.copyFileSync(png, path.join(ARTIFACT_PROBES, `${sectionId}.png`));
+  return png;
+}
+
+async function waitForDashboard(page) {
+  const main = mainLocator(page);
+  const apiPromise = page
+    .waitForResponse(
+      (res) => res.url().includes("/api/dashboard") && res.ok(),
+      { timeout: 20000 }
+    )
+    .catch(() => null);
+
+  await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await apiPromise;
+
+  await main.getByRole("heading", { name: "Dashboard" }).waitFor({
+    state: "visible",
+    timeout: 20000,
+  });
+  await main.getByText("Total Events").waitFor({ state: "visible", timeout: 20000 });
+  await main.getByText("Cursor Community Meetup").waitFor({
+    state: "visible",
+    timeout: 20000,
+  });
+}
+
 async function waitForSection(page, section) {
+  const main = mainLocator(page);
   switch (section.wait) {
     case "settings":
-      await page.getByLabel("Luma API Key").waitFor({ state: "visible", timeout: 20000 });
+      await page.locator("#luma-api-key").waitFor({ state: "visible", timeout: 20000 });
+      await main.getByText("Luma API", { exact: true }).waitFor({
+        state: "visible",
+        timeout: 20000,
+      });
       break;
     case "guide":
       await page.getByRole("heading", { name: /Integration Setup Guide/i }).waitFor({
         timeout: 20000,
       });
       break;
-    case "dashboard":
-      await page.getByText("Total Events").waitFor({ state: "visible", timeout: 20000 });
-      await page.getByText("Cursor Community Meetup").waitFor({ timeout: 20000 });
+    case "dashboard": {
+      // API may already have fired during goto; require loaded main content.
+      await main.getByRole("heading", { name: "Dashboard" }).waitFor({
+        state: "visible",
+        timeout: 20000,
+      });
+      await main.getByText("Total Events").waitFor({ state: "visible", timeout: 20000 });
+      await main.getByText("Cursor Community Meetup").waitFor({
+        state: "visible",
+        timeout: 20000,
+      });
       break;
+    }
     case "events":
-      await page.getByText("Cursor Community Meetup").waitFor({ timeout: 20000 });
+      await main.getByText("Cursor Community Meetup").waitFor({
+        state: "visible",
+        timeout: 20000,
+      });
       break;
     case "overview":
-      await page.getByText("Auto-send emails").waitFor({ state: "visible", timeout: 20000 });
+      await main
+        .getByRole("heading", { name: "Cursor Community Meetup" })
+        .waitFor({ state: "visible", timeout: 20000 });
+      await main.getByText("Auto-send emails").waitFor({ state: "visible", timeout: 20000 });
+      await main.getByText("Claim Rate").waitFor({ state: "visible", timeout: 20000 });
+      await page
+        .getByRole("navigation", { name: /Event sections/i })
+        .getByRole("link", { name: /Overview/i })
+        .waitFor({ state: "visible", timeout: 20000 });
       break;
     case "import":
-      await page.getByText(/Import Attendees from Luma/i).waitFor({ timeout: 20000 });
+      await main.getByText(/Import Attendees from Luma/i).waitFor({ timeout: 20000 });
       break;
     case "attendees":
-      await page.locator("table").first().waitFor({ state: "visible", timeout: 20000 });
-      await page.getByRole("row", { name: /Alex Rivera/i }).first().waitFor({
+      await main.locator("table").first().waitFor({ state: "visible", timeout: 20000 });
+      await main.getByRole("row", { name: /Alex Rivera/i }).first().waitFor({
         state: "visible",
         timeout: 20000,
       });
       break;
     case "coupons":
-      await page.getByText("Cursor Credits", { exact: true }).first().waitFor({
+      await main.getByText("Cursor Credits", { exact: true }).first().waitFor({
         timeout: 20000,
       });
       break;
     case "coupon-detail":
-      await page.getByText("Cursor Credits", { exact: true }).first().waitFor({
+      await main.getByText("Cursor Credits", { exact: true }).first().waitFor({
         timeout: 20000,
       });
       break;
     case "audit":
-      await page.getByText(/event_created|Event created|Audit/i).first().waitFor({
+      // Do NOT match sidebar "Audit Logs" alone — require heading + table action label.
+      await main.getByRole("heading", { name: "Audit Logs" }).waitFor({
+        state: "visible",
         timeout: 20000,
       });
+      await main
+        .getByText(/Event Created|Grant Claimed|Email Sent|Grants Issued/i)
+        .first()
+        .waitFor({ state: "visible", timeout: 20000 });
       break;
     default:
       break;
   }
   await pause(400);
   await assertNoSkeleton(page);
+  await assertRequiredMainText(page, section);
 }
 
 async function seedBrowserSettings(page) {
   await page.goto(`${BASE}/settings`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Luma API Key").waitFor({ state: "visible", timeout: 20000 });
+  await page.locator("#luma-api-key").waitFor({ state: "visible", timeout: 20000 });
 
   async function fill(id, value) {
     const input = page.locator(`#${id}`);
@@ -369,11 +486,21 @@ async function seedBrowserSettings(page) {
   await fill("emailjs-template-id", "template_demo");
   await fill("emailjs-public-key", "user_demo_public_key");
   await fill("emailjs-private-key", "demo_private_key_xxxxxxxx");
-  await fill("app-base-url", BASE);
+  await fill("app-base-url", "https://eventclaim.example.com");
 
-  await page.getByRole("button", { name: /Save Settings/i }).click();
+  const save = page.getByRole("button", { name: /Save settings/i });
+  await save.waitFor({ state: "visible", timeout: 10000 });
+  await page.waitForFunction(
+    () => {
+      const buttons = [...document.querySelectorAll("button")];
+      const btn = buttons.find((b) => /Save settings/i.test(b.textContent || ""));
+      return Boolean(btn && !btn.disabled);
+    },
+    { timeout: 10000 }
+  );
+  await save.click();
   await page
-    .getByText(/Settings saved locally|EmailJS:\s*configured/i)
+    .getByText(/Settings saved locally/i)
     .first()
     .waitFor({ timeout: 10000 })
     .catch(() => {});
@@ -393,19 +520,18 @@ async function loadAuthAndSeedSettings(browser) {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(20000);
-  await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded" });
-  await page.waitForURL((url) => /\/dashboard\/?$/.test(url.pathname), {
-    timeout: 20000,
-  });
-  await page.getByText("Total Events").waitFor({ timeout: 20000 });
+
+  // Seed settings first, then warm dashboard cache so storageState includes both.
   await seedBrowserSettings(page);
+  await waitForDashboard(page);
+  await assertNoSkeleton(page);
+
   const state = await context.storageState();
   await context.close();
   return state;
 }
 
 function renderTitleCard(outPath, title, subtitle, duration) {
-  // Brand-forward title card — no UI chrome, no demo-login button.
   const escape = (s) =>
     String(s)
       .replace(/\\/g, "\\\\")
@@ -424,14 +550,26 @@ function renderTitleCard(outPath, title, subtitle, duration) {
     `color=c=0x1E1033:s=1280x800:d=${duration.toFixed(3)}:r=25`,
     "-vf",
     filter,
-    "-c:v",
-    "libx264",
-    "-pix_fmt",
-    "yuv420p",
-    "-preset",
-    "medium",
-    "-crf",
-    "18",
+    ...VIDEO_ENCODE,
+    "-an",
+    outPath,
+  ]);
+}
+
+function encodePngHold(pngPath, outPath, duration) {
+  sh("ffmpeg", [
+    "-y",
+    "-loop",
+    "1",
+    "-i",
+    pngPath,
+    "-t",
+    duration.toFixed(3),
+    "-r",
+    "25",
+    "-vf",
+    "scale=1280:800:flags=lanczos",
+    ...VIDEO_ENCODE,
     "-an",
     outPath,
   ]);
@@ -474,13 +612,47 @@ async function interact(page, section) {
   }
 }
 
-async function recordSection(browser, storageState, section, outPath) {
-  if (section.kind === "title") {
-    renderTitleCard(outPath, section.title, section.subtitle, section.duration);
-    console.log(`${section.id}: title card ${section.duration.toFixed(2)}s`);
-    return;
+async function recordStaticSection(browser, storageState, section, outPath) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    storageState,
+  });
+  const page = await context.newPage();
+  page.setDefaultTimeout(25000);
+
+  if (section.wait === "dashboard") {
+    const apiPromise = page
+      .waitForResponse(
+        (res) => res.url().includes("/api/dashboard") && res.ok(),
+        { timeout: 20000 }
+      )
+      .catch(() => null);
+    await page.goto(`${BASE}${section.route}`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await apiPromise;
+  } else {
+    await page.goto(`${BASE}${section.route}`, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle").catch(() => {});
   }
 
+  await waitForSection(page, section);
+  await assertNoSkeleton(page);
+  await assertRequiredMainText(page, section);
+
+  const png = await saveProbe(page, section.id);
+  await context.close();
+
+  if (!PROBE_ONLY) {
+    encodePngHold(png, outPath, section.duration);
+    console.log(
+      `${section.id}: png-hold=${section.duration.toFixed(2)}s ${section.route}`
+    );
+  } else {
+    console.log(`${section.id}: probe-only ok ${section.route}`);
+  }
+}
+
+async function recordInteractiveSection(browser, storageState, section, outPath) {
   const dir = path.join(WORK, "clips", section.id);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
@@ -497,48 +669,98 @@ async function recordSection(browser, storageState, section, outPath) {
   await page.waitForLoadState("networkidle").catch(() => {});
   await waitForSection(page, section);
   await interact(page, section);
+  await assertNoSkeleton(page);
+  await assertRequiredMainText(page, section);
 
-  // Hold for narration duration after the UI is ready (never during loading).
-  await pause(Math.max(1000, section.duration * 1000));
+  const png = await saveProbe(page, section.id);
+
+  if (PROBE_ONLY) {
+    await context.close();
+    console.log(`${section.id}: probe-only ok (interactive) ${section.route}`);
+    return;
+  }
+
+  const readyPadMs = 2000;
+  await pause(Math.max(1000, section.duration * 1000) + readyPadMs);
+  await assertNoSkeleton(page);
 
   const vid = await page.video().path();
   await context.close();
 
   const rawDur = probeDuration(vid);
   const need = section.duration;
-  // Prefer the end of the recording (ready UI), drop startup navigation.
   const ss = Math.max(0, rawDur - need - 0.05);
   sh("ffmpeg", [
     "-y",
-    "-ss",
-    ss.toFixed(3),
     "-i",
     vid,
+    "-ss",
+    ss.toFixed(3),
     "-t",
     need.toFixed(3),
-    "-c:v",
-    "libx264",
-    "-pix_fmt",
-    "yuv420p",
-    "-preset",
-    "medium",
-    "-crf",
-    "18",
+    ...VIDEO_ENCODE,
     "-an",
     outPath,
   ]);
+
+  // Verify first + last frames of the trimmed clip are not skeleton-dominated
+  // by re-checking against the ready PNG probe (clip must exist and have duration).
+  const firstFrame = path.join(WORK, "clips", `${section.id}-first.jpg`);
+  const lastFrame = path.join(WORK, "clips", `${section.id}-last.jpg`);
+  sh("ffmpeg", ["-y", "-i", outPath, "-ss", "0.15", "-frames:v", "1", firstFrame]);
+  sh("ffmpeg", [
+    "-y",
+    "-sseof",
+    "-0.25",
+    "-i",
+    outPath,
+    "-frames:v",
+    "1",
+    lastFrame,
+  ]);
+  // Size heuristic: skeleton frames compress tiny; ready PNG probes are large.
+  const readySize = fs.statSync(png).size;
+  for (const frame of [firstFrame, lastFrame]) {
+    const size = fs.statSync(frame).size;
+    if (size < readySize * 0.35) {
+      throw new Error(
+        `${section.id}: trimmed frame ${path.basename(frame)} looks like a skeleton ` +
+          `(${size}B vs probe ${readySize}B) — refusing to ship`
+      );
+    }
+  }
+
   console.log(
-    `${section.id}: clip=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ${section.route}`
+    `${section.id}: video=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}`
   );
+}
+
+async function recordSection(browser, storageState, section, outPath) {
+  if (section.kind === "title") {
+    if (PROBE_ONLY) {
+      console.log(`${section.id}: title card skipped in probe-only`);
+      return;
+    }
+    renderTitleCard(outPath, section.title, section.subtitle, section.duration);
+    console.log(`${section.id}: title card ${section.duration.toFixed(2)}s`);
+    return;
+  }
+
+  if (isInteractive(section)) {
+    await recordInteractiveSection(browser, storageState, section, outPath);
+  } else {
+    await recordStaticSection(browser, storageState, section, outPath);
+  }
 }
 
 async function main() {
   fs.rmSync(WORK, { recursive: true, force: true });
   fs.mkdirSync(path.join(WORK, "clips"), { recursive: true });
+  fs.mkdirSync(path.join(WORK, "probes"), { recursive: true });
   fs.mkdirSync(DRAFT_DIR, { recursive: true });
+  fs.mkdirSync(ARTIFACT_PROBES, { recursive: true });
 
-  // Archive current live demo before replacing (never overwrite existing drafts).
-  if (fs.existsSync(OUT_MP4)) {
+  if (!PROBE_ONLY && fs.existsSync(OUT_MP4)) {
     const stamp = new Date().toISOString().slice(0, 10);
     let archive = path.join(DRAFT_DIR, `eventclaim-portal-demo-archive-${stamp}.mp4`);
     let n = 1;
@@ -556,7 +778,9 @@ async function main() {
   }
 
   const { meta, narration, vttPath } = await generateAudio();
-  fs.copyFileSync(vttPath, OUT_VTT);
+  if (!PROBE_ONLY) {
+    fs.copyFileSync(vttPath, OUT_VTT);
+  }
 
   const browser = await chromium.launch({
     headless: true,
@@ -568,14 +792,20 @@ async function main() {
   for (const section of meta) {
     const out = path.join(WORK, "clips", `${section.id}.mp4`);
     await recordSection(browser, storageState, section, out);
-    list.push(out);
+    if (!PROBE_ONLY) list.push(out);
   }
   await browser.close();
+
+  if (PROBE_ONLY) {
+    console.log(
+      `PROBE_ONLY complete — review PNGs in ${path.join(WORK, "probes")} and ${ARTIFACT_PROBES}`
+    );
+    return;
+  }
 
   const concat = path.join(WORK, "concat.txt");
   fs.writeFileSync(concat, list.map((f) => `file '${f}'`).join("\n"));
   const silent = path.join(WORK, "silent.mp4");
-  // Re-encode concat for timestamp continuity (copy can fail across clips).
   sh("ffmpeg", [
     "-y",
     "-f",
@@ -584,14 +814,7 @@ async function main() {
     "0",
     "-i",
     concat,
-    "-c:v",
-    "libx264",
-    "-pix_fmt",
-    "yuv420p",
-    "-preset",
-    "medium",
-    "-crf",
-    "18",
+    ...VIDEO_ENCODE,
     "-an",
     silent,
   ]);
@@ -612,14 +835,13 @@ async function main() {
     "-c:a",
     "aac",
     "-b:a",
-    "160k",
+    "192k",
     "-shortest",
     "-movflags",
     "+faststart",
     av,
   ]);
 
-  // Soft caption track (mov_text) + external VTT for the HTML5 player.
   sh("ffmpeg", [
     "-y",
     "-i",

@@ -28,6 +28,7 @@ import NotionGuideEditor from "./notion-guide-editor";
 import AutoSendToggle from "./auto-send-toggle";
 import EventHeroEditor from "./event-hero-editor";
 import DeleteEventButton from "./delete-event-button";
+import { EventSectionNav } from "./event-section-nav";
 
 const statusVariant: Record<
   Event["status"],
@@ -102,6 +103,8 @@ export default async function EventDetailPage({ params }: Props) {
           hasTestAttendees={testAttendeeCount > 0}
         />
       </div>
+
+      <EventSectionNav slug={slug} active="overview" />
 
       {/* Stats grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
