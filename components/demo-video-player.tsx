@@ -53,7 +53,7 @@ export default function DemoVideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cues, setCues] = useState<Cue[]>([]);
   const [activeText, setActiveText] = useState("");
-  const [captionsOn, setCaptionsOn] = useState(true);
+  const [captionsOn, setCaptionsOn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,10 +99,13 @@ export default function DemoVideoPlayer() {
           ref={videoRef}
           className="aspect-video w-full"
           controls
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
           playsInline
           preload="metadata"
           crossOrigin="anonymous"
           src={DEMO_VIDEO_SRC}
+          onContextMenu={(e) => e.preventDefault()}
         >
           Your browser does not support embedded video.
         </video>
@@ -122,15 +125,7 @@ export default function DemoVideoPlayer() {
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <a
-          href={DEMO_VIDEO_SRC}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-        >
-          Open video in new tab
-        </a>
+      <div className="flex items-center justify-end">
         <Button
           type="button"
           variant="ghost"

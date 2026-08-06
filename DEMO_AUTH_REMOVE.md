@@ -5,7 +5,7 @@ Use this checklist after you are satisfied with the portal demo video.
 
 ## Suggested prompt
 
-> Remove all temporary demo auth. Follow `DEMO_AUTH_REMOVE.md`: delete `lib/demo-auth.ts`, `app/api/auth/demo/`, and `DEMO_AUTH_REMOVE.md`; remove every `TEMP_DEMO_AUTH_START`…`END` block from `lib/session.ts` and `app/login/page.tsx`; strip `DEMO_*` from env examples/docs. Keep `public/demo/` and the dashboard Watch demo UI.
+> Remove all temporary demo auth. Follow `DEMO_AUTH_REMOVE.md`: delete `lib/demo-auth.ts`, `app/api/auth/demo/`, and `DEMO_AUTH_REMOVE.md`; remove every `TEMP_DEMO_AUTH_START`…`END` block from `lib/session.ts` and `app/login/page.tsx`; strip `DEMO_*` from env examples/docs. Keep `public/demo/` (including `public/demo/draft/`) and the dashboard Watch demo UI.
 
 ## Manual steps
 
