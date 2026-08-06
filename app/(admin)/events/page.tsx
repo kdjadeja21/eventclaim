@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import { Event } from "@/lib/types";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 const statusVariant: Record<
   Event["status"],
@@ -34,23 +35,27 @@ export default async function EventsPage() {
             Manage coupon distribution events
           </p>
         </div>
-        <Button asChild>
-          <Link href="/events/new">
-            <Plus className="h-4 w-4" />
-            New Event
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <PageTourButton tourId="events" />
+          <Button asChild data-tour="new-event">
+            <Link href="/events/new">
+              <Plus className="h-4 w-4" />
+              New Event
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {events.length === 0 ? (
-        <Card className="py-16">
+        <Card className="py-16" data-tour="events-empty">
           <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
             <CalendarDays className="h-10 w-10 text-muted-foreground/50" />
             <p className="font-medium">No events yet</p>
             <p className="text-sm text-muted-foreground">
-              Create your first event to get started.
+              Create your first event to get started. A Cursor Credits offer is
+              added automatically.
             </p>
-            <Button asChild size="sm" className="mt-2">
+            <Button asChild size="sm" className="mt-2" data-tour="new-event-empty">
               <Link href="/events/new">
                 <Plus className="h-4 w-4" />
                 Create Event
@@ -59,7 +64,10 @@ export default async function EventsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          data-tour="events-list"
+        >
           {events.map((event) => (
             <Link key={event.id} href={`/events/${event.slug}`}>
               <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">

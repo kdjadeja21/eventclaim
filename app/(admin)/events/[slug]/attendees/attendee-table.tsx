@@ -875,7 +875,10 @@ export default function AttendeeTable({
       )}
 
       {eventStatus === "draft" && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3"
+          data-tour="create-temp-users"
+        >
           <div className="min-w-0 space-y-0.5">
             <p className="text-sm font-medium">Test email data</p>
             <p className="text-xs text-muted-foreground">
@@ -901,6 +904,7 @@ export default function AttendeeTable({
               variant="outline"
               size="sm"
               className="shrink-0"
+              data-tour="create-temp-users-button"
               disabled={!emailConfigured}
               title={
                 emailConfigured
@@ -916,6 +920,20 @@ export default function AttendeeTable({
               Create temp users
             </Button>
           )}
+        </div>
+      )}
+
+      {eventStatus === "draft" && (
+        <div
+          className="rounded-lg border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground"
+          data-tour="send-test-email"
+        >
+          <p className="font-medium text-foreground text-sm">Send a test claim email</p>
+          <p className="mt-0.5 leading-relaxed">
+            After temp users appear in the table, click <strong>Send</strong> on a
+            row (or select rows and use <strong>Send Email</strong>). Open the
+            message in your inbox and try the claim link.
+          </p>
         </div>
       )}
 

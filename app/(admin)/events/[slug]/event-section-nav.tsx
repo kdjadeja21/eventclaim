@@ -12,6 +12,7 @@ const eventSections: {
   href: (slug: string) => string;
   label: string;
   icon: React.ElementType;
+  tourId?: string;
 }[] = [
   {
     key: "overview",
@@ -24,18 +25,21 @@ const eventSections: {
     href: (slug) => `/events/${slug}/import`,
     label: "Import",
     icon: Upload,
+    tourId: "event-nav-import",
   },
   {
     key: "attendees",
     href: (slug) => `/events/${slug}/attendees`,
     label: "Attendees",
     icon: Users,
+    tourId: "event-nav-attendees",
   },
   {
     key: "coupons",
     href: (slug) => `/events/${slug}/coupons`,
     label: "Partner Offers",
     icon: Ticket,
+    tourId: "event-nav-coupons",
   },
 ];
 
@@ -49,12 +53,13 @@ export function EventSectionNav({
   if (!slug) return null;
 
   return (
-    <nav aria-label="Event sections" className="overflow-x-auto pb-1">
+    <nav aria-label="Event sections" className="overflow-x-auto pb-1" data-tour="event-section-nav">
       <div className="flex min-w-max gap-2">
-        {eventSections.map(({ key, href, label, icon: Icon }) => (
+        {eventSections.map(({ key, href, label, icon: Icon, tourId }) => (
           <Link
             key={key}
             href={href(slug)}
+            data-tour={tourId}
             aria-current={key === active ? "page" : undefined}
             className={cn(
               "inline-flex items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors",

@@ -38,6 +38,7 @@ import { formatDateTime } from "@/lib/utils";
 import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
+import PageTourButton from "@/components/tour/page-tour-button";
 import DemoVideoPlayer from "@/components/demo-video-player";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
@@ -135,25 +136,27 @@ export default function DashboardClient() {
             Overview across all events
           </p>
         </div>
-
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
-              <PlayCircle className="h-4 w-4" />
-              Watch demo
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>How to use this portal</DialogTitle>
-              <DialogDescription>
-                See how to use this portal — create events, import attendees,
-                send claim emails, and track redemptions.
-              </DialogDescription>
-            </DialogHeader>
-            <DemoVideoPlayer />
-          </DialogContent>
-        </Dialog>
+        <div className="flex shrink-0 items-center gap-2">
+          <PageTourButton tourId="dashboard" />
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <PlayCircle className="h-4 w-4" />
+                Watch demo
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>How to use this portal</DialogTitle>
+                <DialogDescription>
+                  See how to use this portal — create events, import attendees,
+                  send claim emails, and track redemptions.
+                </DialogDescription>
+              </DialogHeader>
+              <DemoVideoPlayer />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {isStale && (
@@ -168,7 +171,10 @@ export default function DashboardClient() {
       )}
 
       {/* Global stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+        data-tour="dashboard-stats"
+      >
         <StatCard
           icon={CalendarDays}
           label="Total Events"
@@ -187,7 +193,7 @@ export default function DashboardClient() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Per-event summary */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4" data-tour="dashboard-events">
           <h2 className="text-sm font-semibold gradient-text uppercase tracking-wider">
             Events
           </h2>

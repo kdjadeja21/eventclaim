@@ -6,7 +6,6 @@ import {
   Image as ImageIcon, 
   PartyPopper 
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 const tools = [
   {

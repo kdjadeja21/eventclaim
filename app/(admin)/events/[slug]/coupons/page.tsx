@@ -6,6 +6,7 @@ import { getEventBySlug } from "../../actions";
 import { Button } from "@/components/ui/button";
 import CouponList from "./coupon-list";
 import { EventSectionNav } from "../event-section-nav";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -26,7 +27,7 @@ export default async function CouponsPage({ params }: Props) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">
             Partner Offers
           </h1>
@@ -35,6 +36,7 @@ export default async function CouponsPage({ params }: Props) {
             {coupons.length !== 1 ? "s" : ""}
           </p>
         </div>
+        <PageTourButton tourId="coupons" />
       </div>
 
       <EventSectionNav slug={slug} active="coupons" />

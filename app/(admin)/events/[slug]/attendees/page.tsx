@@ -10,6 +10,7 @@ import {
   AttendeesTable,
 } from "./attendees-client";
 import { EventSectionNav } from "../event-section-nav";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 // Bulk email sends run as Server Actions invoked from this page. Raise the
 // default execution limit so larger batches have room to finish on platforms
@@ -46,7 +47,10 @@ export default async function AttendeesPage({ params }: Props) {
               </p>
             </div>
           </div>
-          <AttendeesQuotaBadge />
+          <div className="flex items-center gap-2">
+            <PageTourButton tourId="attendees" />
+            <AttendeesQuotaBadge />
+          </div>
         </div>
 
         <EventSectionNav slug={slug} active="attendees" />
