@@ -10,114 +10,102 @@ Welcome to EventClaim, the Cursor Community portal for distributing partner cred
 00:00:05.856 --> 00:00:12.264
 Before you run an event, complete the most important step: set up Luma and EmailJS in Settings.
 
-3
-00:00:12.264 --> 00:00:15.862
+5
+00:00:12.264 --> 00:00:17.520
 Open the Setup guide for step-by-step instructions.
 
-4
-00:00:15.862 --> 00:00:22.776
+6
+00:00:17.520 --> 00:00:22.776
 Add your Luma API key to sync checked-in guests, then connect EmailJS so claim emails can be sent.
 
-5
-00:00:22.776 --> 00:00:24.540
-Save those values here.
-
-6
-00:00:24.540 --> 00:00:27.686
-They stay encrypted in this browser only.
-
 7
-00:00:27.686 --> 00:00:31.368
-Once configured, you are ready to create events.
+00:00:22.776 --> 00:00:27.072
+Save those values here. They stay encrypted in this browser only.
 
 8
+00:00:27.072 --> 00:00:31.368
+Once configured, you are ready to create events.
+
+5
 00:00:31.368 --> 00:00:38.328
 The dashboard gives a quick overview across events — attendees, coupons, emails sent, and claim rate.
 
-9
+6
 00:00:38.328 --> 00:00:41.784
 Open Events to browse meetups or create a new one.
 
-10
-00:00:41.784 --> 00:00:43.733
+13
+00:00:41.784 --> 00:00:46.992
 Each event opens on Overview.
 
-11
-00:00:43.733 --> 00:00:52.200
+14
+00:00:46.992 --> 00:00:52.200
 Here you see live stats for attendees, offer types, emails sent, and claim rate, plus shortcuts into the rest of the workflow.
 
-12
-00:00:52.200 --> 00:00:54.711
+15
+00:00:52.200 --> 00:00:57.396
 Scroll down for event configuration.
 
-13
-00:00:54.711 --> 00:01:02.592
+16
+00:00:57.396 --> 00:01:02.592
 Set the Notion claim guide, edit the claim page hero, and review status controls for draft, active, or completed.
 
-14
-00:01:02.592 --> 00:01:04.517
+17
+00:01:02.592 --> 00:01:07.692
 Auto-send emails is essential.
 
-15
-00:01:04.517 --> 00:01:12.792
+18
+00:01:07.692 --> 00:01:12.792
 Turn it on so attendees are emailed automatically as soon as they receive their coupon — no manual sending needed for each guest.
 
-16
+10
 00:01:12.792 --> 00:01:17.280
 CSV import is optional — only if Luma sync is unavailable.
 
-17
-00:01:17.280 --> 00:01:20.808
+21
+00:01:17.280 --> 00:01:21.588
 Attendees is where you will spend most of your time.
 
-18
-00:01:20.808 --> 00:01:25.896
+22
+00:01:21.588 --> 00:01:25.896
 Search and filter guests, and see coupon, email, and claim status together.
 
-19
-00:01:25.896 --> 00:01:29.472
+23
+00:01:25.896 --> 00:01:30.348
 Send, resend, or retry claim emails from the table.
 
-20
-00:01:29.472 --> 00:01:34.800
+24
+00:01:30.348 --> 00:01:34.800
 Open any guest for detail, and blacklist addresses you do not want to email.
 
-21
-00:01:34.800 --> 00:01:42.504
-While the event is still in draft, create temp users with fake Cursor Credits links to verify claim emails before you go live.
-
-22
-00:01:42.504 --> 00:01:48.792
+13
+00:01:34.800 --> 00:01:41.088
 After an event, this page is your source of truth for who was invited, emailed, and who already claimed.
 
-23
-00:01:48.792 --> 00:01:52.251
+27
+00:01:41.088 --> 00:01:45.036
 Partner Offers is the other screen you will use most.
 
-24
-00:01:52.251 --> 00:01:56.688
+28
+00:01:45.036 --> 00:01:48.984
 Manage each partner coupon and track available versus granted links.
 
-25
-00:01:56.688 --> 00:02:02.640
+15
+00:01:48.984 --> 00:01:54.936
 Open an offer to review inventory, assigned attendees, and confirm the right credits went out.
 
-26
-00:02:02.640 --> 00:02:08.472
+16
+00:01:54.936 --> 00:02:00.768
 Keep offers organized here before and during the event so claim emails always have inventory ready.
 
-27
-00:02:08.472 --> 00:02:13.176
+17
+00:02:00.768 --> 00:02:05.472
 Audit Logs keep a short history of imports, emails, and claims.
 
-28
-00:02:13.176 --> 00:02:14.587
-That is EventClaim.
+35
+00:02:05.472 --> 00:02:10.992
+That is EventClaim. Set up Luma and EmailJS first, use Overview auto-send, then run the event from Attendees and Partner Offers.
 
-29
-00:02:14.587 --> 00:02:24.387
-Set up Luma and EmailJS first, verify with temp users, use Overview auto-send, then run the event from Attendees and Partner Offers.
-
-30
-00:02:24.387 --> 00:02:25.872
+36
+00:02:10.992 --> 00:02:16.512
 Thanks for watching.
