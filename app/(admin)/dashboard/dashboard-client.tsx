@@ -13,8 +13,11 @@ import {
   CheckCheck,
   Layers,
   AlertTriangle,
+  PlayCircle,
+  ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,6 +25,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/lib/utils";
@@ -30,6 +41,7 @@ import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
+const DEMO_VIDEO_SRC = "/demo/eventclaim-portal-demo.mp4";
 
 const actionLabels: Record<string, string> = {
   event_created: "Event created",
@@ -115,13 +127,51 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight gradient-text">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Overview across all events
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight gradient-text">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Overview across all events
+          </p>
+        </div>
+
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
+              <PlayCircle className="h-4 w-4" />
+              Watch demo
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl sm:max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>How to use this portal</DialogTitle>
+              <DialogDescription>
+                See how to use this portal — create events, import attendees,
+                send claim emails, and track redemptions.
+              </DialogDescription>
+            </DialogHeader>
+            <video
+              className="aspect-video w-full rounded-md bg-black"
+              controls
+              playsInline
+              preload="metadata"
+              src={DEMO_VIDEO_SRC}
+            >
+              Your browser does not support embedded video.
+            </video>
+            <a
+              href={DEMO_VIDEO_SRC}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              Open video in new tab
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {isStale && (
