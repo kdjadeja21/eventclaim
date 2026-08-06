@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import SiteCreditFooter from "@/components/site-credit-footer";
 
 export default function LoginPage() {
   return (
@@ -81,64 +82,67 @@ function LoginForm() {
   // TEMP_DEMO_AUTH_END
 
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-hero px-4">
-      <Card className="w-full max-w-sm border-white/20 bg-white/10 backdrop-blur-md text-white shadow-2xl">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-2">
-            <div className="h-10 w-10 rounded-full gradient-brand flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">C</span>
+    <div className="gradient-hero flex min-h-screen flex-col">
+      <div className="flex flex-1 items-center justify-center px-4 py-10">
+        <Card className="w-full max-w-sm border-white/20 bg-white/10 backdrop-blur-md text-white shadow-2xl">
+          <CardHeader className="space-y-1 text-center">
+            <div className="mb-2 flex justify-center">
+              <div className="gradient-brand flex h-10 w-10 items-center justify-center rounded-full shadow-lg">
+                <span className="text-lg font-bold text-white">C</span>
+              </div>
             </div>
-          </div>
-          <CardTitle className="text-2xl text-white">Cursor Community</CardTitle>
-          <CardDescription className="text-white/70">
-            Event Coupon Distribution Platform
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button
-            variant="outline"
-            className="w-full bg-white text-primary border-0 hover:bg-white/90 shadow-md"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Signing in…
-              </>
-            ) : (
-              <>
-                <GoogleIcon />
-                Sign in with Google
-              </>
-            )}
-          </Button>
-
-          {/* TEMP_DEMO_AUTH_START */}
-          {demoAuthEnabled && (
+            <CardTitle className="text-2xl text-white">Cursor Community</CardTitle>
+            <CardDescription className="text-white/70">
+              Event Coupon Distribution Platform
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <Button
               variant="outline"
-              className="w-full border-white/40 bg-transparent text-white hover:bg-white/10"
-              onClick={handleDemoSignIn}
-              disabled={demoLoading || loading}
+              className="w-full border-0 bg-white text-primary shadow-md hover:bg-white/90"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
             >
-              {demoLoading ? (
+              {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Continuing…
+                  Signing in…
                 </>
               ) : (
-                "Continue as demo"
+                <>
+                  <GoogleIcon />
+                  Sign in with Google
+                </>
               )}
             </Button>
-          )}
-          {/* TEMP_DEMO_AUTH_END */}
 
-          <p className="text-xs text-center text-white/50">
-            Access restricted to authorised admins only.
-          </p>
-        </CardContent>
-      </Card>
+            {/* TEMP_DEMO_AUTH_START */}
+            {demoAuthEnabled && (
+              <Button
+                variant="outline"
+                className="w-full border-white/40 bg-transparent text-white hover:bg-white/10"
+                onClick={handleDemoSignIn}
+                disabled={demoLoading || loading}
+              >
+                {demoLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Continuing…
+                  </>
+                ) : (
+                  "Continue as demo"
+                )}
+              </Button>
+            )}
+            {/* TEMP_DEMO_AUTH_END */}
+
+            <p className="text-center text-xs text-white/50">
+              Access restricted to authorised admins only.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+      <SiteCreditFooter tone="dark" />
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
+import SiteCreditFooter from "@/components/site-credit-footer";
 
 type StatusResult = Awaited<ReturnType<typeof checkAttendeeStatus>>;
 
@@ -42,8 +43,8 @@ export default function CheckStatusPage() {
   }
 
   return (
-    <div className="min-h-screen gradient-hero flex flex-col items-center justify-start px-4 py-16">
-      <div className="w-full max-w-md space-y-6">
+    <div className="gradient-hero flex min-h-screen flex-col items-center px-4 pt-16">
+      <div className="w-full max-w-md flex-1 space-y-6">
         {/* Header */}
         <div className="text-center">
           <div className="flex justify-center mb-4">
@@ -177,6 +178,7 @@ export default function CheckStatusPage() {
           </Card>
         )}
       </div>
+      <SiteCreditFooter tone="dark" />
     </div>
   );
 }

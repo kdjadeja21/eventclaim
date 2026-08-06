@@ -9,6 +9,7 @@ import {
 import { getClaimPageData } from "./claim-actions";
 import SurpriseReveal from "./surprise-reveal";
 import { PartnerOfferCard } from "./offer-card";
+import SiteCreditFooter from "@/components/site-credit-footer";
 
 type Props = { params: Promise<{ token: string }> };
 
@@ -127,6 +128,8 @@ export default async function ClaimPage({ params }: Props) {
           </div>
         )}
       </div>
+
+      <SiteCreditFooter tone="light" className="relative z-10" />
     </div>
   );
 }
