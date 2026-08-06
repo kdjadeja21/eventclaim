@@ -231,12 +231,17 @@ function probeDuration(file) {
 }
 
 function formatVttTime(seconds) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const whole = Math.floor(s);
-  const ms = Math.round((s - whole) * 1000);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(whole).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+  // Round via total milliseconds so fractional seconds never emit ".1000"
+  // (invalid WebVTT — browsers drop the cue, which hid Auto-send captions).
+  let totalMs = Math.round(Number(seconds) * 1000);
+  if (!Number.isFinite(totalMs) || totalMs < 0) totalMs = 0;
+  const h = Math.floor(totalMs / 3_600_000);
+  totalMs -= h * 3_600_000;
+  const m = Math.floor(totalMs / 60_000);
+  totalMs -= m * 60_000;
+  const s = Math.floor(totalMs / 1000);
+  const ms = totalMs % 1000;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
 function splitSentences(text) {
