@@ -28,6 +28,7 @@ import { formatDateTime } from "@/lib/utils";
 import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
 
@@ -115,13 +116,16 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight gradient-text">
-          Dashboard
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Overview across all events
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight gradient-text">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Overview across all events
+          </p>
+        </div>
+        <PageTourButton tourId="dashboard" />
       </div>
 
       {isStale && (
@@ -136,7 +140,10 @@ export default function DashboardClient() {
       )}
 
       {/* Global stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
+        data-tour="dashboard-stats"
+      >
         <StatCard
           icon={CalendarDays}
           label="Total Events"
@@ -155,7 +162,7 @@ export default function DashboardClient() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Per-event summary */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 space-y-4" data-tour="dashboard-events">
           <h2 className="text-sm font-semibold gradient-text uppercase tracking-wider">
             Events
           </h2>

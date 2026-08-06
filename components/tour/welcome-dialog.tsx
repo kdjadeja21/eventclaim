@@ -27,12 +27,11 @@ export default function WelcomeDialog({
           <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Sparkles className="h-5 w-5" />
           </div>
-          <DialogTitle>Welcome to Cursor Community Event Coupons</DialogTitle>
+          <DialogTitle>Welcome to EventClaim</DialogTitle>
           <DialogDescription className="text-sm leading-relaxed">
-            This tool helps you give Cursor credits and partner offers to event
-            guests by email. We&apos;ll walk you through the real workflow —
-            connect email, create an event, practice with temp guests, and send
-            a test claim email.
+            Send Cursor credits and partner offers to event guests by email.
+            Take a short tour, or explore on your own — every page also has a
+            Tour this page button for local tips.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2 sm:gap-0">

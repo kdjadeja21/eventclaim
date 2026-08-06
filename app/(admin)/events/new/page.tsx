@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 type ActionState = Awaited<ReturnType<typeof createEvent>> | null;
 
@@ -48,12 +49,13 @@ export default function NewEventPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">New Event</h1>
           <p className="text-sm text-muted-foreground">
             Create a new coupon distribution event
           </p>
         </div>
+        <PageTourButton tourId="events-new" />
       </div>
 
       <Card data-tour="new-event-form">

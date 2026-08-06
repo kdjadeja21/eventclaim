@@ -2,11 +2,11 @@ import { driver, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "@/components/tour/tour-styles.css";
 import {
-  FEATURE_TOUR_STEPS,
+  getTourSteps,
   buildTourPath,
   pathMatchesTourRoute,
   type FeatureTourContext,
-  type FeatureTourStep,
+  type TourId,
 } from "@/lib/tour/steps";
 import {
   getActiveFeatureTour,
@@ -20,6 +20,7 @@ let tourContext: FeatureTourContext = {
   draftEventSlug: null,
   eventSlug: null,
 };
+let activeTourId: TourId = "global";
 
 function clearResumeTimer(): void {
   if (resumeTimer !== null) {
@@ -35,7 +36,6 @@ export function destroyTourHighlight(): void {
   }
 }
 
-/** Fully stop the feature tour (user closed it or finished). */
 export function endFeatureTour(): void {
   clearResumeTimer();
   destroyTourHighlight();
@@ -73,25 +73,23 @@ function waitForElement(
   });
 }
 
-function visibleSteps(): FeatureTourStep[] {
-  return FEATURE_TOUR_STEPS;
-}
-
 async function showStepAt(index: number): Promise<void> {
-  const steps = visibleSteps();
+  const steps = getTourSteps(activeTourId);
   if (index < 0 || index >= steps.length) {
     endFeatureTour();
     return;
   }
 
   const step = steps[index];
-  setActiveFeatureTour({ stepIndex: index });
+  setActiveFeatureTour({ tourId: activeTourId, stepIndex: index });
 
-  const targetPath = buildTourPath(step, tourContext);
+  const fallbackPath = window.location.pathname;
+  const targetPath = buildTourPath(step, tourContext, fallbackPath);
   const onTarget = pathMatchesTourRoute(
     window.location.pathname,
     step,
-    tourContext
+    tourContext,
+    fallbackPath
   );
 
   if (!onTarget) {
@@ -100,7 +98,6 @@ async function showStepAt(index: number): Promise<void> {
     return;
   }
 
-  // Apply hash without another navigation if needed.
   if (step.hash && window.location.hash !== step.hash) {
     window.location.hash = step.hash;
   }
@@ -114,9 +111,6 @@ async function showStepAt(index: number): Promise<void> {
   const total = steps.length;
   const isFirst = index === 0;
   const isLast = index === total - 1;
-  // Each spotlight is a 1-step driver.js tour, so the library always thinks it
-  // is on the final step and prefers doneBtnText. Force the label on the
-  // popover itself (spreads after driver.js's auto last-step override).
   const primaryBtnText = isLast ? "Finish" : "Next";
 
   activeDriver = driver({
@@ -188,35 +182,32 @@ export function configureFeatureTour(options: {
   tourContext = options.context;
 }
 
-/** Start the feature tour from the beginning. */
-export function startFeatureTour(): void {
+export function startFeatureTour(tourId: TourId = "global"): void {
   clearResumeTimer();
   destroyTourHighlight();
-  setActiveFeatureTour({ stepIndex: 0 });
+  activeTourId = tourId;
+  setActiveFeatureTour({ tourId, stepIndex: 0 });
   void showStepAt(0);
 }
 
-/**
- * Resume after a client navigation. Call when pathname changes while a tour
- * is active — does not wipe the active tour (unlike a full destroy).
- */
 export function resumeFeatureTourIfNeeded(pathname: string): void {
   const active = getActiveFeatureTour();
   if (!active) return;
 
+  activeTourId = active.tourId as TourId;
   clearResumeTimer();
-  // Let the new page paint, then spotlight.
   resumeTimer = window.setTimeout(() => {
-    const steps = visibleSteps();
-    const index = Math.min(active.stepIndex, steps.length - 1);
+    const steps = getTourSteps(activeTourId);
+    const index = Math.min(active.stepIndex, Math.max(steps.length - 1, 0));
     const step = steps[index];
     if (!step) {
       endFeatureTour();
       return;
     }
-    if (!pathMatchesTourRoute(pathname, step, tourContext)) {
-      // Context may have gained an event slug; re-navigate to the resolved route.
-      navigateHandler?.(buildTourPath(step, tourContext));
+    if (
+      !pathMatchesTourRoute(pathname, step, tourContext, pathname)
+    ) {
+      navigateHandler?.(buildTourPath(step, tourContext, pathname));
       return;
     }
     void showStepAt(index);
@@ -229,14 +220,10 @@ export function syncFeatureTourContext(context: FeatureTourContext): void {
 
 /** @deprecated use startFeatureTour */
 export function startOrientationTour(options?: { onDestroyed?: () => void }): void {
-  startFeatureTour();
-  // Preserve old callback timing loosely: fire when tour ends via storage clear is not hooked;
-  // callers now use markTourSeen at start.
+  startFeatureTour("global");
   options?.onDestroyed?.();
 }
 
 export function destroyTour(): void {
-  // Only clear the highlight overlay — keep active tour so route changes can resume.
-  // Use endFeatureTour() to fully stop.
   destroyTourHighlight();
 }

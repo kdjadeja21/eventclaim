@@ -22,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 function StepItem({
   number,
@@ -144,10 +145,7 @@ export default function SettingsGuidePage() {
           </Link>
         </Button>
 
-        <div
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6"
-          data-tour="setup-guide-page"
-        >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-6" data-tour="setup-guide-page">
           <div className="flex items-start gap-3.5">
             <div className="p-2.5 rounded-2xl bg-primary/10 text-primary shrink-0">
               <BookOpen className="h-6 w-6" />
@@ -163,12 +161,15 @@ export default function SettingsGuidePage() {
             </div>
           </div>
 
-          <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
-            <Link href="/settings" data-tour="setup-guide-to-settings">
-              Go to Settings
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+            <PageTourButton tourId="settings-guide" />
+            <Button asChild size="sm">
+              <Link href="/settings" data-tour="setup-guide-to-settings">
+                Go to Settings
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

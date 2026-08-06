@@ -18,6 +18,7 @@ import {
   type ChecklistStep,
   type TourProgress,
 } from "@/lib/tour/progress";
+import type { TourId } from "@/lib/tour/steps";
 import {
   hasSeenTour,
   isChecklistDismissed,
@@ -41,6 +42,7 @@ type TourContextValue = {
   progress: TourProgress;
   checklistVisible: boolean;
   startTour: () => void;
+  startPageTour: (tourId: Exclude<TourId, "global">) => void;
   dismissChecklist: () => void;
   steps: ChecklistStep[];
 };
@@ -115,7 +117,6 @@ export function TourProvider({ children }: { children: ReactNode }) {
     }
   }, [progress.firstDraftEventSlug, progress.firstEventSlug]);
 
-  // Keep the tour engine wired to Next navigation + latest event context.
   useEffect(() => {
     configureFeatureTour({
       navigate: (path) => {
@@ -141,7 +142,6 @@ export function TourProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Resume multi-page tour after client navigations (do not wipe active tour).
   useEffect(() => {
     if (!getActiveFeatureTour()) {
       destroyTourHighlight();
@@ -154,8 +154,17 @@ export function TourProvider({ children }: { children: ReactNode }) {
     markTourSeen();
     window.requestAnimationFrame(() => {
       window.setTimeout(() => {
-        startFeatureTour();
+        startFeatureTour("global");
       }, 80);
+    });
+  }, []);
+
+  const startPageTour = useCallback((tourId: Exclude<TourId, "global">) => {
+    markTourSeen();
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        startFeatureTour(tourId);
+      }, 40);
     });
   }, []);
 
@@ -175,10 +184,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
       progress,
       checklistVisible,
       startTour,
+      startPageTour,
       dismissChecklist,
       steps: progress.steps,
     }),
-    [progress, checklistVisible, startTour, dismissChecklist]
+    [progress, checklistVisible, startTour, startPageTour, dismissChecklist]
   );
 
   return (

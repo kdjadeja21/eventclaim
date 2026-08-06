@@ -19,6 +19,7 @@ import { bulkSendPending, bulkResendFailed } from "../attendees/email-actions";
 import { EventSectionNav } from "../event-section-nav";
 import EmailQuotaBadge from "../attendees/email-quota-badge";
 import { useAppSettings } from "@/lib/use-app-settings";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -90,22 +91,26 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
           </div>
         </div>
 
-        {stats?.quota && (
-          <EmailQuotaBadge
-            limit={stats.quota.limit}
-            used={stats.quota.used}
-            remaining={stats.quota.remaining}
-            ok={stats.quota.ok}
-            emailConfig={emailConfig}
-            onQuotaChange={(newQuota) => {
-              setStats((prev) => (prev ? { ...prev, quota: newQuota } : null));
-            }}
-          />
-        )}
+        <div className="flex items-center gap-2">
+          <PageTourButton tourId="preview" />
+          {stats?.quota && (
+            <EmailQuotaBadge
+              limit={stats.quota.limit}
+              used={stats.quota.used}
+              remaining={stats.quota.remaining}
+              ok={stats.quota.ok}
+              emailConfig={emailConfig}
+              onQuotaChange={(newQuota) => {
+                setStats((prev) => (prev ? { ...prev, quota: newQuota } : null));
+              }}
+            />
+          )}
+        </div>
       </div>
 
       <EventSectionNav slug={slug} active="preview" />
 
+      <div data-tour="preview-panel" className="space-y-6">
       {loading ? (
         <Card>
           <CardContent className="flex items-center justify-center py-16">
@@ -213,6 +218,7 @@ export default function PreviewPage({ params: paramsPromise }: Props) {
       ) : (
         <p className="text-muted-foreground text-sm">Event not found.</p>
       )}
+      </div>
     </div>
   );
 }

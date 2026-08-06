@@ -87,6 +87,7 @@ export function setLastEventSlug(slug: string | null): void {
 }
 
 export type ActiveFeatureTour = {
+  tourId: string;
   stepIndex: number;
 };
 
@@ -99,7 +100,8 @@ export function getActiveFeatureTour(): ActiveFeatureTour | null {
     if (
       !parsed ||
       typeof parsed !== "object" ||
-      typeof parsed.stepIndex !== "number"
+      typeof parsed.stepIndex !== "number" ||
+      typeof parsed.tourId !== "string"
     ) {
       return null;
     }

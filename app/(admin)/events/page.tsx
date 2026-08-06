@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { formatDate } from "@/lib/utils";
 import { Event } from "@/lib/types";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 const statusVariant: Record<
   Event["status"],
@@ -34,12 +35,15 @@ export default async function EventsPage() {
             Manage coupon distribution events
           </p>
         </div>
-        <Button asChild data-tour="new-event">
-          <Link href="/events/new">
-            <Plus className="h-4 w-4" />
-            New Event
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <PageTourButton tourId="events" />
+          <Button asChild data-tour="new-event">
+            <Link href="/events/new">
+              <Plus className="h-4 w-4" />
+              New Event
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {events.length === 0 ? (
@@ -60,7 +64,10 @@ export default async function EventsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          data-tour="events-list"
+        >
           {events.map((event) => (
             <Link key={event.id} href={`/events/${event.slug}`}>
               <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">

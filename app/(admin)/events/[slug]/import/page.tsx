@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { AttendeeImportResult } from "@/lib/types";
 import { useAppSettings } from "@/lib/use-app-settings";
 import { EventSectionNav } from "../event-section-nav";
+import PageTourButton from "@/components/tour/page-tour-button";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -39,17 +40,20 @@ export default function ImportPage({ params: paramsPromise }: Props) {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Import Data</h1>
           <p className="text-sm text-muted-foreground">
             Upload attendees from a Luma CSV export
           </p>
         </div>
+        <PageTourButton tourId="import" />
       </div>
 
       <EventSectionNav slug={slug} active="import" />
 
-      <AttendeeImportForm slug={slug} />
+      <div data-tour="import-panel">
+        <AttendeeImportForm slug={slug} />
+      </div>
     </div>
   );
 }
