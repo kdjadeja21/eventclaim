@@ -6,8 +6,6 @@ import {
   Image as ImageIcon, 
   PartyPopper 
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import PageTourButton from "@/components/tour/page-tour-button";
 
 const tools = [
   {
@@ -59,19 +57,15 @@ export default function ToolsPage() {
         <div className="h-9 w-9 rounded-lg gradient-brand flex items-center justify-center shadow-md">
           <Wrench className="h-4 w-4 text-white" />
         </div>
-        <div className="flex-1 min-w-0">
+        <div>
           <h1 className="text-xl font-bold text-foreground">Community Tools</h1>
           <p className="text-sm text-muted-foreground">
             A collection of internal tools to help manage community events and content.
           </p>
         </div>
-        <PageTourButton tourId="tools" />
       </div>
 
-      <div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4"
-        data-tour="tools-panel"
-      >
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">
         {tools.map((tool) => (
           <a
             key={tool.id}

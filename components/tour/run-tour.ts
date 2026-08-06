@@ -6,6 +6,7 @@ import {
   buildTourPath,
   pathMatchesTourRoute,
   type FeatureTourContext,
+  type FeatureTourStep,
   type TourId,
 } from "@/lib/tour/steps";
 import {
@@ -46,17 +47,34 @@ export function isTourHighlightActive(): boolean {
   return Boolean(activeDriver?.isActive());
 }
 
+/**
+ * Resolve a comma-separated selector list in preference order.
+ * Unlike document.querySelector("a, b"), this returns the first listed
+ * selector that exists, not the first match in DOM order.
+ */
+function findPreferredElement(selector: string): Element | null {
+  const selectors = selector
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el) return el;
+  }
+  return null;
+}
+
 function waitForElement(
   selector: string,
   timeoutMs = 2500
 ): Promise<Element | null> {
-  const existing = document.querySelector(selector);
+  const existing = findPreferredElement(selector);
   if (existing) return Promise.resolve(existing);
 
   return new Promise((resolve) => {
     const deadline = Date.now() + timeoutMs;
     const observer = new MutationObserver(() => {
-      const el = document.querySelector(selector);
+      const el = findPreferredElement(selector);
       if (el) {
         observer.disconnect();
         resolve(el);
@@ -68,49 +86,20 @@ function waitForElement(
     observer.observe(document.body, { childList: true, subtree: true });
     window.setTimeout(() => {
       observer.disconnect();
-      resolve(document.querySelector(selector));
+      resolve(findPreferredElement(selector));
     }, timeoutMs);
   });
 }
 
-async function showStepAt(index: number): Promise<void> {
-  const steps = getTourSteps(activeTourId);
-  if (index < 0 || index >= steps.length) {
-    endFeatureTour();
-    return;
-  }
-
-  const step = steps[index];
-  setActiveFeatureTour({ tourId: activeTourId, stepIndex: index });
-
-  const fallbackPath = window.location.pathname;
-  const targetPath = buildTourPath(step, tourContext, fallbackPath);
-  const onTarget = pathMatchesTourRoute(
-    window.location.pathname,
-    step,
-    tourContext,
-    fallbackPath
-  );
-
-  if (!onTarget) {
-    destroyTourHighlight();
-    navigateHandler?.(targetPath);
-    return;
-  }
-
-  if (step.hash && window.location.hash !== step.hash) {
-    window.location.hash = step.hash;
-  }
-
-  if (step.element) {
-    await waitForElement(step.element);
-  }
-
-  destroyTourHighlight();
-
-  const total = steps.length;
-  const isFirst = index === 0;
-  const isLast = index === total - 1;
+function driveStep(opts: {
+  index: number;
+  total: number;
+  isFirst: boolean;
+  isLast: boolean;
+  step: FeatureTourStep;
+  element?: Element;
+}): void {
+  const { index, total, isFirst, isLast, step, element } = opts;
   const primaryBtnText = isLast ? "Finish" : "Next";
 
   activeDriver = driver({
@@ -130,7 +119,7 @@ async function showStepAt(index: number): Promise<void> {
     },
     steps: [
       {
-        element: step.element,
+        element: element ?? step.element,
         skipMissingElement: true,
         popover: {
           title: step.title,
@@ -174,6 +163,51 @@ async function showStepAt(index: number): Promise<void> {
   activeDriver.drive();
 }
 
+async function showStepAt(index: number): Promise<void> {
+  const steps = getTourSteps(activeTourId);
+  if (index < 0 || index >= steps.length) {
+    endFeatureTour();
+    return;
+  }
+
+  const step = steps[index];
+  setActiveFeatureTour({ tourId: activeTourId, stepIndex: index });
+
+  const fallbackPath = window.location.pathname;
+  const targetPath = buildTourPath(step, tourContext, fallbackPath);
+  const onTarget = pathMatchesTourRoute(
+    window.location.pathname,
+    step,
+    tourContext,
+    fallbackPath
+  );
+
+  if (!onTarget) {
+    destroyTourHighlight();
+    navigateHandler?.(targetPath);
+    return;
+  }
+
+  if (step.hash && window.location.hash !== step.hash) {
+    window.location.hash = step.hash;
+  }
+
+  let resolved: Element | undefined;
+  if (step.element) {
+    resolved = (await waitForElement(step.element)) ?? undefined;
+  }
+
+  destroyTourHighlight();
+  driveStep({
+    index,
+    total: steps.length,
+    isFirst: index === 0,
+    isLast: index === steps.length - 1,
+    step,
+    element: resolved,
+  });
+}
+
 export function configureFeatureTour(options: {
   navigate: (path: string) => void;
   context: FeatureTourContext;
@@ -204,9 +238,7 @@ export function resumeFeatureTourIfNeeded(pathname: string): void {
       endFeatureTour();
       return;
     }
-    if (
-      !pathMatchesTourRoute(pathname, step, tourContext, pathname)
-    ) {
+    if (!pathMatchesTourRoute(pathname, step, tourContext, pathname)) {
       navigateHandler?.(buildTourPath(step, tourContext, pathname));
       return;
     }
@@ -219,7 +251,9 @@ export function syncFeatureTourContext(context: FeatureTourContext): void {
 }
 
 /** @deprecated use startFeatureTour */
-export function startOrientationTour(options?: { onDestroyed?: () => void }): void {
+export function startOrientationTour(options?: {
+  onDestroyed?: () => void;
+}): void {
   startFeatureTour("global");
   options?.onDestroyed?.();
 }

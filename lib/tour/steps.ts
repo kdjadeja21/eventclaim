@@ -16,9 +16,7 @@ export type TourId =
   | "attendees"
   | "coupons"
   | "import"
-  | "preview"
-  | "audit"
-  | "tools";
+  | "preview";
 
 export type FeatureTourStep = {
   id: string;
@@ -106,7 +104,7 @@ export const PAGE_TOURS: Record<Exclude<TourId, "global">, FeatureTourStep[]> = 
     },
     {
       id: "dash-events",
-      element: "[data-tour='dashboard-events'], [data-tour='dashboard-stats']",
+      element: "[data-tour='dashboard-events']",
       title: "Jump into an event",
       description:
         "Open an event card to manage offers, guests, and emails for that meetup.",
@@ -294,28 +292,6 @@ export const PAGE_TOURS: Record<Exclude<TourId, "global">, FeatureTourStep[]> = 
       align: "start",
     },
   ],
-  audit: [
-    {
-      id: "audit-table",
-      element: "[data-tour='audit-panel']",
-      title: "Audit log",
-      description:
-        "Every important admin action is recorded here — imports, emails, claims, and more.",
-      side: "top",
-      align: "start",
-    },
-  ],
-  tools: [
-    {
-      id: "tools-grid",
-      element: "[data-tour='tools-panel']",
-      title: "Community tools",
-      description:
-        "Shortcuts to other Cursor community utilities. These open outside EventClaim.",
-      side: "top",
-      align: "start",
-    },
-  ],
 };
 
 export const TOURS: Record<TourId, FeatureTourStep[]> = {
@@ -334,8 +310,6 @@ export function tourIdForPathname(pathname: string): Exclude<TourId, "global"> |
   if (pathname === "/settings") return "settings";
   if (pathname === "/events/new") return "events-new";
   if (pathname === "/events") return "events";
-  if (pathname === "/audit") return "audit";
-  if (pathname === "/tools") return "tools";
   if (/^\/events\/[^/]+\/attendees\/?$/.test(pathname)) return "attendees";
   if (/^\/events\/[^/]+\/coupons(\/[^/]+)?\/?$/.test(pathname)) return "coupons";
   if (/^\/events\/[^/]+\/import\/?$/.test(pathname)) return "import";
