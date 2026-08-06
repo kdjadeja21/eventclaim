@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import WatchDemoDialog from "@/components/watch-demo-dialog";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -74,15 +75,18 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
 
       <div className="p-3">
         <Separator className="mb-3 bg-sidebar-border" />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-full justify-start text-sidebar-foreground/70 hover:text-white hover:bg-white/10"
-          onClick={handleLogout}
-        >
-          <LogOut className="h-4 w-4 mr-2" />
-          Sign Out
-        </Button>
+        <div className="space-y-1">
+          <WatchDemoDialog variant="sidebar" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-sidebar-foreground/70 hover:text-white hover:bg-white/10"
+            onClick={handleLogout}
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
+        </div>
       </div>
     </aside>
   );

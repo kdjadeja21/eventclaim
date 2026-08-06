@@ -9,12 +9,14 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-v2-setup-first.mp4` | Setup-first + burned-in captions |
 | `eventclaim-portal-demo-v3-attendees-offers.mp4` | Rebalanced Attendees/Offers focus |
 | `eventclaim-portal-demo-v4-pre-enterprise.mp4` | Last cut before enterprise rebuild (had loading-state frames) |
-| Live file (v7) | Title cards, strict content waits, temp users beat, soft VTT |
+| Live file | Title cards, strict content waits, temp users beat, soft VTT |
 
-When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts).
+When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
 ## Regenerating
 
+Follow the project skill: `.cursor/skills/portal-demo-video/SKILL.md`
+
 1. Seed local DB: `npx tsx scripts/seed-demo-data.ts` (requires `DATABASE_URL` / `DIRECT_URL`)
-2. Run the app with demo auth enabled (see `DEMO_AUTH_REMOVE.md`)
-3. Rebuild with the local Playwright/ffmpeg pipeline (recording scripts live under `/tmp/demo-video/` during agent runs)
+2. Save an admin Playwright session (Google login): `node scripts/portal-demo/save-storage-state.cjs`
+3. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
