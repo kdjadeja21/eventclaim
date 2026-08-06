@@ -10,7 +10,8 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-v3-attendees-offers.mp4` | Rebalanced Attendees/Offers focus |
 | `eventclaim-portal-demo-v4-pre-enterprise.mp4` | Last cut before enterprise rebuild (had loading-state frames) |
 | `eventclaim-portal-demo-archive-2026-08-06.mp4` | Pre UI-refresh cut (overview skeleton leak / Jenny voice) |
-| Live file | Updated Settings/Overview UI, AvaNeural voice, accurate overview trim, soft VTT |
+| `eventclaim-portal-demo-archive-2026-08-06-1.mp4` | Pre probe-first rebuild (dashboard/audit skeleton; soft encode) |
+| Live file | PNG still-holds + interactive video, AvaNeural, CRF 14, probe gate |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
