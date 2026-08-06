@@ -14,7 +14,6 @@ import {
   Layers,
   AlertTriangle,
   PlayCircle,
-  ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,9 +38,9 @@ import { formatDateTime } from "@/lib/utils";
 import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
+import DemoVideoPlayer from "@/components/demo-video-player";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
-const DEMO_VIDEO_SRC = "/demo/eventclaim-portal-demo.mp4";
 
 const actionLabels: Record<string, string> = {
   event_created: "Event created",
@@ -152,32 +151,7 @@ export default function DashboardClient() {
                 send claim emails, and track redemptions.
               </DialogDescription>
             </DialogHeader>
-            <video
-              className="aspect-video w-full rounded-md bg-black"
-              controls
-              playsInline
-              preload="metadata"
-              crossOrigin="anonymous"
-            >
-              <source src={DEMO_VIDEO_SRC} type="video/mp4" />
-              <track
-                kind="captions"
-                src="/demo/eventclaim-portal-demo.vtt"
-                srcLang="en"
-                label="English"
-                default
-              />
-              Your browser does not support embedded video.
-            </video>
-            <a
-              href={DEMO_VIDEO_SRC}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              Open video in new tab
-              <ExternalLink className="h-3 w-3" />
-            </a>
+            <DemoVideoPlayer />
           </DialogContent>
         </Dialog>
       </div>
