@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart2, Send, Ticket, Upload, Users } from "lucide-react";
+import { BarChart2, Ticket, Upload, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// "preview" kept for the preserved Preview & Send page (currently hidden site-wide).
 type EventSection = "overview" | "import" | "attendees" | "coupons" | "preview";
 
 const eventSections: {
@@ -39,13 +40,6 @@ const eventSections: {
     label: "Partner Offers",
     icon: Ticket,
     tourId: "event-nav-coupons",
-  },
-  {
-    key: "preview",
-    href: (slug) => `/events/${slug}/preview`,
-    label: "Preview & Send",
-    icon: Send,
-    tourId: "event-nav-preview",
   },
 ];
 

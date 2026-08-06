@@ -13,8 +13,10 @@ import {
   CheckCheck,
   Layers,
   AlertTriangle,
+  PlayCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,6 +24,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { formatDateTime } from "@/lib/utils";
@@ -29,6 +39,7 @@ import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
 import PageTourButton from "@/components/tour/page-tour-button";
+import DemoVideoPlayer from "@/components/demo-video-player";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
 
@@ -116,7 +127,7 @@ export default function DashboardClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight gradient-text">
             Dashboard
@@ -125,7 +136,27 @@ export default function DashboardClient() {
             Overview across all events
           </p>
         </div>
-        <PageTourButton tourId="dashboard" />
+        <div className="flex shrink-0 items-center gap-2">
+          <PageTourButton tourId="dashboard" />
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <PlayCircle className="h-4 w-4" />
+                Watch demo
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>How to use this portal</DialogTitle>
+                <DialogDescription>
+                  See how to use this portal — create events, import attendees,
+                  send claim emails, and track redemptions.
+                </DialogDescription>
+              </DialogHeader>
+              <DemoVideoPlayer />
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {isStale && (

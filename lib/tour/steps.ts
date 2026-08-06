@@ -15,8 +15,7 @@ export type TourId =
   | "event-overview"
   | "attendees"
   | "coupons"
-  | "import"
-  | "preview";
+  | "import";
 
 export type FeatureTourStep = {
   id: string;
@@ -216,7 +215,7 @@ export const PAGE_TOURS: Record<Exclude<TourId, "global">, FeatureTourStep[]> = 
       element: "[data-tour='event-quick-links']",
       title: "Everything for this meetup",
       description:
-        "Use these shortcuts for Import, Attendees, Partner Offers, and Preview & Send.",
+        "Use these shortcuts for Import, Attendees, and Partner Offers.",
       side: "top",
       align: "start",
     },
@@ -227,7 +226,7 @@ export const PAGE_TOURS: Record<Exclude<TourId, "global">, FeatureTourStep[]> = 
       element: "[data-tour='event-section-nav']",
       title: "Event sections",
       description:
-        "Switch between Import, Attendees, Partner Offers, and Preview without leaving this event.",
+        "Switch between Import, Attendees, and Partner Offers without leaving this event.",
       side: "bottom",
       align: "start",
     },
@@ -281,17 +280,6 @@ export const PAGE_TOURS: Record<Exclude<TourId, "global">, FeatureTourStep[]> = 
       align: "start",
     },
   ],
-  preview: [
-    {
-      id: "preview-stats",
-      element: "[data-tour='preview-panel']",
-      title: "Preview & send",
-      description:
-        "Check how many emails are pending, then send or resend in bulk when you are ready.",
-      side: "top",
-      align: "start",
-    },
-  ],
 };
 
 export const TOURS: Record<TourId, FeatureTourStep[]> = {
@@ -313,7 +301,6 @@ export function tourIdForPathname(pathname: string): Exclude<TourId, "global"> |
   if (/^\/events\/[^/]+\/attendees\/?$/.test(pathname)) return "attendees";
   if (/^\/events\/[^/]+\/coupons(\/[^/]+)?\/?$/.test(pathname)) return "coupons";
   if (/^\/events\/[^/]+\/import\/?$/.test(pathname)) return "import";
-  if (/^\/events\/[^/]+\/preview\/?$/.test(pathname)) return "preview";
   if (/^\/events\/[^/]+\/?$/.test(pathname)) return "event-overview";
   return null;
 }
