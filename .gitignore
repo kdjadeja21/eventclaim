@@ -42,3 +42,9 @@ next-env.d.ts
 
 # luma 
 .api/
+
+# portal demo recording session (real admin cookies)
+scripts/portal-demo/storageState.json
+scripts/portal-demo/node_modules/
+scripts/portal-demo/package-lock.json
+

@@ -1,8 +1,5 @@
 import { cookies } from "next/headers";
 import { adminAuth } from "@/lib/firebase/admin";
-// TEMP_DEMO_AUTH_START
-import { verifyDemoSessionCookie } from "@/lib/demo-auth";
-// TEMP_DEMO_AUTH_END
 
 const SESSION_COOKIE_NAME = "eventclaim_session";
 const SESSION_DURATION_MS = 60 * 60 * 24 * 5 * 1000; // 5 days
@@ -29,11 +26,6 @@ export async function getSession(): Promise<{
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionCookie) return null;
-
-  // TEMP_DEMO_AUTH_START
-  const demo = verifyDemoSessionCookie(sessionCookie);
-  if (demo) return demo;
-  // TEMP_DEMO_AUTH_END
 
   try {
     const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
