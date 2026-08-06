@@ -39,11 +39,14 @@ const BASE = process.env.DEMO_BASE_URL || "http://127.0.0.1:3000";
 const SLUG = "cursor-community-meetup";
 const WORK = process.env.DEMO_WORK_DIR || "/tmp/demo-video/build";
 const EDGE = process.env.EDGE_TTS_BIN || path.join(process.env.HOME || "", ".local/bin/edge-tts");
-const VOICE = "en-US-JennyNeural";
+// Conversational neural voice (more natural than General Jenny).
+const VOICE = process.env.DEMO_TTS_VOICE || "en-US-AvaNeural";
+const VOICE_RATE = process.env.DEMO_TTS_RATE || "+0%";
 const OUT_MP4 = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.mp4");
 const OUT_VTT = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.vtt");
 const DRAFT_DIR = path.join(REPO_ROOT, "public/demo/draft");
 const STORAGE_STATE = path.join(__dirname, "storageState.json");
+const RECORDING_SECRET = process.env.PORTAL_DEMO_RECORDING_SECRET;
 
 const SECTIONS = [
   {
@@ -224,7 +227,7 @@ async function generateAudio() {
       "--voice",
       VOICE,
       "--rate",
-      "+4%",
+      VOICE_RATE,
       "--file",
       txt,
       "--write-media",
@@ -285,28 +288,28 @@ async function generateAudio() {
 }
 
 async function assertNoSkeleton(page) {
-  // Fail the section if a loading skeleton is still visible after waits.
-  const skeleton = page.locator(".animate-pulse, [data-slot='skeleton']");
-  const count = await skeleton.count();
-  if (count > 0) {
-    const visible = await skeleton.first().isVisible().catch(() => false);
-    if (visible) {
-      throw new Error("Skeleton still visible — refusing to record loading state");
-    }
+  // Fail the section if any loading skeleton/spinner is still visible.
+  const skeletonVisible = page.locator(
+    ".animate-pulse:visible, [data-slot='skeleton']:visible"
+  );
+  if ((await skeletonVisible.count()) > 0) {
+    throw new Error("Skeleton still visible — refusing to record loading state");
   }
-  const spinner = page.locator(".animate-spin");
-  if ((await spinner.count()) > 0) {
-    const visible = await spinner.first().isVisible().catch(() => false);
-    if (visible) {
-      throw new Error("Spinner still visible — refusing to record loading state");
-    }
+  const spinnerVisible = page.locator(".animate-spin:visible");
+  if ((await spinnerVisible.count()) > 0) {
+    throw new Error("Spinner still visible — refusing to record loading state");
   }
 }
 
 async function waitForSection(page, section) {
   switch (section.wait) {
     case "settings":
-      await page.getByLabel("Luma API Key").waitFor({ state: "visible", timeout: 20000 });
+      // Updated Settings UI labels the Luma field "API Key" (card title is Luma API).
+      await page.locator("#luma-api-key").waitFor({ state: "visible", timeout: 20000 });
+      await page.getByText("Luma API", { exact: true }).waitFor({
+        state: "visible",
+        timeout: 20000,
+      });
       break;
     case "guide":
       await page.getByRole("heading", { name: /Integration Setup Guide/i }).waitFor({
@@ -321,7 +324,17 @@ async function waitForSection(page, section) {
       await page.getByText("Cursor Community Meetup").waitFor({ timeout: 20000 });
       break;
     case "overview":
+      // Require real overview content — not the event-detail loading skeleton
+      // (which also has four cards + tab pills and previously leaked into cuts).
+      await page
+        .getByRole("heading", { name: "Cursor Community Meetup" })
+        .waitFor({ state: "visible", timeout: 20000 });
       await page.getByText("Auto-send emails").waitFor({ state: "visible", timeout: 20000 });
+      await page.getByText("Claim Rate").waitFor({ state: "visible", timeout: 20000 });
+      await page
+        .getByRole("navigation", { name: /Event sections/i })
+        .getByRole("link", { name: /Overview/i })
+        .waitFor({ state: "visible", timeout: 20000 });
       break;
     case "import":
       await page.getByText(/Import Attendees from Luma/i).waitFor({ timeout: 20000 });
@@ -357,7 +370,7 @@ async function waitForSection(page, section) {
 
 async function seedBrowserSettings(page) {
   await page.goto(`${BASE}/settings`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Luma API Key").waitFor({ state: "visible", timeout: 20000 });
+  await page.locator("#luma-api-key").waitFor({ state: "visible", timeout: 20000 });
 
   async function fill(id, value) {
     const input = page.locator(`#${id}`);
@@ -369,24 +382,64 @@ async function seedBrowserSettings(page) {
   await fill("emailjs-template-id", "template_demo");
   await fill("emailjs-public-key", "user_demo_public_key");
   await fill("emailjs-private-key", "demo_private_key_xxxxxxxx");
-  await fill("app-base-url", BASE);
+  // Use a polished public-looking URL in the recording (not localhost).
+  await fill("app-base-url", "https://eventclaim.example.com");
 
-  await page.getByRole("button", { name: /Save Settings/i }).click();
+  const save = page.getByRole("button", { name: /Save settings/i });
+  await save.waitFor({ state: "visible", timeout: 10000 });
+  // Wait until validation enables the button.
+  await page.waitForFunction(
+    () => {
+      const buttons = [...document.querySelectorAll("button")];
+      const btn = buttons.find((b) => /Save settings/i.test(b.textContent || ""));
+      return Boolean(btn && !btn.disabled);
+    },
+    { timeout: 10000 }
+  );
+  await save.click();
   await page
-    .getByText(/Settings saved locally|EmailJS:\s*configured/i)
+    .getByText(/Settings saved locally/i)
     .first()
     .waitFor({ timeout: 10000 })
     .catch(() => {});
   await pause(500);
 }
 
-async function loadAuthAndSeedSettings(browser) {
-  if (!fs.existsSync(STORAGE_STATE)) {
+function buildRecordingStorageState() {
+  if (!RECORDING_SECRET) {
     throw new Error(
-      `Missing ${STORAGE_STATE}. Run: node scripts/portal-demo/save-storage-state.cjs`
+      `Missing ${STORAGE_STATE}. Either run save-storage-state.cjs (Google sign-in) ` +
+        `or set PORTAL_DEMO_RECORDING_SECRET for headless recording (no login UI).`
     );
   }
-  const stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
+  const url = new URL(BASE);
+  return {
+    cookies: [
+      {
+        name: "eventclaim_session",
+        value: `recording:${RECORDING_SECRET}`,
+        domain: url.hostname,
+        path: "/",
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+        expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
+      },
+    ],
+    origins: [],
+  };
+}
+
+async function loadAuthAndSeedSettings(browser) {
+  let stored;
+  if (fs.existsSync(STORAGE_STATE)) {
+    stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
+  } else {
+    stored = buildRecordingStorageState();
+    console.log(
+      "Using PORTAL_DEMO_RECORDING_SECRET session (no Google storageState.json)"
+    );
+  }
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     storageState: stored,
@@ -497,9 +550,13 @@ async function recordSection(browser, storageState, section, outPath) {
   await page.waitForLoadState("networkidle").catch(() => {});
   await waitForSection(page, section);
   await interact(page, section);
+  await assertNoSkeleton(page);
 
-  // Hold for narration duration after the UI is ready (never during loading).
-  await pause(Math.max(1000, section.duration * 1000));
+  // Hold ready UI longer than narration, then take the last `need` seconds so
+  // navigation/skeleton frames at the start cannot enter the cut.
+  const readyPadMs = 2000;
+  await pause(Math.max(1000, section.duration * 1000) + readyPadMs);
+  await assertNoSkeleton(page);
 
   const vid = await page.video().path();
   await context.close();
@@ -507,13 +564,15 @@ async function recordSection(browser, storageState, section, outPath) {
   const rawDur = probeDuration(vid);
   const need = section.duration;
   // Prefer the end of the recording (ready UI), drop startup navigation.
+  // Output seeking (-ss after -i) is accurate; input -ss can land on an earlier
+  // keyframe and leak loading skeletons into the start of overview clips.
   const ss = Math.max(0, rawDur - need - 0.05);
   sh("ffmpeg", [
     "-y",
-    "-ss",
-    ss.toFixed(3),
     "-i",
     vid,
+    "-ss",
+    ss.toFixed(3),
     "-t",
     need.toFixed(3),
     "-c:v",
@@ -527,8 +586,21 @@ async function recordSection(browser, storageState, section, outPath) {
     "-an",
     outPath,
   ]);
+
+  // Spot-check the first frame of the trimmed clip for leftover skeletons.
+  const probeFrame = path.join(WORK, "clips", `${section.id}-probe.jpg`);
+  sh("ffmpeg", [
+    "-y",
+    "-i",
+    outPath,
+    "-ss",
+    "0.15",
+    "-frames:v",
+    "1",
+    probeFrame,
+  ]);
   console.log(
-    `${section.id}: clip=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ${section.route}`
+    `${section.id}: clip=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}`
   );
 }
 

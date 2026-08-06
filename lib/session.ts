@@ -3,6 +3,24 @@ import { adminAuth } from "@/lib/firebase/admin";
 
 const SESSION_COOKIE_NAME = "eventclaim_session";
 const SESSION_DURATION_MS = 60 * 60 * 24 * 5 * 1000; // 5 days
+const RECORDING_COOKIE_PREFIX = "recording:";
+
+/**
+ * Headless portal-demo recording only (no login UI).
+ * Enabled when PORTAL_DEMO_RECORDING_SECRET is set and not on Vercel production.
+ */
+function verifyRecordingSessionCookie(
+  sessionCookie: string
+): { uid: string; email: string | undefined } | null {
+  if (process.env.VERCEL_ENV === "production") return null;
+  const secret = process.env.PORTAL_DEMO_RECORDING_SECRET;
+  if (!secret) return null;
+  if (sessionCookie !== `${RECORDING_COOKIE_PREFIX}${secret}`) return null;
+  return {
+    uid: "portal-demo-recorder",
+    email: "demo@eventclaim.local",
+  };
+}
 
 export async function createSession(idToken: string): Promise<void> {
   const sessionCookie = await adminAuth.createSessionCookie(idToken, {
@@ -26,6 +44,9 @@ export async function getSession(): Promise<{
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!sessionCookie) return null;
+
+  const recording = verifyRecordingSessionCookie(sessionCookie);
+  if (recording) return recording;
 
   try {
     const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);

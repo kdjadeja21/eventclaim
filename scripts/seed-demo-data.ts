@@ -27,7 +27,7 @@ async function main() {
       ${slug},
       ${"2026-08-15"},
       ${"https://www.notion.so"},
-      ${"active"},
+      ${"draft"},
       ${now},
       ${now},
       ${false},
