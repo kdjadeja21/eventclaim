@@ -25,8 +25,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AppSettings } from "@/lib/settings";
+import {
+  AppSettings,
+  DEFAULT_SETTINGS,
+  isSettingsDraftValid,
+  validateSettings,
+} from "@/lib/settings";
 import { useAppSettings } from "@/lib/use-app-settings";
+import { cn } from "@/lib/utils";
 
 export default function SettingsClient() {
   const { loading } = useAppSettings();
@@ -45,6 +51,15 @@ export default function SettingsClient() {
   return <SettingsForm />;
 }
 
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p className="text-xs text-destructive" role="alert">
+      {message}
+    </p>
+  );
+}
+
 function SettingsForm() {
   const { settings, updateSettings, resetSettings, lumaConfigured, emailConfigured } =
     useAppSettings();
@@ -56,7 +71,16 @@ function SettingsForm() {
     setDraft((prev) => ({ ...prev, [key]: value }));
   }
 
+  const errors = validateSettings(draft);
+  const draftValid = isSettingsDraftValid(draft);
+  const hasUnsavedChanges = JSON.stringify(draft) !== JSON.stringify(settings);
+  const canSave = hasUnsavedChanges && draftValid && !saving;
+
   async function handleSave() {
+    if (!draftValid) {
+      toast.error("Fix the highlighted fields before saving");
+      return;
+    }
     setSaving(true);
     try {
       await updateSettings(draft);
@@ -70,10 +94,9 @@ function SettingsForm() {
 
   function handleClear() {
     resetSettings();
+    setDraft({ ...DEFAULT_SETTINGS });
     toast.success("Local settings cleared");
   }
-
-  const hasUnsavedChanges = JSON.stringify(draft) !== JSON.stringify(settings);
 
   return (
     <div className="space-y-6">
@@ -139,21 +162,28 @@ function SettingsForm() {
               autoComplete="off"
               placeholder="secret-xxxxxxxxxxxxxxxx"
               value={draft.lumaApiKey}
+              aria-invalid={Boolean(errors.lumaApiKey)}
+              aria-describedby={
+                errors.lumaApiKey ? "luma-api-key-error" : undefined
+              }
+              className={cn(errors.lumaApiKey && "border-destructive")}
               onChange={(e) => set("lumaApiKey", e.target.value.trim())}
             />
-            <p className="text-xs text-muted-foreground">
-              From your Luma <strong>City Calendar</strong> with Luma Plus:
-              Settings &rarr; Developer &rarr; API Keys.{" "}
-              <Link
-                href="/settings/guide#luma"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2"
-              >
-                Setup guide
-              </Link>
-            </p>
-          </div>
+            <FieldError message={errors.lumaApiKey} />
+            {!errors.lumaApiKey ? (
+              <p className="text-xs text-muted-foreground">
+                From your Luma <strong>City Calendar</strong> with Luma Plus:
+                Settings &rarr; Developer &rarr; API Keys.{" "}
+                <Link
+                  href="/settings/guide#luma"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary underline underline-offset-2"
+                >
+                  Setup guide
+                </Link>
+              </p>
+            ) : null}          </div>
         </CardContent>
       </Card>
 
@@ -192,8 +222,11 @@ function SettingsForm() {
                 autoComplete="off"
                 placeholder="service_xxxxxxx"
                 value={draft.emailjsServiceId}
+                aria-invalid={Boolean(errors.emailjsServiceId)}
+                className={cn(errors.emailjsServiceId && "border-destructive")}
                 onChange={(e) => set("emailjsServiceId", e.target.value.trim())}
               />
+              <FieldError message={errors.emailjsServiceId} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="emailjs-template-id">Template ID</Label>
@@ -202,8 +235,11 @@ function SettingsForm() {
                 autoComplete="off"
                 placeholder="template_xxxxxxx"
                 value={draft.emailjsTemplateId}
+                aria-invalid={Boolean(errors.emailjsTemplateId)}
+                className={cn(errors.emailjsTemplateId && "border-destructive")}
                 onChange={(e) => set("emailjsTemplateId", e.target.value.trim())}
               />
+              <FieldError message={errors.emailjsTemplateId} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="emailjs-public-key">Public Key</Label>
@@ -213,8 +249,11 @@ function SettingsForm() {
                 autoComplete="off"
                 placeholder="user_xxxxxxxxxxxxxxxx"
                 value={draft.emailjsPublicKey}
+                aria-invalid={Boolean(errors.emailjsPublicKey)}
+                className={cn(errors.emailjsPublicKey && "border-destructive")}
                 onChange={(e) => set("emailjsPublicKey", e.target.value.trim())}
               />
+              <FieldError message={errors.emailjsPublicKey} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="emailjs-private-key">Private Key</Label>
@@ -224,8 +263,11 @@ function SettingsForm() {
                 autoComplete="off"
                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
                 value={draft.emailjsPrivateKey}
+                aria-invalid={Boolean(errors.emailjsPrivateKey)}
+                className={cn(errors.emailjsPrivateKey && "border-destructive")}
                 onChange={(e) => set("emailjsPrivateKey", e.target.value.trim())}
               />
+              <FieldError message={errors.emailjsPrivateKey} />
             </div>
           </div>
 
@@ -237,15 +279,24 @@ function SettingsForm() {
               <Input
                 id="emailjs-quota"
                 type="number"
-                min={0}
+                min={1}
+                step={1}
                 value={draft.emailjsMonthlyQuota}
+                aria-invalid={Boolean(errors.emailjsMonthlyQuota)}
+                className={cn(errors.emailjsMonthlyQuota && "border-destructive")}
                 onChange={(e) =>
-                  set("emailjsMonthlyQuota", Math.max(0, Number(e.target.value) || 0))
+                  set(
+                    "emailjsMonthlyQuota",
+                    e.target.value === "" ? 0 : Number(e.target.value)
+                  )
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Matches your EmailJS plan&apos;s monthly email limit.
-              </p>
+              <FieldError message={errors.emailjsMonthlyQuota} />
+              {!errors.emailjsMonthlyQuota ? (
+                <p className="text-xs text-muted-foreground">
+                  Matches your EmailJS plan&apos;s monthly email limit.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="emailjs-used-baseline">Used Baseline</Label>
@@ -253,17 +304,25 @@ function SettingsForm() {
                 id="emailjs-used-baseline"
                 type="number"
                 min={0}
+                step={1}
                 value={draft.emailjsMonthlyUsedBaseline}
+                aria-invalid={Boolean(errors.emailjsMonthlyUsedBaseline)}
+                className={cn(
+                  errors.emailjsMonthlyUsedBaseline && "border-destructive"
+                )}
                 onChange={(e) =>
                   set(
                     "emailjsMonthlyUsedBaseline",
-                    Math.max(0, Number(e.target.value) || 0)
+                    e.target.value === "" ? 0 : Number(e.target.value)
                   )
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Sends already used this month outside this app, if any.
-              </p>
+              <FieldError message={errors.emailjsMonthlyUsedBaseline} />
+              {!errors.emailjsMonthlyUsedBaseline ? (
+                <p className="text-xs text-muted-foreground">
+                  Sends already used this month outside this app, if any.
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -274,12 +333,17 @@ function SettingsForm() {
               autoComplete="off"
               placeholder="https://your-app.example.com"
               value={draft.appBaseUrl}
+              aria-invalid={Boolean(errors.appBaseUrl)}
+              className={cn(errors.appBaseUrl && "border-destructive")}
               onChange={(e) => set("appBaseUrl", e.target.value.trim())}
             />
-            <p className="text-xs text-muted-foreground">
-              Used to build claim links in emails. Defaults to this browser&apos;s
-              current origin when left blank.
-            </p>
+            <FieldError message={errors.appBaseUrl} />
+            {!errors.appBaseUrl ? (
+              <p className="text-xs text-muted-foreground">
+                Used to build claim links in emails. Defaults to this browser&apos;s
+                current origin when left blank.
+              </p>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -290,6 +354,7 @@ function SettingsForm() {
           <span>
             Luma: {lumaConfigured ? "configured" : "not configured"} &middot; EmailJS:{" "}
             {emailConfigured ? "configured" : "not configured"}
+            {!draftValid ? " · fix validation errors to save" : null}
           </span>
         </div>
 
@@ -303,7 +368,7 @@ function SettingsForm() {
             <Trash2 className="h-4 w-4" />
             Clear All
           </Button>
-          <Button type="button" onClick={handleSave} disabled={saving || !hasUnsavedChanges}>
+          <Button type="button" onClick={handleSave} disabled={!canSave}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Save Settings
           </Button>
