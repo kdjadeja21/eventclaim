@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:00.000 --> 00:00:06.096
+Welcome to EventClaim, the Cursor Community portal for distributing partner credits at events.
+
+2
+00:00:06.096 --> 00:00:12.744
+Before you run an event, complete the most important step: set up Luma and EmailJS in Settings.
+
+3
+00:00:12.744 --> 00:00:24.000
+Open the Setup guide for step-by-step instructions. Configure your Luma API key to sync checked-in guests, then connect EmailJS so claim emails can be sent.
+
+4
+00:00:24.000 --> 00:00:34.080
+Save your Luma and EmailJS values here. They stay encrypted in this browser only. Once configured, you are ready to create events.
+
+5
+00:00:34.080 --> 00:00:41.352
+The dashboard gives an overview across all events — attendees, coupons, emails sent, and claim rate.
+
+6
+00:00:41.352 --> 00:00:47.232
+Open Events to browse meetups or create a new one with a name, date, and venue details.
+
+7
+00:00:47.232 --> 00:00:52.488
+Inside an event, you see live stats and shortcuts for the full coupon workflow.
+
+8
+00:00:52.488 --> 00:01:02.424
+Import checked-in guests from a Luma CSV export, then upload coupon links. The portal pairs available credits with attendees automatically.
+
+9
+00:01:02.424 --> 00:01:10.560
+On Attendees, search, filter, and send or resend claim emails. Each guest gets a unique claim link.
+
+10
+00:01:10.560 --> 00:01:16.872
+Partner Offers lets you manage coupon types, track available links, and see what has been granted.
+
+11
+00:01:16.872 --> 00:01:22.728
+Audit Logs record admin activity so you can review imports, emails, and claims.
+
+12
+00:01:22.728 --> 00:01:34.680
+That is EventClaim. Set up Luma and EmailJS first, then create an event, import guests, send claims, and track redemptions. Thanks for watching.

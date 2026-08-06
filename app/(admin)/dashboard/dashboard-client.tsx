@@ -157,8 +157,16 @@ export default function DashboardClient() {
               controls
               playsInline
               preload="metadata"
-              src={DEMO_VIDEO_SRC}
+              crossOrigin="anonymous"
             >
+              <source src={DEMO_VIDEO_SRC} type="video/mp4" />
+              <track
+                kind="captions"
+                src="/demo/eventclaim-portal-demo.vtt"
+                srcLang="en"
+                label="English"
+                default
+              />
               Your browser does not support embedded video.
             </video>
             <a
