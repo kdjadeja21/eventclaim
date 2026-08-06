@@ -7,7 +7,6 @@ import {
   Mail,
   BarChart2,
   Upload,
-  Send,
 } from "lucide-react";
 import { getEventBySlug } from "../actions";
 import { getEventStats } from "./stats-actions";
@@ -69,12 +68,6 @@ export default async function EventDetailPage({ params }: Props) {
       label: "Manage Coupons",
       icon: Ticket,
       description: "Assign, unassign, add, and track coupons",
-    },
-    {
-      href: `/events/${slug}/preview`,
-      label: "Preview & Send",
-      icon: Send,
-      description: "Validate and send all pending emails",
     },
   ];
 
@@ -140,7 +133,7 @@ export default async function EventDetailPage({ params }: Props) {
       </div>
 
       {/* Quick links */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {quickLinks.map(({ href, label, icon: Icon, description }) => (
           <Link key={href} href={href}>
             <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
