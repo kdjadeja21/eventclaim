@@ -8,7 +8,7 @@
  * - Soft WebVTT captions aligned to narration sentence timing
  *
  * Prerequisites: see .cursor/skills/portal-demo-video/SKILL.md
- * Auth: storageState.json (Google) or PORTAL_DEMO_RECORDING_SECRET (headless)
+ * Auth: scripts/portal-demo/storageState.json (from save-storage-state.cjs)
  *
  * DEMO_PROBE_ONLY=1 — capture/verify probes then exit (no final concat)
  */
@@ -47,7 +47,6 @@ const OUT_MP4 = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.mp4");
 const OUT_VTT = path.join(REPO_ROOT, "public/demo/eventclaim-portal-demo.vtt");
 const DRAFT_DIR = path.join(REPO_ROOT, "public/demo/draft");
 const STORAGE_STATE = path.join(__dirname, "storageState.json");
-const RECORDING_SECRET = process.env.PORTAL_DEMO_RECORDING_SECRET;
 const PROBE_ONLY = process.env.DEMO_PROBE_ONLY === "1";
 const ARTIFACT_PROBES = "/opt/cursor/artifacts/demo-probes";
 
@@ -508,41 +507,13 @@ async function seedBrowserSettings(page) {
   await pause(500);
 }
 
-function buildRecordingStorageState() {
-  if (!RECORDING_SECRET) {
-    throw new Error(
-      `Missing ${STORAGE_STATE}. Either run save-storage-state.cjs (Google sign-in) ` +
-        `or set PORTAL_DEMO_RECORDING_SECRET for headless recording (no login UI).`
-    );
-  }
-  const url = new URL(BASE);
-  return {
-    cookies: [
-      {
-        name: "eventclaim_session",
-        value: `recording:${RECORDING_SECRET}`,
-        domain: url.hostname,
-        path: "/",
-        httpOnly: true,
-        secure: false,
-        sameSite: "Lax",
-        expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24,
-      },
-    ],
-    origins: [],
-  };
-}
-
 async function loadAuthAndSeedSettings(browser) {
-  let stored;
-  if (fs.existsSync(STORAGE_STATE)) {
-    stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
-  } else {
-    stored = buildRecordingStorageState();
-    console.log(
-      "Using PORTAL_DEMO_RECORDING_SECRET session (no Google storageState.json)"
+  if (!fs.existsSync(STORAGE_STATE)) {
+    throw new Error(
+      `Missing ${STORAGE_STATE}. Run: node scripts/portal-demo/save-storage-state.cjs`
     );
   }
+  const stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
   const context = await browser.newContext({
     viewport: { width: 1280, height: 800 },
     storageState: stored,

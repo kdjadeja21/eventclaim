@@ -29,18 +29,14 @@ Do **not** reintroduce temporary product demo auth (`Continue as demo` / `DEMO_A
 1. Postgres with migrations applied; `DATABASE_URL` / `DIRECT_URL` set
 2. App running at `DEMO_BASE_URL` (default `http://127.0.0.1:3000`)
 3. Tools: `ffmpeg`, `ffprobe`, `edge-tts` (`pip install --user edge-tts`), Playwright Chromium
-4. Admin session for recording — pick one:
-   - **Google session (preferred):**
-     ```bash
-     cd scripts/portal-demo
-     npm init -y && npm i playwright@1.52.0 && npx playwright install chromium
-     DEMO_BASE_URL=http://127.0.0.1:3000 node save-storage-state.cjs
-     ```
-     Completes Google sign-in once; writes gitignored `storageState.json`.
-   - **Headless recording session (no login UI):** set `PORTAL_DEMO_RECORDING_SECRET` in
-     the app env and the builder env to the same value. Cookie is
-     `recording:<secret>`; blocked when `VERCEL_ENV=production`. Do **not**
-     reintroduce product demo login (`Continue as demo` / `DEMO_AUTH_*`).
+4. Admin session for recording (Google sign-in):
+   ```bash
+   cd scripts/portal-demo
+   npm init -y && npm i playwright@1.52.0 && npx playwright install chromium
+   DEMO_BASE_URL=http://127.0.0.1:3000 node save-storage-state.cjs
+   ```
+   Completes Google sign-in once; writes gitignored `storageState.json`.
+   Do **not** reintroduce product demo login (`Continue as demo` / `DEMO_AUTH_*`).
 
 ## Pipeline
 
@@ -48,7 +44,7 @@ Do **not** reintroduce temporary product demo auth (`Continue as demo` / `DEMO_A
 # 1. Seed demo event/attendees/offers (draft status so Create temp users is available)
 npx tsx scripts/seed-demo-data.ts
 
-# 2. Ensure app is up and storageState.json exists (or PORTAL_DEMO_RECORDING_SECRET)
+# 2. Ensure app is up and storageState.json exists
 
 # 3. Probe-only first (recommended) — review PNGs before shipping
 DEMO_PROBE_ONLY=1 node scripts/portal-demo/build-portal-demo.cjs
