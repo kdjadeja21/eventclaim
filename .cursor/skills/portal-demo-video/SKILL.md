@@ -50,17 +50,23 @@ npx tsx scripts/seed-demo-data.ts
 
 # 2. Ensure app is up and storageState.json exists (or PORTAL_DEMO_RECORDING_SECRET)
 
-# 3. Build
+# 3. Probe-only first (recommended) — review PNGs before shipping
+DEMO_PROBE_ONLY=1 node scripts/portal-demo/build-portal-demo.cjs
+# Inspect /tmp/demo-video/build/probes/*.png and /opt/cursor/artifacts/demo-probes/
+
+# 4. Full build
 node scripts/portal-demo/build-portal-demo.cjs
 ```
 
 What the builder does:
 
 1. Per-section `edge-tts` (`en-US-AvaNeural`, `+0%` by default) → concat narration + sentence-weighted VTT
-2. Playwright `recordVideo` (1280×800) per section, ready-pad then trimmed to exact audio duration
-3. Strict content waits (overview requires heading + Auto-send + Claim Rate + section nav); throws if skeleton/spinner still visible
-4. Title/end cards via ffmpeg (no login chrome)
-5. Archives previous live mp4/vtt into `public/demo/draft/` then writes:
+2. **Static sections:** Playwright screenshot PNG → ffmpeg still-hold (sharp UI text)
+3. **Interactive sections only** (`scroll-config`, `autosend`, `scroll-attendees`, `temp-users`): `recordVideo`, ready-pad, accurate output seek trim
+4. Strict **main-scoped** content waits + auto-fail if skeleton/spinner visible or required strings missing
+5. Encode with CRF 14 + ~4Mbps floor (readable UI text)
+6. Title/end cards via ffmpeg (no login chrome)
+7. Archives previous live mp4/vtt into `public/demo/draft/` then writes:
    - `public/demo/eventclaim-portal-demo.mp4`
    - `public/demo/eventclaim-portal-demo.vtt`
 
@@ -68,9 +74,9 @@ What the builder does:
 
 1. Edit `SECTIONS` in `scripts/portal-demo/build-portal-demo.cjs`
 2. Add `{ id, route, text, wait?, interact?, kind? }`
-3. If needed, extend `waitForSection` / `interact` with a stable selector wait
+3. If needed, extend `waitForSection` / `interact` / `REQUIRED_MAIN_TEXT` with a stable selector wait
 4. Keep narration concise; Import stays brief; Attendees / Partner Offers / new features get more time
-5. Rebuild, then spot-check frames (no skeletons) and caption sync before committing
+5. Run `DEMO_PROBE_ONLY=1` and visually confirm probes, then full rebuild before committing
 
 ### Wait keys already supported
 
@@ -82,16 +88,20 @@ What the builder does:
 
 ## Quality gates
 
-- No skeleton (`.animate-pulse`) or spinner (`.animate-spin`) frames in the final cut
+- No skeleton (`.animate-pulse`) or spinner (`.animate-spin`) in `main` — builder throws
+- Probe PNGs written per section; review dashboard/audit/overview/settings/attendees before shipping
 - Title/end cards instead of login UI
 - Soft VTT (not huge burned-in captions); player uses native `<track>` for fullscreen sync
 - Video and audio durations match (±0.2s)
 - Captions default off in the player; download disabled
 - Do not open Watch demo during recording (empty self-referential player)
+- PNG holds for static beats; video only for interactions
+- Encode: CRF 14 + bitrate floor (~4M)
 
 ## Output checklist
 
+- [ ] Probe-only pass reviewed (no skeletons)
 - [ ] Previous live file archived under `public/demo/draft/`
 - [ ] Live mp4 + vtt updated
-- [ ] Sample frames verified (settings, dashboard, attendees, any new beat)
+- [ ] Sample frames verified (settings, dashboard, audit, attendees, overview)
 - [ ] Draft README note updated if a new archive name was introduced
