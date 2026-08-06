@@ -75,7 +75,7 @@ export default function AutoSendToggle({
         <p className="text-sm text-muted-foreground">
           {enabled
             ? "When attendees are imported or synced and receive offers, their claim email is sent automatically — one at a time."
-            : "Emails are not sent automatically. Use the Attendees page or Preview & Send to email attendees manually."}
+            : "Emails are not sent automatically. Use the Attendees page to email attendees manually."}
         </p>
       </CardContent>
     </Card>
