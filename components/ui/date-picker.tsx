@@ -3,6 +3,7 @@
 import * as React from "react";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
+import type { Matcher } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -11,16 +12,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-
-function parseDateValue(value: string): Date | undefined {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatDateValue(date: Date): string {
-  return format(date, "yyyy-MM-dd");
-}
+import {
+  formatEventDateValue,
+  parseEventDateValue,
+} from "@/lib/event-date";
 
 export type DatePickerProps = {
   id?: string;
@@ -31,6 +26,10 @@ export type DatePickerProps = {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  /** Inclusive earliest selectable date (local calendar day). */
+  fromDate?: Date;
+  /** Inclusive latest selectable date (local calendar day). */
+  toDate?: Date;
   onChange?: (value: string) => void;
 };
 
@@ -43,16 +42,28 @@ export function DatePicker({
   disabled,
   placeholder = "Pick a date",
   className,
+  fromDate,
+  toDate,
   onChange,
 }: DatePickerProps) {
   const isControlled = value !== undefined;
-  const [uncontrolledValue, setUncontrolledValue] = React.useState(defaultValue);
+  const [uncontrolledValue, setUncontrolledValue] =
+    React.useState(defaultValue);
   const selectedValue = isControlled ? value : uncontrolledValue;
-  const selectedDate = selectedValue ? parseDateValue(selectedValue) : undefined;
+  const selectedDate = selectedValue
+    ? parseEventDateValue(selectedValue)
+    : undefined;
   const [open, setOpen] = React.useState(false);
 
+  const disabledMatchers = React.useMemo(() => {
+    const matchers: Matcher[] = [];
+    if (fromDate) matchers.push({ before: fromDate });
+    if (toDate) matchers.push({ after: toDate });
+    return matchers;
+  }, [fromDate, toDate]);
+
   function setDate(next: Date | undefined) {
-    const nextValue = next ? formatDateValue(next) : "";
+    const nextValue = next ? formatEventDateValue(next) : "";
     if (!isControlled) {
       setUncontrolledValue(nextValue);
     }
@@ -86,7 +97,10 @@ export function DatePicker({
             mode="single"
             selected={selectedDate}
             onSelect={setDate}
-            defaultMonth={selectedDate}
+            defaultMonth={selectedDate ?? fromDate}
+            startMonth={fromDate}
+            endMonth={toDate}
+            disabled={disabledMatchers.length ? disabledMatchers : undefined}
             autoFocus
           />
         </PopoverContent>
