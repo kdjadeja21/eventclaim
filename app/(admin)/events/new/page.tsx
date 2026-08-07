@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createEvent } from "../actions";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -23,6 +24,10 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
+import {
+  EVENT_DATE_MAX_DAYS_AHEAD,
+  getEventDateBounds,
+} from "@/lib/event-date";
 
 type ActionState = Awaited<ReturnType<typeof createEvent>> | null;
 
@@ -32,6 +37,7 @@ export default function NewEventPage() {
     createEvent,
     null
   );
+  const { minDate, maxDate } = useMemo(() => getEventDateBounds(), []);
 
   useEffect(() => {
     if (state?.success && state.slug) {
@@ -82,7 +88,17 @@ export default function NewEventPage() {
 
             <div className="space-y-2">
               <Label htmlFor="date">Event Date *</Label>
-              <Input id="date" name="date" type="date" required />
+              <DatePicker
+                id="date"
+                name="date"
+                required
+                fromDate={minDate}
+                toDate={maxDate}
+                placeholder="Select event date"
+              />
+              <p className="text-xs text-muted-foreground">
+                Today through the next {EVENT_DATE_MAX_DAYS_AHEAD} days.
+              </p>
               {state?.errors?.date && (
                 <p className="text-xs text-destructive">
                   {state.errors.date[0]}

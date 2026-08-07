@@ -17,10 +17,17 @@ import { deleteTempTestDataForEvent } from "@/lib/db/repos/test-data";
 import { nanoid } from "nanoid";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import {
+  eventDateRangeErrorMessage,
+  isEventDateInRange,
+} from "@/lib/event-date";
 
 const EventSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  date: z.string().min(1, "Date is required"),
+  date: z
+    .string()
+    .min(1, "Date is required")
+    .refine(isEventDateInRange, { message: eventDateRangeErrorMessage() }),
   notionGuideUrl: z.string().url("Must be a valid URL").or(z.literal("")),
   status: z.enum(["draft", "active", "completed"]),
   tagline: z.string().optional(),
