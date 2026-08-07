@@ -73,7 +73,7 @@ What the builder does:
 1. Edit `SECTIONS` in `scripts/portal-demo/build-portal-demo.cjs`
 2. Add `{ id, route, text, wait?, interact?, kind?, focus? }`
 3. If needed, extend `waitForSection` / `interact` / `REQUIRED_MAIN_TEXT` with a stable selector wait
-4. For focus: add `data-demo-focus="…"` on the product UI target, then:
+4. For focus: only when narration points at **one** control/region on a busy page (not whole-page beats, not Settings / Setup guide). Add `data-demo-focus="…"` on that target, then:
    ```js
    focus: {
      selector: '[data-demo-focus="…"]',
@@ -82,6 +82,7 @@ What the builder does:
      expandOffer?,           // e.g. "Cursor Credits" to reveal inventory
    }
    ```
+   Current focused beats: Auto-send card, attendee row actions, temp-users dialog.
 5. Keep narration concise; Import stays brief; Attendees / Partner Offers / new features get more time
 6. Run `DEMO_PROBE_ONLY=1` and visually confirm probes (spotlight framing), then full rebuild before committing
 
@@ -89,10 +90,11 @@ What the builder does:
 
 Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
 
-1. Playwright **spotlight** (ring + dim) with ~0.4s fade-in
+1. Playwright **spotlight** (ring + dim) with ~0.4s fade-in — one target only
 2. ffmpeg **Ken Burns**: Establish → smoothstep zoom+pan (~1.6–1.8s, capped) → settle hold
 3. Encode at **30 fps**, **2× oversample** then `scale=…:flags=lanczos` (not soft linear zoompan alone)
-4. `medium` ≈ 1.25–1.4×, `tight` ≈ 1.55–1.75×; never clip labels
+4. Prefer `tight` for a single control; `medium` for a dialog/card; never clip labels
+5. Skip focus on Settings, Setup guide, and other full-page overview beats
 
 ### Wait keys already supported
 

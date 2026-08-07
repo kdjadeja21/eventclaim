@@ -32,8 +32,8 @@ function pause(ms) {
  * @param {"tight"|"medium"} zoom
  */
 function computeEndBox(rect, zoom = "medium") {
-  const maxScale = zoom === "tight" ? 1.65 : 1.32;
-  const pad = zoom === "tight" ? 36 : 56;
+  const maxScale = zoom === "tight" ? 1.85 : 1.4;
+  const pad = zoom === "tight" ? 24 : 48;
 
   let x = rect.x - pad;
   let y = rect.y - pad;

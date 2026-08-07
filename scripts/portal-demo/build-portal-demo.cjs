@@ -101,42 +101,36 @@ const SECTIONS = [
     id: "02-setup-intro",
     route: "/settings",
     wait: "settings",
-    focus: { selector: '[data-demo-focus="settings-integrations"]', zoom: "medium" },
     text: "Before you run an event, complete the most important step: set up Luma and EmailJS in Settings.",
   },
   {
     id: "03-setup-guide",
     route: "/settings/guide",
     wait: "guide",
-    focus: { selector: '[data-demo-focus="setup-guide-body"]', zoom: "medium" },
     text: "Open the Setup guide for step-by-step instructions. Add your Luma API key to sync checked-in guests, then connect EmailJS so claim emails can be sent.",
   },
   {
     id: "04-settings-fields",
     route: "/settings",
     wait: "settings",
-    focus: { selector: '[data-demo-focus="settings-save-bar"]', zoom: "tight" },
     text: "Save those values here. They stay encrypted in this browser only. Once configured, you are ready to create events.",
   },
   {
     id: "05-dashboard",
     route: "/dashboard",
     wait: "dashboard",
-    focus: { selector: '[data-demo-focus="dashboard-stats"]', zoom: "medium" },
     text: "The dashboard gives a quick overview across events — attendees, coupons, emails sent, and claim rate.",
   },
   {
     id: "06-events",
     route: "/events",
     wait: "events",
-    focus: { selector: '[data-demo-focus="events-browse"]', zoom: "medium" },
     text: "Open Events to browse meetups or create a new one.",
   },
   {
     id: "07-overview-a",
     route: `/events/${SLUG}`,
     wait: "overview",
-    focus: { selector: '[data-demo-focus="overview-stats"]', zoom: "medium" },
     text: "Each event opens on Overview. Here you see live stats for attendees, offer types, emails sent, and claim rate, plus shortcuts into the rest of the workflow.",
   },
   {
@@ -144,7 +138,6 @@ const SECTIONS = [
     route: `/events/${SLUG}`,
     wait: "overview",
     interact: "scroll-config",
-    focus: { selector: '[data-demo-focus="overview-claim-guide"]', zoom: "medium" },
     text: "Scroll down for event configuration. Set the Notion claim guide, edit the claim page hero, and review status controls for draft, active, or completed.",
   },
   {
@@ -152,6 +145,7 @@ const SECTIONS = [
     route: `/events/${SLUG}`,
     wait: "overview",
     interact: "autosend",
+    // Single control among many overview sections — zoom + spotlight this card only.
     focus: { selector: '[data-demo-focus="overview-autosend"]', zoom: "tight" },
     text: "Auto-send emails is essential. Turn it on so attendees are emailed automatically as soon as they receive their coupon — no manual sending needed for each guest.",
   },
@@ -159,14 +153,12 @@ const SECTIONS = [
     id: "08-import",
     route: `/events/${SLUG}/import`,
     wait: "import",
-    focus: { selector: '[data-demo-focus="import-csv-card"]', zoom: "medium" },
     text: "CSV import is optional — only if Luma sync is unavailable.",
   },
   {
     id: "09-attendees-a",
     route: `/events/${SLUG}/attendees`,
     wait: "attendees",
-    focus: { selector: '[data-demo-focus="attendees-workspace"]', zoom: "medium" },
     text: "Attendees is where you will spend most of your time. Search and filter guests, and see coupon, email, and claim status together.",
   },
   {
@@ -174,6 +166,7 @@ const SECTIONS = [
     route: `/events/${SLUG}/attendees`,
     wait: "attendees",
     interact: "scroll-attendees",
+    // One actions column among the full attendees table.
     focus: { selector: '[data-demo-focus="attendee-row-actions"]', zoom: "tight" },
     text: "Send, resend, or retry claim emails from the table. Open any guest for detail, and blacklist addresses you do not want to email.",
   },
@@ -182,6 +175,7 @@ const SECTIONS = [
     route: `/events/${SLUG}/attendees`,
     wait: "attendees",
     interact: "temp-users",
+    // Dialog is the single focus after opening Create temp users.
     focus: {
       selector: '[data-demo-focus="temp-users-cta"]',
       afterInteractSelector: '[role="dialog"]',
@@ -199,18 +193,12 @@ const SECTIONS = [
     id: "13-coupons-a",
     route: `/events/${SLUG}/coupons`,
     wait: "coupons",
-    focus: {
-      selector: '[data-demo-focus="offers-list"]',
-      zoom: "medium",
-      expandOffer: "Cursor Credits",
-    },
     text: "Partner Offers is the other screen you will use most. Manage each partner coupon and track available versus granted links.",
   },
   {
     id: "14-coupons-b",
     route: `/events/${SLUG}/coupons/cpn_demo_credits`,
     wait: "coupon-detail",
-    focus: { selector: '[data-demo-focus="offer-detail-stats"]', zoom: "medium" },
     text: "Open an offer to review inventory, assigned attendees, and confirm the right credits went out.",
   },
   {
@@ -223,7 +211,6 @@ const SECTIONS = [
     id: "16-audit",
     route: "/audit",
     wait: "audit",
-    focus: { selector: '[data-demo-focus="audit-log"]', zoom: "medium" },
     text: "Audit Logs keep a short history of imports, emails, and claims.",
   },
   {
