@@ -54,7 +54,7 @@ export default function NotionGuideEditor({
   }
 
   return (
-    <Card data-demo-focus="overview-claim-guide">
+    <Card>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3">
           <div>
