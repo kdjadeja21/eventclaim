@@ -1,6 +1,6 @@
 "use client";
 
-import { PlayCircle } from "lucide-react";
+import { PlayCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,11 +51,17 @@ export default function WatchDemoDialog({
           </DialogDescription>
         </DialogHeader>
         <DemoVideoPlayer />
-        <p className="text-center text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/80">Fun fact:</span>{" "}
-          The entire video — including audio and subtitles — was made using
-          only Cursor.
-        </p>
+        <div className="relative overflow-hidden rounded-lg border border-primary/25 bg-gradient-to-r from-primary/10 via-secondary/10 to-accent/10 px-4 py-3.5 text-center shadow-sm">
+          <div className="absolute inset-x-0 top-0 h-0.5 gradient-brand" />
+          <p className="flex items-center justify-center gap-2 text-sm font-semibold tracking-wide text-primary">
+            <Sparkles className="h-4 w-4 shrink-0" aria-hidden />
+            Fun fact
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-foreground sm:text-base">
+            The entire video — including audio and subtitles — was made using{" "}
+            <span className="gradient-text font-bold">only Cursor</span>.
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   );
