@@ -538,7 +538,7 @@ async function loadAuthAndSeedSettings(browser) {
   }
   const stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState: stored,
   });
   const page = await context.newPage();
@@ -581,7 +581,7 @@ function renderTitleCard(outPath, title, subtitle, duration, logoPng) {
     "-f",
     "lavfi",
     "-i",
-    `color=c=0x1E1033:s=1280x800:d=${duration.toFixed(3)}:r=25`,
+    `color=c=0x1E1033:s=1920x1080:d=${duration.toFixed(3)}:r=25`,
     "-vf",
     filter,
     ...VIDEO_ENCODE,
@@ -602,7 +602,7 @@ function encodePngHold(pngPath, outPath, duration) {
     "-r",
     "25",
     "-vf",
-    "scale=1280:800:flags=lanczos",
+    "scale=1920:1080:flags=lanczos",
     ...VIDEO_ENCODE,
     "-an",
     outPath,
@@ -715,7 +715,7 @@ async function interact(page, section) {
 
 async function recordStaticSection(browser, storageState, section, outPath) {
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState,
   });
   const page = await context.newPage();
@@ -769,9 +769,9 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   fs.mkdirSync(dir, { recursive: true });
 
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState,
-    recordVideo: { dir, size: { width: 1280, height: 800 } },
+    recordVideo: { dir, size: { width: 1920, height: 1080 } },
   });
   const page = await context.newPage();
   page.setDefaultTimeout(25000);

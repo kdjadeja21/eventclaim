@@ -38,7 +38,7 @@ async function main() {
     args: ["--disable-dev-shm-usage"],
   });
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
   });
   const page = await context.newPage();
   page.setDefaultTimeout(0);

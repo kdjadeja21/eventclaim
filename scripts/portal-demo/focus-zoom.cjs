@@ -6,8 +6,8 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const VW = 1280;
-const VH = 800;
+const VW = 1920;
+const VH = 1080;
 const FOCUS_FPS = 30;
 
 function sh(cmd, args) {
@@ -192,8 +192,8 @@ function encodeFocusZoom(srcPath, outPath, box, duration, videoEncode) {
     args.push(
       "-vf",
       [
-        `scale=2560:1600:flags=lanczos`,
-        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${totalFrames}:s=2560x1600:fps=${fps}`,
+        `scale=3840:2160:flags=lanczos`,
+        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${totalFrames}:s=3840x2160:fps=${fps}`,
         `scale=${VW}:${VH}:flags=lanczos`,
       ].join(",")
     );
@@ -203,8 +203,8 @@ function encodeFocusZoom(srcPath, outPath, box, duration, videoEncode) {
       "-vf",
       [
         `fps=${fps}`,
-        `scale=2560:1600:flags=lanczos`,
-        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=2560x1600:fps=${fps}`,
+        `scale=3840:2160:flags=lanczos`,
+        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=3840x2160:fps=${fps}`,
         `scale=${VW}:${VH}:flags=lanczos`,
       ].join(",")
     );
@@ -272,12 +272,12 @@ function renderTitleCardWithLogo(
       .replace(/:/g, "\\:")
       .replace(/'/g, "\\'");
 
-  // Logo ~360px wide, centered above title
+  // Logo ~480px wide, centered above title (1920x1080)
   const filter = [
-    `[1:v]scale=360:-1:flags=lanczos,format=rgba[logo]`,
-    `[0:v][logo]overlay=(W-w)/2:210,` +
-      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${escape(title)}':fontcolor=white:fontsize=56:x=(w-text_w)/2:y=410,` +
-      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xC4B5FD:fontsize=26:x=(w-text_w)/2:y=490`,
+    `[1:v]scale=480:-1:flags=lanczos,format=rgba[logo]`,
+    `[0:v][logo]overlay=(W-w)/2:280,` +
+      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${escape(title)}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=520,` +
+      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xC4B5FD:fontsize=32:x=(w-text_w)/2:y=620`,
   ].join(";");
 
   sh("ffmpeg", [
