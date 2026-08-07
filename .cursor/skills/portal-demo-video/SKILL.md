@@ -89,10 +89,11 @@ What the builder does:
 
 Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
 
-1. Playwright **border** (purple outline + light dim) with ~0.4s fade-in — one target only
+1. Playwright **border** (white ring + thick purple stroke + soft page dim, radius ~12) with ~0.4s fade-in — one target only
 2. **No zoom / Ken Burns** — keep full frame so header/footer stay visible
 3. Encode at **30 fps**; static focused stills via `encodeFocusBorder` (full-frame hold)
 4. Skip focus on Settings, Setup guide, and other full-page overview beats
+5. Offline overlays should match: rounded hole, light dim (~0.42), actions column only (not Export CSV)
 
 ### Offline rebuild (no Playwright / DB)
 
@@ -102,10 +103,11 @@ When secrets are missing, rebuild from
 
 1. Scale+pad to 1920×1080 (never crop):
    `scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x1E1033`
-2. Timed purple `drawbox` borders only (no zoompan) on:
-   - Auto-send `63.048–73.392` — box after pad `501,756,1242,202` (src `300,560,920,150`)
-   - Actions `86.592–95.688` — `1419,405,378,432` (src `980,300,280,320`)
-   - Temp-users `95.688–103.464` — `582,108,756,810` (src `360,80,560,600`)
+2. Timed purple **rounded** border + soft page dim (no zoompan) on:
+   - Auto-send `63.048–73.392` — src `290,558,940,155`
+   - Actions `86.592–95.688` — src `1005,348,255,310` (actions column only)
+   - Temp-users `95.688–103.464` — src `350,75,580,620`
+   Overlay PNGs: white ring + ~5px purple stroke + ~42% dim outside hole.
 3. Remux source audio; keep existing VTT; archive previous live file under `public/demo/draft/`
 
 ### Wait keys already supported

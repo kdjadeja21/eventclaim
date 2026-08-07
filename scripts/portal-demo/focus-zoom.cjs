@@ -91,13 +91,13 @@ async function applyDemoFocus(page, selector) {
       [data-demo-focus-active="1"] {
         position: relative !important;
         z-index: 2147483000 !important;
-        border-radius: 12px;
-        outline: 3px solid rgba(124, 58, 237, 0.95);
-        outline-offset: 4px;
+        border-radius: 12px !important;
+        /* White ring + thick purple border + soft page dim (no zoom). */
         box-shadow:
-          0 0 0 2px rgba(255, 255, 255, 0.95),
-          0 0 0 9999px rgba(12, 8, 22, 0.35) !important;
-        transition: box-shadow 280ms ease, outline-color 280ms ease;
+          0 0 0 3px rgba(255, 255, 255, 0.98),
+          0 0 0 8px rgba(124, 58, 237, 1),
+          0 0 0 9999px rgba(12, 8, 22, 0.42) !important;
+        transition: box-shadow 280ms ease;
       }
     `;
     document.head.appendChild(style);

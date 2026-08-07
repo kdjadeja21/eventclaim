@@ -17,7 +17,8 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-archive-2026-08-07-4.mp4` | Pre-1080p rebuild (1280×800) |
 | `eventclaim-portal-demo-archive-2026-08-07-5.mp4` | 1080p with top/bottom crop (header/footer clipped) |
 | `eventclaim-portal-demo-archive-2026-08-07-6.mp4` | Pre border-only pass (still had Ken Burns zoom on focus beats) |
-| Live file | **1920×1080** fit+pad (no crop); Cursor logo title/end; **border-only** focus on Auto-send, actions, temp-users (no zoom) |
+| `eventclaim-portal-demo-archive-2026-08-07-7.mp4` | Thin sharp drawbox borders (pre rounded+dim polish) |
+| Live file | **1920×1080** fit+pad; rounded purple border + soft dim on Auto-send / actions / temp-users; captions default on |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
