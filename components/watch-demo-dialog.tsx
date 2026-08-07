@@ -51,6 +51,11 @@ export default function WatchDemoDialog({
           </DialogDescription>
         </DialogHeader>
         <DemoVideoPlayer />
+        <p className="text-center text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/80">Fun fact:</span>{" "}
+          The entire video — including audio and subtitles — was made using
+          only Cursor.
+        </p>
       </DialogContent>
     </Dialog>
   );
