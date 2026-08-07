@@ -184,7 +184,10 @@ export default async function CouponDetailPage({ params }: Props) {
 
       {/* Stats row — 6 cards for uniqueLink, simpler for others */}
       {coupon.kind === "uniqueLink" ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div
+          data-demo-focus="offer-detail-stats"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+        >
           {/* Total */}
           <Card>
             <CardHeader className="pb-2">
@@ -267,7 +270,10 @@ export default async function CouponDetailPage({ params }: Props) {
         </div>
       ) : (
         // Simple 2-card stats for sharedCode / sharedLink
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          data-demo-focus="offer-detail-stats"
+          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        >
           <StatCard label="Granted" value={grants.length} />
           <StatCard label="Claimed" value={grants.filter((g) => g.status === "claimed").length} />
         </div>

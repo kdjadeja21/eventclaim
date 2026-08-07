@@ -84,7 +84,7 @@ function AttendeeImportForm({ slug }: { slug: string }) {
   }
 
   return (
-    <Card className="mt-2">
+    <Card data-demo-focus="import-csv-card" className="mt-2">
       <CardHeader>
         <CardTitle className="text-base">Import Attendees from Luma</CardTitle>
         <CardDescription>

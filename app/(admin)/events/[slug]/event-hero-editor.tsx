@@ -62,7 +62,7 @@ export default function EventHeroEditor({
   }
 
   return (
-    <Card>
+    <Card data-demo-focus="overview-claim-hero">
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Globe className="h-4 w-4 text-muted-foreground" />
