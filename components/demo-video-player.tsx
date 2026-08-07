@@ -50,7 +50,7 @@ export default function DemoVideoPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLTrackElement>(null);
-  const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -136,6 +136,7 @@ export default function DemoVideoPlayer() {
             srcLang="en"
             label="English"
             src={DEMO_VTT_SRC}
+            default
           />
           Your browser does not support embedded video.
         </video>

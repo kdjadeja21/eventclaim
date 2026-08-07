@@ -1,5 +1,5 @@
 /**
- * Professional-grade demo focus helpers: spotlight + eased Ken Burns zoom.
+ * Demo focus helpers: border highlight on a single section (no zoom).
  * Used by build-portal-demo.cjs.
  */
 const fs = require("fs");
@@ -92,10 +92,12 @@ async function applyDemoFocus(page, selector) {
         position: relative !important;
         z-index: 2147483000 !important;
         border-radius: 12px;
-        outline: 3px solid rgba(255, 255, 255, 0.92);
-        outline-offset: 3px;
-        box-shadow: 0 0 0 9999px rgba(12, 8, 22, 0.55) !important;
-        transition: box-shadow 380ms ease, outline-color 380ms ease;
+        outline: 3px solid rgba(124, 58, 237, 0.95);
+        outline-offset: 4px;
+        box-shadow:
+          0 0 0 2px rgba(255, 255, 255, 0.95),
+          0 0 0 9999px rgba(12, 8, 22, 0.35) !important;
+        transition: box-shadow 280ms ease, outline-color 280ms ease;
       }
     `;
     document.head.appendChild(style);
@@ -128,90 +130,40 @@ async function measureFocusBox(page, selector, zoom = "medium") {
 }
 
 /**
- * Eased Ken Burns: establish → smoothstep zoom+pan → settle hold.
- * Renders at 2× then lanczos down for sharp UI text.
+ * Hold a full-frame focused still/clip (border already burned into pixels).
+ * No Ken Burns / crop-zoom — keeps header/footer and layout intact.
  */
-function encodeFocusZoom(srcPath, outPath, box, duration, videoEncode) {
+function encodeFocusBorder(srcPath, outPath, duration, videoEncode) {
   const fps = FOCUS_FPS;
-  const totalFrames = Math.max(Math.round(duration * fps), 12);
-  const establish = Math.min(
-    Math.round(0.4 * fps),
-    Math.max(2, Math.floor(totalFrames * 0.12))
-  );
-  let zoomFrames = Math.min(
-    Math.round(1.8 * fps),
-    Math.floor(totalFrames * 0.35)
-  );
-  zoomFrames = Math.max(10, Math.min(zoomFrames, totalFrames - establish - 2));
-
-  const endZ = VW / box.w;
-  // Near full-frame: skip aggressive zoom
-  if (endZ < 1.08) {
-    const isPng = /\.png$/i.test(srcPath);
-    const args = ["-y"];
-    if (isPng) {
-      args.push("-loop", "1", "-i", srcPath, "-t", duration.toFixed(3), "-r", String(fps));
-    } else {
-      args.push("-i", srcPath, "-t", duration.toFixed(3));
-    }
-    args.push(
-      "-vf",
-      `scale=${VW}:${VH}:flags=lanczos,fps=${fps}`,
-      ...videoEncode,
-      "-an",
-      outPath
-    );
-    sh("ffmpeg", args);
-    return;
-  }
-
-  const cx = (box.x + box.w / 2) / VW;
-  const cy = (box.y + box.h / 2) / VH;
-  const e0 = establish;
-  const zf = zoomFrames;
-  const e1 = e0 + zf;
-  const endZs = endZ.toFixed(6);
-  const cxs = cx.toFixed(6);
-  const cys = cy.toFixed(6);
-
-  // smoothstep: p in [0,1], s = p*p*(3-2*p)
-  // commas escaped for -vf filtergraph
-  const zExpr =
-    `if(lt(on\\,${e0})\\,1\\,` +
-    `if(gt(on\\,${e1})\\,${endZs}\\,` +
-    `1+(${endZs}-1)*` +
-    `((on-${e0})/${zf})*((on-${e0})/${zf})*` +
-    `(3-2*((on-${e0})/${zf}))))`;
-  const xExpr = `(iw-iw/zoom)*${cxs}`;
-  const yExpr = `(ih-ih/zoom)*${cys}`;
-
   const isPng = /\.png$/i.test(srcPath);
   const args = ["-y"];
   if (isPng) {
-    args.push("-loop", "1", "-i", srcPath, "-t", duration.toFixed(3));
     args.push(
-      "-vf",
-      [
-        `scale=3840:2160:flags=lanczos`,
-        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=${totalFrames}:s=3840x2160:fps=${fps}`,
-        `scale=${VW}:${VH}:flags=lanczos`,
-      ].join(",")
+      "-loop",
+      "1",
+      "-i",
+      srcPath,
+      "-t",
+      duration.toFixed(3),
+      "-r",
+      String(fps)
     );
   } else {
     args.push("-i", srcPath, "-t", duration.toFixed(3));
-    args.push(
-      "-vf",
-      [
-        `fps=${fps}`,
-        `scale=3840:2160:flags=lanczos`,
-        `zoompan=z='${zExpr}':x='${xExpr}':y='${yExpr}':d=1:s=3840x2160:fps=${fps}`,
-        `scale=${VW}:${VH}:flags=lanczos`,
-      ].join(",")
-    );
   }
-
-  args.push(...videoEncode, "-an", outPath);
+  args.push(
+    "-vf",
+    `scale=${VW}:${VH}:flags=lanczos,fps=${fps}`,
+    ...videoEncode,
+    "-an",
+    outPath
+  );
   sh("ffmpeg", args);
+}
+
+/** @deprecated Use encodeFocusBorder — kept as alias during transition. */
+function encodeFocusZoom(srcPath, outPath, _box, duration, videoEncode) {
+  encodeFocusBorder(srcPath, outPath, duration, videoEncode);
 }
 
 /**
@@ -298,10 +250,13 @@ function renderTitleCardWithLogo(
 
 module.exports = {
   FOCUS_FPS,
+  VW,
+  VH,
   applyDemoFocus,
   clearDemoFocus,
   measureFocusBox,
   computeEndBox,
+  encodeFocusBorder,
   encodeFocusZoom,
   ensureCursorLogoPng,
   renderTitleCardWithLogo,

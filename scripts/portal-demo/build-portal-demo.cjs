@@ -4,7 +4,7 @@
  * - Title/end cards with Cursor logo (no login chrome in the cut)
  * - PNG still-holds for static sections (crisp UI text)
  * - recordVideo only for interactive beats (scroll / autosend / temp users)
- * - Optional per-section focus: spotlight + professional eased Ken Burns zoom
+ * - Optional per-section focus: border highlight on one UI target (no zoom)
  * - Strict main-scoped waits + auto-fail skeleton/content probe gate
  * - Soft WebVTT captions aligned to narration sentence timing
  *
@@ -18,8 +18,7 @@ const path = require("path");
 const { execFileSync, spawnSync } = require("child_process");
 const {
   applyDemoFocus,
-  measureFocusBox,
-  encodeFocusZoom,
+  encodeFocusBorder,
   ensureCursorLogoPng,
   renderTitleCardWithLogo,
 } = require("./focus-zoom.cjs");
@@ -145,8 +144,8 @@ const SECTIONS = [
     route: `/events/${SLUG}`,
     wait: "overview",
     interact: "autosend",
-    // Single control among many overview sections — zoom + spotlight this card only.
-    focus: { selector: '[data-demo-focus="overview-autosend"]', zoom: "tight" },
+    // Single control among many overview sections — border this card only.
+    focus: { selector: '[data-demo-focus="overview-autosend"]' },
     text: "Auto-send emails is essential. Turn it on so attendees are emailed automatically as soon as they receive their coupon — no manual sending needed for each guest.",
   },
   {
@@ -167,7 +166,7 @@ const SECTIONS = [
     wait: "attendees",
     interact: "scroll-attendees",
     // One actions column among the full attendees table.
-    focus: { selector: '[data-demo-focus="attendee-row-actions"]', zoom: "tight" },
+    focus: { selector: '[data-demo-focus="attendee-row-actions"]' },
     text: "Send, resend, or retry claim emails from the table. Open any guest for detail, and blacklist addresses you do not want to email.",
   },
   {
@@ -179,7 +178,6 @@ const SECTIONS = [
     focus: {
       selector: '[data-demo-focus="temp-users-cta"]',
       afterInteractSelector: '[role="dialog"]',
-      zoom: "medium",
     },
     text: "While the event is still in draft, create temp users with fake Cursor Credits links to verify claim emails before you go live.",
   },
@@ -644,7 +642,7 @@ async function waitForNoMainSpinner(page, timeoutMs = 12000) {
 }
 
 async function applySectionFocus(page, section) {
-  if (!section.focus?.selector) return null;
+  if (!section.focus?.selector) return false;
   await expandOfferIfNeeded(page, section);
 
   let selector = section.focus.selector;
@@ -657,12 +655,7 @@ async function applySectionFocus(page, section) {
 
   await applyDemoFocus(page, selector);
   await dismissToasts(page);
-  const box = await measureFocusBox(
-    page,
-    selector,
-    section.focus.zoom || "medium"
-  );
-  return box;
+  return true;
 }
 
 async function interact(page, section) {
@@ -740,17 +733,17 @@ async function recordStaticSection(browser, storageState, section, outPath) {
   await assertNoSkeleton(page);
   await assertRequiredMainText(page, section);
 
-  const focusBox = await applySectionFocus(page, section);
+  const focused = await applySectionFocus(page, section);
   await assertNoSkeleton(page);
 
   const png = await saveProbe(page, section.id);
   await context.close();
 
   if (!PROBE_ONLY) {
-    if (focusBox) {
-      encodeFocusZoom(png, outPath, focusBox, section.duration, VIDEO_ENCODE);
+    if (focused) {
+      encodeFocusBorder(png, outPath, section.duration, VIDEO_ENCODE);
       console.log(
-        `${section.id}: focus-zoom=${section.duration.toFixed(2)}s ${section.route}`
+        `${section.id}: focus-border=${section.duration.toFixed(2)}s ${section.route}`
       );
     } else {
       encodePngHold(png, outPath, section.duration);
@@ -783,7 +776,7 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   await assertNoSkeleton(page);
   await assertRequiredMainText(page, section);
 
-  const focusBox = await applySectionFocus(page, section);
+  const focused = await applySectionFocus(page, section);
   await assertNoSkeleton(page);
 
   const png = await saveProbe(page, section.id);
@@ -818,11 +811,8 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
     trimmed,
   ]);
 
-  if (focusBox) {
-    encodeFocusZoom(trimmed, outPath, focusBox, need, VIDEO_ENCODE);
-  } else {
-    fs.copyFileSync(trimmed, outPath);
-  }
+  // Spotlight border is already in the recording; keep full frame (no zoom).
+  fs.copyFileSync(trimmed, outPath);
 
   // Verify first + last frames of the trimmed clip are not skeleton-dominated
   // by re-checking against the ready PNG probe (clip must exist and have duration).
@@ -852,7 +842,7 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   }
 
   console.log(
-    `${section.id}: video=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}${focusBox ? " focus" : ""}`
+    `${section.id}: video=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}${focused ? " focus-border" : ""}`
   );
 }
 

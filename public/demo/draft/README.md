@@ -16,7 +16,8 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-archive-2026-08-07-3.mp4` | Broad focus pass before single-target trim |
 | `eventclaim-portal-demo-archive-2026-08-07-4.mp4` | Pre-1080p rebuild (1280×800) |
 | `eventclaim-portal-demo-archive-2026-08-07-5.mp4` | 1080p with top/bottom crop (header/footer clipped) |
-| Live file | **1920×1080** fit+pad (no crop); Cursor logo title/end; focus on Auto-send, actions, temp-users |
+| `eventclaim-portal-demo-archive-2026-08-07-6.mp4` | Pre border-only pass (still had Ken Burns zoom on focus beats) |
+| Live file | **1920×1080** fit+pad (no crop); Cursor logo title/end; **border-only** focus on Auto-send, actions, temp-users (no zoom) |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
@@ -29,4 +30,4 @@ Follow the project skill: `.cursor/skills/portal-demo-video/SKILL.md`
 3. Probe first: `DEMO_PROBE_ONLY=1 node scripts/portal-demo/build-portal-demo.cjs`
 4. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
 
-Focused beats use `focus: { selector, zoom }` in `SECTIONS` plus `data-demo-focus` markers in the admin UI. Title/end cards include the Cursor logo from `public/partner-logos/cursor_logo.svg`.
+Focused beats use `focus: { selector }` in `SECTIONS` plus `data-demo-focus` markers in the admin UI (purple border only — no zoom). Title/end cards include the Cursor logo from `public/partner-logos/cursor_logo.svg`. Captions default **on** in the Watch demo player.
