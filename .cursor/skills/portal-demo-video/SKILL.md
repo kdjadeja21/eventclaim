@@ -116,6 +116,7 @@ Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
 - Do not open Watch demo during recording (empty self-referential player)
 - PNG holds for static beats; video only for interactions; focus-zoom allowed on both
 - Encode: CRF 14 + bitrate floor (~4M); output **1920×1080** (Playwright viewport + final encode)
+- When fitting older 1280×800 captures into 1920×1080, use **scale+pad** (letterbox/pillarbox) — never crop, or header/footer will clip
 - Title/end cards show sharp Cursor logo above EventClaim (welcome + close)
 
 ## Output checklist

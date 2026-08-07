@@ -15,7 +15,8 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-archive-2026-08-07-2.mp4` | Logo titles only (pre offline focus-zoom pass) |
 | `eventclaim-portal-demo-archive-2026-08-07-3.mp4` | Broad focus pass before single-target trim |
 | `eventclaim-portal-demo-archive-2026-08-07-4.mp4` | Pre-1080p rebuild (1280×800) |
-| Live file | **1920×1080**; Cursor logo title/end; focus only Auto-send, attendee actions, temp-users |
+| `eventclaim-portal-demo-archive-2026-08-07-5.mp4` | 1080p with top/bottom crop (header/footer clipped) |
+| Live file | **1920×1080** fit+pad (no crop); Cursor logo title/end; focus on Auto-send, actions, temp-users |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
