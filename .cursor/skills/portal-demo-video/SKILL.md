@@ -12,6 +12,7 @@ Use this skill when asked to:
 - Update or rebuild the portal demo video
 - Add a new product feature to the Watch demo walkthrough
 - Fix caption sync, fullscreen captions, or loading-state frames in the demo
+- Add or tune focus zoom / spotlight on walkthrough beats
 
 ## Keep
 
@@ -21,6 +22,7 @@ Use this skill when asked to:
   - Dashboard header button (same shared dialog)
   - Player: `components/demo-video-player.tsx`
 - Seed helper: `scripts/seed-demo-data.ts`
+- Focus helpers: `scripts/portal-demo/focus-zoom.cjs`
 
 Do **not** reintroduce temporary product demo auth (`Continue as demo` / `DEMO_AUTH_*`).
 
@@ -57,11 +59,11 @@ node scripts/portal-demo/build-portal-demo.cjs
 What the builder does:
 
 1. Per-section `edge-tts` (`en-US-AvaNeural`, `+0%` by default) → concat narration + sentence-weighted VTT
-2. **Static sections:** Playwright screenshot PNG → ffmpeg still-hold (sharp UI text)
-3. **Interactive sections only** (`scroll-config`, `autosend`, `scroll-attendees`, `temp-users`): `recordVideo`, ready-pad, accurate output seek trim
+2. **Static sections:** Playwright screenshot PNG → ffmpeg still-hold or focus-zoom (sharp UI text)
+3. **Interactive sections only** (`scroll-config`, `autosend`, `scroll-attendees`, `temp-users`): `recordVideo`, ready-pad, accurate output seek trim, optional focus-zoom
 4. Strict **main-scoped** content waits + auto-fail if skeleton/spinner visible or required strings missing
 5. Encode with CRF 14 + ~4Mbps floor (readable UI text)
-6. Title/end cards via ffmpeg (no login chrome)
+6. Title/end cards via ffmpeg with **Cursor logo** overlay (`public/partner-logos/cursor_logo.svg`) — no login chrome
 7. Archives previous live mp4/vtt into `public/demo/draft/` then writes:
    - `public/demo/eventclaim-portal-demo.mp4`
    - `public/demo/eventclaim-portal-demo.vtt`
@@ -69,10 +71,28 @@ What the builder does:
 ## Adding a feature beat
 
 1. Edit `SECTIONS` in `scripts/portal-demo/build-portal-demo.cjs`
-2. Add `{ id, route, text, wait?, interact?, kind? }`
+2. Add `{ id, route, text, wait?, interact?, kind?, focus? }`
 3. If needed, extend `waitForSection` / `interact` / `REQUIRED_MAIN_TEXT` with a stable selector wait
-4. Keep narration concise; Import stays brief; Attendees / Partner Offers / new features get more time
-5. Run `DEMO_PROBE_ONLY=1` and visually confirm probes, then full rebuild before committing
+4. For focus: add `data-demo-focus="…"` on the product UI target, then:
+   ```js
+   focus: {
+     selector: '[data-demo-focus="…"]',
+     zoom: "tight" | "medium",
+     afterInteractSelector?, // e.g. dialog after temp-users
+     expandOffer?,           // e.g. "Cursor Credits" to reveal inventory
+   }
+   ```
+5. Keep narration concise; Import stays brief; Attendees / Partner Offers / new features get more time
+6. Run `DEMO_PROBE_ONLY=1` and visually confirm probes (spotlight framing), then full rebuild before committing
+
+### Focus motion contract
+
+Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
+
+1. Playwright **spotlight** (ring + dim) with ~0.4s fade-in
+2. ffmpeg **Ken Burns**: Establish → smoothstep zoom+pan (~1.6–1.8s, capped) → settle hold
+3. Encode at **30 fps**, **2× oversample** then `scale=…:flags=lanczos` (not soft linear zoompan alone)
+4. `medium` ≈ 1.25–1.4×, `tight` ≈ 1.55–1.75×; never clip labels
 
 ### Wait keys already supported
 
@@ -85,18 +105,21 @@ What the builder does:
 ## Quality gates
 
 - No skeleton (`.animate-pulse`) or spinner (`.animate-spin`) in `main` — builder throws
-- Probe PNGs written per section; review dashboard/audit/overview/settings/attendees before shipping
-- Title/end cards instead of login UI
+- Probe PNGs written per section; review dashboard/audit/overview/settings/attendees **and every focused beat** before shipping
+- Scrub focused clips: Establish → Zoom → Hold — no linear snap, no soft text at settle, no clipped labels, no spotlight pop
+- Title/end cards show sharp Cursor logo above EventClaim (welcome + close)
 - Soft VTT (not huge burned-in captions); player uses native `<track>` for fullscreen sync
 - Video and audio durations match (±0.2s)
 - Captions default off in the player; download disabled
 - Do not open Watch demo during recording (empty self-referential player)
-- PNG holds for static beats; video only for interactions
+- PNG holds for static beats; video only for interactions; focus-zoom allowed on both
 - Encode: CRF 14 + bitrate floor (~4M)
 
 ## Output checklist
 
-- [ ] Probe-only pass reviewed (no skeletons)
+- [ ] Probe-only pass reviewed (no skeletons; spotlight framing OK)
+- [ ] Focus zoom scrubbed on key beats (settings, dashboard, overview, autosend, attendees, offers, audit)
+- [ ] Title/end cards show Cursor logo
 - [ ] Previous live file archived under `public/demo/draft/`
 - [ ] Live mp4 + vtt updated
 - [ ] Sample frames verified (settings, dashboard, audit, attendees, overview)
