@@ -788,10 +788,7 @@ export default function AttendeeTable({
   }
 
   return (
-    <div
-      data-demo-focus="attendees-workspace"
-      className={cn("space-y-4", hasSelection && "pb-20")}
-    >
+    <div className={cn("space-y-4", hasSelection && "pb-20")}>
       {lumaApiEnabled && (
         <div className="rounded-lg border bg-muted/40 px-3 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1015,7 +1012,7 @@ export default function AttendeeTable({
                 </TableCell>
               </TableRow>
             ) : (
-              paginated.map((attendee) => (
+              paginated.map((attendee, rowIndex) => (
                 <TableRow
                   key={attendee.id}
                   data-state={
@@ -1101,7 +1098,9 @@ export default function AttendeeTable({
 
                   <TableCell>
                     <div
-                      data-demo-focus="attendee-row-actions"
+                      data-demo-focus={
+                        rowIndex === 0 ? "attendee-row-actions" : undefined
+                      }
                       className="flex items-center justify-end gap-1.5"
                     >
                       {(attendee.grantCount ?? 0) > 0 &&
