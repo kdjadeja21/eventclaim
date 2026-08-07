@@ -1,12 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Captions, CaptionsOff, Maximize, Minimize } from "lucide-react";
+import {
+  Captions,
+  CaptionsOff,
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const DEMO_VIDEO_SRC = "/demo/eventclaim-portal-demo.mp4";
 const DEMO_VTT_SRC = "/demo/eventclaim-portal-demo.vtt";
+
+type PlaybackFeedback = {
+  kind: "play" | "pause";
+  key: number;
+};
 
 function getFullscreenElement(): Element | null {
   const doc = document as Document & {
@@ -50,8 +62,13 @@ export default function DemoVideoPlayer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLTrackElement>(null);
-  const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionsOn, setCaptionsOn] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [feedback, setFeedback] = useState<PlaybackFeedback | null>(null);
+
+  function flashPlaybackFeedback(kind: PlaybackFeedback["kind"]) {
+    setFeedback((prev) => ({ kind, key: (prev?.key ?? 0) + 1 }));
+  }
 
   useEffect(() => {
     const video = videoRef.current;
@@ -125,6 +142,12 @@ export default function DemoVideoPlayer() {
           crossOrigin="anonymous"
           src={DEMO_VIDEO_SRC}
           onContextMenu={(e) => e.preventDefault()}
+          onPlay={() => flashPlaybackFeedback("play")}
+          onPause={(e) => {
+            // Ending the video also pauses; skip the flash so it doesn't feel like a user pause.
+            if (e.currentTarget.ended) return;
+            flashPlaybackFeedback("pause");
+          }}
           onDoubleClick={(e) => {
             e.preventDefault();
             void toggleFullscreen();
@@ -136,9 +159,37 @@ export default function DemoVideoPlayer() {
             srcLang="en"
             label="English"
             src={DEMO_VTT_SRC}
+            default
           />
           Your browser does not support embedded video.
         </video>
+
+        {feedback ? (
+          <div
+            key={feedback.key}
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+            aria-hidden
+          >
+            <div
+              className="demo-playback-feedback flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/10"
+              onAnimationEnd={() =>
+                setFeedback((current) =>
+                  current?.key === feedback.key ? null : current
+                )
+              }
+            >
+              {feedback.kind === "play" ? (
+                // ml-[3px] optically centers the play triangle in the circle
+                <Play
+                  className="ml-[3px] h-9 w-9 fill-white text-white"
+                  strokeWidth={0}
+                />
+              ) : (
+                <Pause className="h-9 w-9 fill-white text-white" strokeWidth={0} />
+              )}
+            </div>
+          </div>
+        ) : null}
 
         <style>{`
           .demo-video-player::cue {
@@ -147,6 +198,37 @@ export default function DemoVideoPlayer() {
             font-size: 1rem;
             font-weight: 500;
             line-height: 1.35;
+          }
+
+          @keyframes demo-playback-feedback {
+            0% {
+              opacity: 0;
+              transform: scale(0.55);
+            }
+            14% {
+              opacity: 1;
+              transform: scale(1.05);
+            }
+            100% {
+              opacity: 0;
+              transform: scale(1.55);
+            }
+          }
+
+          .demo-playback-feedback {
+            animation: demo-playback-feedback 0.72s ease-out forwards;
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .demo-playback-feedback {
+              animation: demo-playback-feedback-reduced 0.45s ease-out forwards;
+            }
+          }
+
+          @keyframes demo-playback-feedback-reduced {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            100% { opacity: 0; }
           }
         `}</style>
       </div>

@@ -158,6 +158,7 @@ export default function SettingsGuidePage() {
       </div>
 
       <Tabs
+        data-demo-focus="setup-guide-body"
         value={activeTab}
         onValueChange={(val) => switchTab(val as "luma" | "emailjs")}
         className="space-y-6"

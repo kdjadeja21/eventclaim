@@ -788,7 +788,10 @@ export default function AttendeeTable({
   }
 
   return (
-    <div className={cn("space-y-4", hasSelection && "pb-20")}>
+    <div
+      data-demo-focus="attendees-workspace"
+      className={cn("space-y-4", hasSelection && "pb-20")}
+    >
       {lumaApiEnabled && (
         <div className="rounded-lg border bg-muted/40 px-3 py-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -875,7 +878,10 @@ export default function AttendeeTable({
       )}
 
       {eventStatus === "draft" && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3">
+        <div
+          data-demo-focus="temp-users-cta"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-3"
+        >
           <div className="min-w-0 space-y-0.5">
             <p className="text-sm font-medium">Test email data</p>
             <p className="text-xs text-muted-foreground">
@@ -1094,7 +1100,10 @@ export default function AttendeeTable({
                   </TableCell>
 
                   <TableCell>
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div
+                      data-demo-focus="attendee-row-actions"
+                      className="flex items-center justify-end gap-1.5"
+                    >
                       {(attendee.grantCount ?? 0) > 0 &&
                         attendee.emailStatus === "pending" && (
                           <Button

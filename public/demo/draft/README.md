@@ -11,7 +11,14 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-v4-pre-enterprise.mp4` | Last cut before enterprise rebuild (had loading-state frames) |
 | `eventclaim-portal-demo-archive-2026-08-06.mp4` | Pre UI-refresh cut (overview skeleton leak / Jenny voice) |
 | `eventclaim-portal-demo-archive-2026-08-06-1.mp4` | Pre probe-first rebuild (dashboard/audit skeleton; soft encode) |
-| Live file | PNG still-holds + interactive video, AvaNeural, CRF 14, probe gate |
+| `eventclaim-portal-demo-archive-2026-08-07.mp4` | Pre Cursor-logo title cards |
+| `eventclaim-portal-demo-archive-2026-08-07-2.mp4` | Logo titles only (pre offline focus-zoom pass) |
+| `eventclaim-portal-demo-archive-2026-08-07-3.mp4` | Broad focus pass before single-target trim |
+| `eventclaim-portal-demo-archive-2026-08-07-4.mp4` | Pre-1080p rebuild (1280×800) |
+| `eventclaim-portal-demo-archive-2026-08-07-5.mp4` | 1080p with top/bottom crop (header/footer clipped) |
+| `eventclaim-portal-demo-archive-2026-08-07-6.mp4` | Pre border-only pass (still had Ken Burns zoom on focus beats) |
+| `eventclaim-portal-demo-archive-2026-08-07-7.mp4` | Thin sharp drawbox borders (pre rounded+dim polish) |
+| Live file | **1920×1080** fit+pad; rounded purple border + soft dim on Auto-send / actions / temp-users; captions default on |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
@@ -21,4 +28,7 @@ Follow the project skill: `.cursor/skills/portal-demo-video/SKILL.md`
 
 1. Seed local DB: `npx tsx scripts/seed-demo-data.ts` (requires `DATABASE_URL` / `DIRECT_URL`)
 2. Save an admin Playwright session (Google login): `node scripts/portal-demo/save-storage-state.cjs`
-3. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
+3. Probe first: `DEMO_PROBE_ONLY=1 node scripts/portal-demo/build-portal-demo.cjs`
+4. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
+
+Focused beats use `focus: { selector }` in `SECTIONS` plus `data-demo-focus` markers in the admin UI (purple border only — no zoom). Title/end cards include the Cursor logo from `public/partner-logos/cursor_logo.svg`. Captions default **on** in the Watch demo player.

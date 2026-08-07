@@ -1,9 +1,10 @@
 /**
  * Enterprise portal demo builder
  *
- * - Title/end cards (no login chrome in the cut)
+ * - Title/end cards with Cursor logo (no login chrome in the cut)
  * - PNG still-holds for static sections (crisp UI text)
  * - recordVideo only for interactive beats (scroll / autosend / temp users)
+ * - Optional per-section focus: border highlight on one UI target (no zoom)
  * - Strict main-scoped waits + auto-fail skeleton/content probe gate
  * - Soft WebVTT captions aligned to narration sentence timing
  *
@@ -15,6 +16,12 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync, spawnSync } = require("child_process");
+const {
+  applyDemoFocus,
+  encodeFocusBorder,
+  ensureCursorLogoPng,
+  renderTitleCardWithLogo,
+} = require("./focus-zoom.cjs");
 
 function resolvePlaywright() {
   const candidates = [
@@ -137,6 +144,8 @@ const SECTIONS = [
     route: `/events/${SLUG}`,
     wait: "overview",
     interact: "autosend",
+    // Single control among many overview sections — border this card only.
+    focus: { selector: '[data-demo-focus="overview-autosend"]' },
     text: "Auto-send emails is essential. Turn it on so attendees are emailed automatically as soon as they receive their coupon — no manual sending needed for each guest.",
   },
   {
@@ -156,6 +165,8 @@ const SECTIONS = [
     route: `/events/${SLUG}/attendees`,
     wait: "attendees",
     interact: "scroll-attendees",
+    // One actions column among the full attendees table.
+    focus: { selector: '[data-demo-focus="attendee-row-actions"]' },
     text: "Send, resend, or retry claim emails from the table. Open any guest for detail, and blacklist addresses you do not want to email.",
   },
   {
@@ -163,6 +174,11 @@ const SECTIONS = [
     route: `/events/${SLUG}/attendees`,
     wait: "attendees",
     interact: "temp-users",
+    // Dialog is the single focus after opening Create temp users.
+    focus: {
+      selector: '[data-demo-focus="temp-users-cta"]',
+      afterInteractSelector: '[role="dialog"]',
+    },
     text: "While the event is still in draft, create temp users with fake Cursor Credits links to verify claim emails before you go live.",
   },
   {
@@ -520,7 +536,7 @@ async function loadAuthAndSeedSettings(browser) {
   }
   const stored = JSON.parse(fs.readFileSync(STORAGE_STATE, "utf8"));
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState: stored,
   });
   const page = await context.newPage();
@@ -536,7 +552,18 @@ async function loadAuthAndSeedSettings(browser) {
   return state;
 }
 
-function renderTitleCard(outPath, title, subtitle, duration) {
+function renderTitleCard(outPath, title, subtitle, duration, logoPng) {
+  if (logoPng && fs.existsSync(logoPng)) {
+    renderTitleCardWithLogo(
+      outPath,
+      title,
+      subtitle,
+      duration,
+      logoPng,
+      VIDEO_ENCODE
+    );
+    return;
+  }
   const escape = (s) =>
     String(s)
       .replace(/\\/g, "\\\\")
@@ -552,7 +579,7 @@ function renderTitleCard(outPath, title, subtitle, duration) {
     "-f",
     "lavfi",
     "-i",
-    `color=c=0x1E1033:s=1280x800:d=${duration.toFixed(3)}:r=25`,
+    `color=c=0x1E1033:s=1920x1080:d=${duration.toFixed(3)}:r=25`,
     "-vf",
     filter,
     ...VIDEO_ENCODE,
@@ -573,31 +600,93 @@ function encodePngHold(pngPath, outPath, duration) {
     "-r",
     "25",
     "-vf",
-    "scale=1280:800:flags=lanczos",
+    "scale=1920:1080:flags=lanczos",
     ...VIDEO_ENCODE,
     "-an",
     outPath,
   ]);
 }
 
+async function expandOfferIfNeeded(page, section) {
+  const name = section.focus?.expandOffer;
+  if (!name) return;
+  const list = page.locator('[data-demo-focus="offers-list"]');
+  await list.waitFor({ state: "visible", timeout: 15000 });
+  const statsBtn = list.locator('button[title="View stats"]').first();
+  if (await statsBtn.count()) {
+    const already = await list.getByText("Available").count();
+    if (!already) {
+      await statsBtn.click();
+      await list.getByText("Available").waitFor({ state: "visible", timeout: 10000 });
+      await pause(400);
+    }
+  }
+}
+
+async function dismissToasts(page) {
+  await page.evaluate(() => {
+    document
+      .querySelectorAll("[data-sonner-toast], li[data-sonner-toast]")
+      .forEach((el) => el.remove());
+  });
+}
+
+async function waitForNoMainSpinner(page, timeoutMs = 12000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const n = await mainLocator(page).locator(".animate-spin:visible").count();
+    if (n === 0) return;
+    await pause(200);
+  }
+  throw new Error("Timed out waiting for main spinner to clear");
+}
+
+async function applySectionFocus(page, section) {
+  if (!section.focus?.selector) return false;
+  await expandOfferIfNeeded(page, section);
+
+  let selector = section.focus.selector;
+  if (section.focus.afterInteractSelector) {
+    const after = page.locator(section.focus.afterInteractSelector).first();
+    if (await after.count()) {
+      selector = section.focus.afterInteractSelector;
+    }
+  }
+
+  await applyDemoFocus(page, selector);
+  await dismissToasts(page);
+  return true;
+}
+
 async function interact(page, section) {
-  if (section.interact === "scroll-config" || section.interact === "autosend") {
-    await page.getByText("Auto-send emails").scrollIntoViewIfNeeded();
+  if (section.interact === "scroll-config") {
+    const guide = page.locator('[data-demo-focus="overview-claim-guide"]');
+    if (await guide.count()) {
+      await guide.scrollIntoViewIfNeeded();
+    } else {
+      await page.getByText("Claim Guide").scrollIntoViewIfNeeded();
+    }
     await pause(400);
   }
   if (section.interact === "autosend") {
+    await page.getByText("Auto-send emails").scrollIntoViewIfNeeded();
+    await pause(400);
     const toggle = page.getByRole("switch", { name: /Toggle auto-send emails/i });
     if (await toggle.count()) {
       const checked = await toggle.getAttribute("aria-checked");
       if (checked !== "true") {
         await toggle.click();
-        await pause(900);
+        await pause(500);
       } else {
         await toggle.click();
-        await pause(600);
+        await pause(500);
+        await waitForNoMainSpinner(page);
         await toggle.click();
-        await pause(700);
+        await pause(500);
       }
+      await waitForNoMainSpinner(page);
+      await dismissToasts(page);
+      await pause(300);
     }
   }
   if (section.interact === "scroll-attendees") {
@@ -619,7 +708,7 @@ async function interact(page, section) {
 
 async function recordStaticSection(browser, storageState, section, outPath) {
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState,
   });
   const page = await context.newPage();
@@ -644,14 +733,24 @@ async function recordStaticSection(browser, storageState, section, outPath) {
   await assertNoSkeleton(page);
   await assertRequiredMainText(page, section);
 
+  const focused = await applySectionFocus(page, section);
+  await assertNoSkeleton(page);
+
   const png = await saveProbe(page, section.id);
   await context.close();
 
   if (!PROBE_ONLY) {
-    encodePngHold(png, outPath, section.duration);
-    console.log(
-      `${section.id}: png-hold=${section.duration.toFixed(2)}s ${section.route}`
-    );
+    if (focused) {
+      encodeFocusBorder(png, outPath, section.duration, VIDEO_ENCODE);
+      console.log(
+        `${section.id}: focus-border=${section.duration.toFixed(2)}s ${section.route}`
+      );
+    } else {
+      encodePngHold(png, outPath, section.duration);
+      console.log(
+        `${section.id}: png-hold=${section.duration.toFixed(2)}s ${section.route}`
+      );
+    }
   } else {
     console.log(`${section.id}: probe-only ok ${section.route}`);
   }
@@ -663,9 +762,9 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   fs.mkdirSync(dir, { recursive: true });
 
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1920, height: 1080 },
     storageState,
-    recordVideo: { dir, size: { width: 1280, height: 800 } },
+    recordVideo: { dir, size: { width: 1920, height: 1080 } },
   });
   const page = await context.newPage();
   page.setDefaultTimeout(25000);
@@ -676,6 +775,9 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   await interact(page, section);
   await assertNoSkeleton(page);
   await assertRequiredMainText(page, section);
+
+  const focused = await applySectionFocus(page, section);
+  await assertNoSkeleton(page);
 
   const png = await saveProbe(page, section.id);
 
@@ -695,6 +797,7 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   const rawDur = probeDuration(vid);
   const need = section.duration;
   const ss = Math.max(0, rawDur - need - 0.05);
+  const trimmed = path.join(WORK, "clips", `${section.id}-trimmed.mp4`);
   sh("ffmpeg", [
     "-y",
     "-i",
@@ -705,8 +808,11 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
     need.toFixed(3),
     ...VIDEO_ENCODE,
     "-an",
-    outPath,
+    trimmed,
   ]);
+
+  // Spotlight border is already in the recording; keep full frame (no zoom).
+  fs.copyFileSync(trimmed, outPath);
 
   // Verify first + last frames of the trimmed clip are not skeleton-dominated
   // by re-checking against the ready PNG probe (clip must exist and have duration).
@@ -736,17 +842,25 @@ async function recordInteractiveSection(browser, storageState, section, outPath)
   }
 
   console.log(
-    `${section.id}: video=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}`
+    `${section.id}: video=${probeDuration(outPath).toFixed(2)}s need=${need.toFixed(2)} ss=${ss.toFixed(2)}/${rawDur.toFixed(2)} ${section.route}${focused ? " focus-border" : ""}`
   );
 }
 
-async function recordSection(browser, storageState, section, outPath) {
+async function recordSection(browser, storageState, section, outPath, logoPng) {
   if (section.kind === "title") {
     if (PROBE_ONLY) {
-      console.log(`${section.id}: title card skipped in probe-only`);
+      // Still render a short probe frame for logo review
+      const probeMp4 = path.join(WORK, "clips", `${section.id}-title-probe.mp4`);
+      renderTitleCard(probeMp4, section.title, section.subtitle, 1.0, logoPng);
+      const probeJpg = path.join(WORK, "probes", `${section.id}.jpg`);
+      fs.mkdirSync(path.dirname(probeJpg), { recursive: true });
+      sh("ffmpeg", ["-y", "-i", probeMp4, "-frames:v", "1", probeJpg]);
+      fs.mkdirSync(ARTIFACT_PROBES, { recursive: true });
+      fs.copyFileSync(probeJpg, path.join(ARTIFACT_PROBES, `${section.id}.jpg`));
+      console.log(`${section.id}: title card probe ok`);
       return;
     }
-    renderTitleCard(outPath, section.title, section.subtitle, section.duration);
+    renderTitleCard(outPath, section.title, section.subtitle, section.duration, logoPng);
     console.log(`${section.id}: title card ${section.duration.toFixed(2)}s`);
     return;
   }
@@ -791,12 +905,13 @@ async function main() {
     headless: true,
     args: ["--disable-dev-shm-usage"],
   });
+  const logoPng = await ensureCursorLogoPng(browser, WORK, REPO_ROOT);
   const storageState = await loadAuthAndSeedSettings(browser);
 
   const list = [];
   for (const section of meta) {
     const out = path.join(WORK, "clips", `${section.id}.mp4`);
-    await recordSection(browser, storageState, section, out);
+    await recordSection(browser, storageState, section, out, logoPng);
     if (!PROBE_ONLY) list.push(out);
   }
   await browser.close();

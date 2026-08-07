@@ -338,7 +338,7 @@ export default function CouponList({
           No partner offers added yet. Click &ldquo;New Offer&rdquo; to get started.
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div data-demo-focus="offers-list" className="grid gap-4">
           {coupons.map((coupon, index) => {
             const KindIcon = kindConfig[coupon.kind].icon;
             const expanded = expandedIds.has(coupon.id);
