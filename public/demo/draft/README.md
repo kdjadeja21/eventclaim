@@ -11,8 +11,9 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-v4-pre-enterprise.mp4` | Last cut before enterprise rebuild (had loading-state frames) |
 | `eventclaim-portal-demo-archive-2026-08-06.mp4` | Pre UI-refresh cut (overview skeleton leak / Jenny voice) |
 | `eventclaim-portal-demo-archive-2026-08-06-1.mp4` | Pre probe-first rebuild (dashboard/audit skeleton; soft encode) |
-| `eventclaim-portal-demo-archive-2026-08-07.mp4` | Pre Cursor-logo title cards + focus-zoom builder |
-| Live file | PNG still-holds + interactive video, AvaNeural, CRF 14, probe gate; Cursor logo on title/end; focus zoom/spotlight when fully rebuilt |
+| `eventclaim-portal-demo-archive-2026-08-07.mp4` | Pre Cursor-logo title cards |
+| `eventclaim-portal-demo-archive-2026-08-07-2.mp4` | Logo titles only (pre offline focus-zoom pass) |
+| Live file | Cursor logo title/end + spotlight/Ken Burns focus on walkthrough beats |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
