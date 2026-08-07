@@ -11,7 +11,8 @@ always uses `../eventclaim-portal-demo.mp4`.
 | `eventclaim-portal-demo-v4-pre-enterprise.mp4` | Last cut before enterprise rebuild (had loading-state frames) |
 | `eventclaim-portal-demo-archive-2026-08-06.mp4` | Pre UI-refresh cut (overview skeleton leak / Jenny voice) |
 | `eventclaim-portal-demo-archive-2026-08-06-1.mp4` | Pre probe-first rebuild (dashboard/audit skeleton; soft encode) |
-| Live file | PNG still-holds + interactive video, AvaNeural, CRF 14, probe gate |
+| `eventclaim-portal-demo-archive-2026-08-07.mp4` | Pre Cursor-logo title cards + focus-zoom builder |
+| Live file | PNG still-holds + interactive video, AvaNeural, CRF 14, probe gate; Cursor logo on title/end; focus zoom/spotlight when fully rebuilt |
 
 When replacing `../eventclaim-portal-demo.mp4`, copy the previous live file into this folder first (do not delete drafts). The builder archives automatically with a dated filename.
 
@@ -21,4 +22,7 @@ Follow the project skill: `.cursor/skills/portal-demo-video/SKILL.md`
 
 1. Seed local DB: `npx tsx scripts/seed-demo-data.ts` (requires `DATABASE_URL` / `DIRECT_URL`)
 2. Save an admin Playwright session (Google login): `node scripts/portal-demo/save-storage-state.cjs`
-3. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
+3. Probe first: `DEMO_PROBE_ONLY=1 node scripts/portal-demo/build-portal-demo.cjs`
+4. Rebuild: `node scripts/portal-demo/build-portal-demo.cjs`
+
+Focused beats use `focus: { selector, zoom }` in `SECTIONS` plus `data-demo-focus` markers in the admin UI. Title/end cards include the Cursor logo from `public/partner-logos/cursor_logo.svg`.
