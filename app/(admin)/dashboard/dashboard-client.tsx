@@ -142,10 +142,7 @@ export default function DashboardClient() {
       )}
 
       {/* Global stats */}
-      <div
-        data-demo-focus="dashboard-stats"
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
-      >
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={CalendarDays}
           label="Total Events"

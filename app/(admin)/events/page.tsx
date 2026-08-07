@@ -26,7 +26,7 @@ export default async function EventsPage() {
   const events = await getEvents();
 
   return (
-    <div data-demo-focus="events-browse" className="space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Events</h1>

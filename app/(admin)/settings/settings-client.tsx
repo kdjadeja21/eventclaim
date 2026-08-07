@@ -159,10 +159,7 @@ function SettingsForm() {
       </div>
 
       {/* Side-by-side integrations on large screens */}
-      <div
-        data-demo-focus="settings-integrations"
-        className="grid gap-4 lg:grid-cols-2 lg:items-start"
-      >
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         {/* Luma */}
         <Card className="overflow-hidden shadow-sm ring-1 ring-black/5">
           <CardHeader className="space-y-0 border-b bg-muted/30 p-4">
@@ -421,10 +418,7 @@ function SettingsForm() {
       </Card>
 
       {/* Action bar */}
-      <div
-        data-demo-focus="settings-save-bar"
-        className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
-      >
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
           <span>

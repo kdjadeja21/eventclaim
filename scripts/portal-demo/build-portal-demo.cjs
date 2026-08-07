@@ -610,14 +610,19 @@ function encodePngHold(pngPath, outPath, duration) {
 async function expandOfferIfNeeded(page, section) {
   const name = section.focus?.expandOffer;
   if (!name) return;
+  // Prefer demo marker when present; fall back to main so rebuilds work
+  // even if unused focus attributes were trimmed from production UI.
   const list = page.locator('[data-demo-focus="offers-list"]');
-  await list.waitFor({ state: "visible", timeout: 15000 });
-  const statsBtn = list.locator('button[title="View stats"]').first();
+  const scope = (await list.count())
+    ? list
+    : mainLocator(page);
+  await scope.first().waitFor({ state: "visible", timeout: 15000 });
+  const statsBtn = scope.locator('button[title="View stats"]').first();
   if (await statsBtn.count()) {
-    const already = await list.getByText("Available").count();
+    const already = await scope.getByText("Available").count();
     if (!already) {
       await statsBtn.click();
-      await list.getByText("Available").waitFor({ state: "visible", timeout: 10000 });
+      await scope.getByText("Available").waitFor({ state: "visible", timeout: 10000 });
       await pause(400);
     }
   }
