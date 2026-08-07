@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createEvent } from "../actions";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -82,7 +83,12 @@ export default function NewEventPage() {
 
             <div className="space-y-2">
               <Label htmlFor="date">Event Date *</Label>
-              <Input id="date" name="date" type="date" required />
+              <DatePicker
+                id="date"
+                name="date"
+                required
+                placeholder="Select event date"
+              />
               {state?.errors?.date && (
                 <p className="text-xs text-destructive">
                   {state.errors.date[0]}
