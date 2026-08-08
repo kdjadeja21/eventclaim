@@ -58,6 +58,7 @@ const actionVariant: Record<
   email_resent: "warning",
   email_failed: "destructive",
   status_checked: "secondary",
+  capacity_test_completed: "info",
 };
 
 const actionLabels: Record<AuditAction, string> = {
@@ -87,6 +88,7 @@ const actionLabels: Record<AuditAction, string> = {
   email_resent: "Email Resent",
   email_failed: "Email Failed",
   status_checked: "Status Checked",
+  capacity_test_completed: "Capacity Test Completed",
 };
 
 function stringifyMetadata(metadata: AuditLog["metadata"]): string {
@@ -262,6 +264,12 @@ function getAuditMessage(log: AuditLog): string {
     }
     case "status_checked":
       return `Claim status was checked${email ? ` for ${email}` : ""}.`;
+    case "capacity_test_completed": {
+      const concurrency = getMetadataNumber(metadata, "concurrency");
+      return `Live capacity test completed${
+        concurrency != null ? ` at ${concurrency} concurrent users` : ""
+      }. Temporary seed data was deleted.`;
+    }
     default: {
       const _exhaustive: never = log.action;
       void _exhaustive;

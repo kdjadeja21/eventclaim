@@ -66,6 +66,7 @@ Create a `.env.local` in the project root:
 | `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification and Storage uploads. Without it, sign-in succeeds in the client but server sessions fail. |
 | `DATABASE_URL` | Yes | Supabase Supavisor **transaction pooler** connection string, port `6543`. Used by the app at runtime — must keep `prepare=false` (already set in `lib/db/client.ts`). |
 | `DIRECT_URL` | Yes | Supabase **direct** Postgres connection string, port `5432`. Used only by `drizzle-kit` (migrations/introspection) and the backfill script. |
+| `LOAD_TEST_ENABLED` | No | Set to `true` on the **`load-test` branch** deploy only. Enables **Test sign in** (hides Google), the dashboard **Capacity test** button, and ephemeral seed/cleanup for live claim-path load tests. Leave unset on production/main. |
 
 The Luma API key and all EmailJS configuration (service ID, template ID,
 public/private keys, monthly quota, and the claim-link base URL) are **not**
@@ -74,6 +75,14 @@ read from environment variables. Instead, sign in and open **Settings**
 browser's `localStorage`, and are supplied to server actions at the moment
 each button is clicked (Luma sync, send/resend email, import, coupon
 create/enable). See [Settings](#settings) below.
+
+### Load-test branch (`LOAD_TEST_ENABLED=true`)
+
+On a deploy of the `load-test` branch with `LOAD_TEST_ENABLED=true`:
+
+1. Open `/login` and click **Test sign in** (Google sign-in is hidden).
+2. On the dashboard, click **Capacity test**, enter a concurrency count, and run.
+3. The app seeds a temporary event, hammers `/claim/[token]` and redeem from your browser against this live origin, shows a report (downloadable JSON), writes an audit log, then cascade-deletes the temporary event.
 
 ## Scripts
 
