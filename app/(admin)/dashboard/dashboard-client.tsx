@@ -13,6 +13,7 @@ import {
   CheckCheck,
   Layers,
   AlertTriangle,
+  FlaskConical,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { readLocalCache, writeLocalCache } from "@/lib/local-cache";
 import type { DashboardData } from "@/app/api/dashboard/route";
 import DashboardLoading from "./loading";
 import WatchDemoDialog from "@/components/watch-demo-dialog";
+import CapacityTestDialog from "./capacity-test-dialog";
 
 const CACHE_KEY = "eventclaim_dashboard_cache_v1";
 
@@ -52,6 +54,7 @@ const actionLabels: Record<string, string> = {
   email_resent: "Email resent",
   email_failed: "Email failed",
   status_checked: "Status checked",
+  capacity_test_completed: "Capacity test completed",
 };
 
 export default function DashboardClient() {
@@ -62,6 +65,7 @@ export default function DashboardClient() {
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [capacityOpen, setCapacityOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +131,25 @@ export default function DashboardClient() {
           </p>
         </div>
 
-        <WatchDemoDialog variant="header" />
+        <div className="flex flex-wrap items-center gap-2">
+          {data.loadTestEnabled && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCapacityOpen(true)}
+            >
+              <FlaskConical className="h-4 w-4" />
+              Capacity test
+            </Button>
+          )}
+          <WatchDemoDialog variant="header" />
+        </div>
       </div>
+
+      {data.loadTestEnabled && (
+        <CapacityTestDialog open={capacityOpen} onOpenChange={setCapacityOpen} />
+      )}
 
       {isStale && (
         <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">

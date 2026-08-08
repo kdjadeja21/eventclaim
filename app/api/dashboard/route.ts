@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEventCountStats } from "@/lib/event-stats";
+import { isLoadTestEnabled } from "@/lib/load-test-config";
 import { requireSession } from "@/lib/session";
 import { listRecentEvents } from "@/lib/db/repos/events";
 import { listAuditLogs } from "@/lib/db/repos/audit";
@@ -12,6 +13,7 @@ export interface DashboardData {
   totalEmailsSent: number;
   totalClaimed: number;
   overallClaimRate: number;
+  loadTestEnabled: boolean;
   perEventStats: {
     event: Event;
     attendees: number;
@@ -79,6 +81,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     totalClaimed,
     overallClaimRate:
       totalGranted > 0 ? (totalClaimed / totalGranted) * 100 : 0,
+    loadTestEnabled: isLoadTestEnabled(),
     perEventStats,
     recentActivity,
   };
