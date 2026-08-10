@@ -166,27 +166,27 @@ function buildEmailHtml(params: {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Partner Offers Are Ready</title>
+  <title>Your partner offers are ready</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+<body style="margin:0;padding:0;background:#f7f7f4;font-family:Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f7f7f4;padding:40px 16px;">
     <tr>
       <td align="center">
-        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e6e5e0;">
           <!-- Header -->
           <tr>
-            <td style="background:#09090b;padding:24px 40px;text-align:center;">
-              <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+            <td style="background:#26251e;padding:24px 40px;text-align:left;">
+              <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="vertical-align:middle;padding-right:10px;">
                     <img src="https://www.cursor.com/favicon.ico"
                          alt="Cursor"
                          width="32"
                          height="32"
-                         style="display:block;width:32px;height:32px;border-radius:6px;" />
+                         style="display:block;width:32px;height:32px;" />
                   </td>
                   <td style="vertical-align:middle;">
-                    <span style="color:#ffffff;font-size:18px;font-weight:600;letter-spacing:-0.02em;">Cursor Community</span>
+                    <span style="color:#f7f7f4;font-size:18px;font-weight:600;letter-spacing:-0.02em;">Cursor Community</span>
                   </td>
                 </tr>
               </table>
@@ -196,52 +196,52 @@ function buildEmailHtml(params: {
           <!-- Body -->
           <tr>
             <td style="padding:40px 40px 32px;">
-              <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#09090b;letter-spacing:-0.02em;">
-                Your Partner Offers Are Ready 🎉
+              <h1 style="margin:0 0 8px;font-size:24px;font-weight:700;color:#26251e;letter-spacing:-0.02em;">
+                Your partner offers are ready
               </h1>
-              <p style="margin:0 0 24px;font-size:16px;color:#52525b;line-height:1.6;">
+              <p style="margin:0 0 24px;font-size:16px;color:#5a5852;line-height:1.6;">
                 Hi <strong>${firstName}</strong>,
               </p>
-              <p style="margin:0 0 24px;font-size:16px;color:#52525b;line-height:1.6;">
-                Thank you for attending${eventName ? ` <strong>${eventName}</strong>` : " our event"}. We're excited to share exclusive partner offers and credits as a thank-you for your participation.
+              <p style="margin:0 0 24px;font-size:16px;color:#5a5852;line-height:1.6;">
+                Thank you for attending${eventName ? ` <strong>${eventName}</strong>` : " our event"}. We're sharing exclusive partner offers and credits as a thank-you for joining us.
               </p>
-              <p style="margin:0 0 32px;font-size:16px;color:#52525b;line-height:1.6;">
-                Click the button below to view and claim all your offers:
+              <p style="margin:0 0 32px;font-size:16px;color:#5a5852;line-height:1.6;">
+                Use the button below to view and claim your offers:
               </p>
 
               <!-- CTA Button -->
               <table cellpadding="0" cellspacing="0" style="margin:0 0 16px;">
                 <tr>
-                  <td style="background:#09090b;border-radius:8px;text-align:center;">
+                  <td style="background:#26251e;border-radius:6px;text-align:center;">
                     <a href="${claimUrl}"
                        style="display:inline-block;padding:14px 32px;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;letter-spacing:-0.01em;">
-                      View My Offers →
+                      View my offers →
                     </a>
                   </td>
                 </tr>
               </table>
 
               <!-- Fallback plain-text link -->
-              <p style="margin:0 0 32px;font-size:13px;color:#71717a;line-height:1.5;">
+              <p style="margin:0 0 32px;font-size:13px;color:#807d72;line-height:1.5;">
                 If the button above doesn't work, copy and paste this link into your browser:<br />
-                <a href="${claimUrl}" style="color:#09090b;word-break:break-all;">${claimUrl}</a>
+                <a href="${claimUrl}" style="color:#f54e00;word-break:break-all;">${claimUrl}</a>
               </p>
 
               <!-- Note -->
-              <div style="background:#f4f4f5;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
-                <p style="margin:0;font-size:14px;color:#71717a;line-height:1.5;">
-                  <strong style="color:#09090b;">Note:</strong> This link is unique to you. Please don't share it.
+              <div style="background:#f2f1ed;border-radius:6px;padding:16px 20px;margin-bottom:24px;">
+                <p style="margin:0;font-size:14px;color:#807d72;line-height:1.5;">
+                  <strong style="color:#26251e;">Note:</strong> This link is unique to you. Please don't share it.
                 </p>
               </div>
 
               ${notionGuideUrl ? `
-              <p style="margin:0;font-size:15px;color:#52525b;line-height:1.6;">
-                Need help redeeming? Check out our step-by-step guide:
+              <p style="margin:0;font-size:15px;color:#5a5852;line-height:1.6;">
+                Need help redeeming? See our step-by-step guide:
               </p>
               <p style="margin:8px 0 0;">
                 <a href="${notionGuideUrl}"
-                   style="color:#09090b;font-weight:600;font-size:15px;">
-                  How to Redeem Your Offers →
+                   style="color:#f54e00;font-weight:600;font-size:15px;">
+                  How to redeem your offers →
                 </a>
               </p>
               ` : ""}
@@ -250,9 +250,9 @@ function buildEmailHtml(params: {
 
           <!-- Footer -->
           <tr>
-            <td style="padding:24px 40px;border-top:1px solid #f4f4f5;">
-              <p style="margin:0;font-size:13px;color:#a1a1aa;text-align:center;line-height:1.5;">
-                Sent by Cursor Community &middot; This email was intended for ${attendeeName}
+            <td style="padding:24px 40px;border-top:1px solid #e6e5e0;">
+              <p style="margin:0;font-size:13px;color:#a09c92;text-align:left;line-height:1.5;">
+                Sent by Cursor Community · This email was intended for ${attendeeName}
               </p>
             </td>
           </tr>
@@ -299,7 +299,7 @@ export async function sendCouponEmail(
         template_params: {
           to_email: attendee.email,
           to_name: attendee.name,
-          subject: "Your Partner Offers Are Ready to Claim",
+          subject: "Your partner offers are ready to claim",
           message_html: buildEmailHtml({
             attendeeName: attendee.name,
             claimUrl,

@@ -97,13 +97,13 @@ export function RouteProgress() {
       className="fixed top-0 left-0 right-0 z-[9999] h-[3px] pointer-events-none"
     >
       <div
-        className="h-full gradient-brand shadow-[0_0_8px_rgba(99,102,241,0.6)]"
+        className="h-full bg-foreground"
         style={{
           width: `${progress}%`,
           transition:
             progress === 100
-              ? "width 200ms ease-out"
-              : "width 250ms ease-in-out",
+              ? "width 200ms var(--ease-out-spring)"
+              : "width 250ms var(--ease-out-spring)",
         }}
       />
     </div>

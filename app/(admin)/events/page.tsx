@@ -37,7 +37,7 @@ export default async function EventsPage() {
         <Button asChild>
           <Link href="/events/new">
             <Plus className="h-4 w-4" />
-            New Event
+            New event
           </Link>
         </Button>
       </div>
@@ -53,7 +53,7 @@ export default async function EventsPage() {
             <Button asChild size="sm" className="mt-2">
               <Link href="/events/new">
                 <Plus className="h-4 w-4" />
-                Create Event
+                Create event
               </Link>
             </Button>
           </CardContent>

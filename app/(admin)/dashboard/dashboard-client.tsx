@@ -119,7 +119,7 @@ export default function DashboardClient() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight gradient-text">
+          <h1 className="text-2xl font-semibold tracking-tight">
             Dashboard
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -145,15 +145,15 @@ export default function DashboardClient() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={CalendarDays}
-          label="Total Events"
+          label="Total events"
           value={data.perEventStats.length}
         />
-        <StatCard icon={Users} label="Total Attendees" value={data.totalAttendees} />
-        <StatCard icon={Ticket} label="Total Coupons" value={data.totalCoupons} />
-        <StatCard icon={Mail} label="Emails Sent" value={data.totalEmailsSent} />
+        <StatCard icon={Users} label="Total attendees" value={data.totalAttendees} />
+        <StatCard icon={Ticket} label="Total coupons" value={data.totalCoupons} />
+        <StatCard icon={Mail} label="Emails sent" value={data.totalEmailsSent} />
         <StatCard
           icon={TrendingUp}
-          label="Overall Claim Rate"
+          label="Overall claim rate"
           value={`${data.overallClaimRate.toFixed(1)}%`}
           progress={data.overallClaimRate}
         />
@@ -162,7 +162,7 @@ export default function DashboardClient() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Per-event summary */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-sm font-semibold gradient-text uppercase tracking-wider">
+          <h2 className="text-sm font-semibold text-muted-foreground tracking-wide">
             Events
           </h2>
           {data.perEventStats.length === 0 ? (
@@ -232,8 +232,8 @@ export default function DashboardClient() {
 
         {/* Recent Activity */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold gradient-text uppercase tracking-wider">
-            Recent Activity
+          <h2 className="text-sm font-semibold text-muted-foreground tracking-wide">
+            Recent activity
           </h2>
           <Card>
             <CardContent className="pt-4">
@@ -289,8 +289,8 @@ function StatCard({
     <Card>
       <CardHeader className="pb-2">
         <CardDescription className="flex items-center gap-2 text-xs">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md gradient-brand shadow-sm">
-            <Icon className="h-3.5 w-3.5 text-white" />
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
+            <Icon className="h-3.5 w-3.5 text-primary-foreground" />
           </span>
           {label}
         </CardDescription>
