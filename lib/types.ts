@@ -36,7 +36,11 @@ export type AuditAction =
   | "email_sent"
   | "email_resent"
   | "email_failed"
-  | "status_checked";
+  | "status_checked"
+  | "portal_user_approved"
+  | "portal_user_denied"
+  | "portal_user_revoked"
+  | "portal_user_added";
 
 // ─── Firestore Document Types ─────────────────────────────────────────────────
 

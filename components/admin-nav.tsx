@@ -10,11 +10,13 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import WatchDemoDialog from "@/components/watch-demo-dialog";
+import { isAccessAdminEmail } from "@/lib/access";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -27,11 +29,20 @@ const navItems = [
 export default function AdminNav({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const showAccess = isAccessAdminEmail(userEmail);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
   }
+
+  const items = showAccess
+    ? [
+        ...navItems.slice(0, 3),
+        { href: "/access", label: "Access", icon: ShieldCheck },
+        ...navItems.slice(3),
+      ]
+    : navItems;
 
   return (
     <aside className="w-60 flex flex-col border-r border-sidebar-border bg-sidebar h-full">
@@ -50,7 +61,7 @@ export default function AdminNav({ userEmail }: { userEmail?: string }) {
       </div>
 
       <nav className="flex-1 p-3 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

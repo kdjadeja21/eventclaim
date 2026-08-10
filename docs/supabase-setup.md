@@ -107,9 +107,10 @@ npm install
 
 Migrations live in `drizzle/` and create:
 
-- 7 tables (`events`, `attendees`, `coupons`, `coupon_links`, `grants`, `email_logs`, `audit_logs`)
+- 8 tables (`events`, `attendees`, `coupons`, `coupon_links`, `grants`, `email_logs`, `audit_logs`, `portal_users`)
 - Counter-maintenance triggers on `grants` and `coupon_links`
-- Row-level security (RLS) with a deny-all posture
+- Row Level Security enabled with **zero policies** (deny-all for PostgREST)
+- Seeded access-admin row in `portal_users` for `kdjadeja209@gmail.com`
 
 Run:
 
@@ -119,7 +120,7 @@ npm run db:migrate
 
 This uses `DIRECT_URL` via `drizzle.config.ts`.
 
-**Expected result:** command completes without errors; in Supabase **Table Editor** you should see all seven tables.
+**Expected result:** command completes without errors; in Supabase **Table Editor** you should see all eight tables.
 
 ### If migration fails
 
