@@ -3,6 +3,7 @@
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { getAttendeeById, setAttendeeBlacklisted } from "@/lib/db/repos/attendees";
 
 export async function toggleAttendeeBlacklist(
@@ -14,6 +15,7 @@ export async function toggleAttendeeBlacklist(
   const session = await requireSession();
 
   try {
+    await requireAccessibleEventById(eventId);
     const attendee = await getAttendeeById(eventId, attendeeId);
     if (!attendee) return { success: false, error: "Attendee not found." };
 

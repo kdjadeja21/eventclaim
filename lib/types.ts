@@ -49,6 +49,9 @@ export interface Event {
   status: EventStatus;
   createdAt: string;
   updatedAt: string;
+  /** Firebase UID of the admin who created the event. Test-login events use
+   * the dedicated test UID and are invisible to other admins (and vice versa). */
+  ownerUid: string | null;
   lumaLastSyncedAt?: string | null;
   /** When true, email attendees automatically after coupon grant. */
   autoSendEmail?: boolean;

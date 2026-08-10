@@ -2,7 +2,8 @@
 
 import { requireSession } from "@/lib/session";
 import { CouponLink, CouponWithStats, Grant } from "@/lib/types";
-import { resolveEventId } from "@/lib/db/repos/events";
+import { resolveEventIdForUser } from "@/lib/db/repos/events";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { listCouponsWithStats, listGrantsForCouponWithAttendee } from "@/lib/db/repos/coupons";
 import { listLinksForCouponOrdered } from "@/lib/db/repos/links";
 
@@ -10,8 +11,8 @@ export async function getCoupons(slug: string): Promise<{
   coupons: CouponWithStats[];
   eventId: string;
 }> {
-  await requireSession();
-  const eventId = await resolveEventId(slug);
+  const session = await requireSession();
+  const eventId = await resolveEventIdForUser(slug, session.uid);
   const coupons = await listCouponsWithStats(eventId);
   return { coupons, eventId };
 }
@@ -20,7 +21,7 @@ export async function getCouponLinks(
   eventId: string,
   couponId: string
 ): Promise<CouponLink[]> {
-  await requireSession();
+  await requireAccessibleEventById(eventId);
   return listLinksForCouponOrdered(eventId, couponId);
 }
 
@@ -28,7 +29,7 @@ export async function getCouponGrants(
   eventId: string,
   couponId: string
 ): Promise<Array<Grant & { attendeeName: string; attendeeEmail: string }>> {
-  await requireSession();
+  await requireAccessibleEventById(eventId);
   const rows = await listGrantsForCouponWithAttendee(eventId, couponId);
   return rows.map((r) => ({
     couponId: r.couponId,

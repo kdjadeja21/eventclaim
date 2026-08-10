@@ -2,7 +2,11 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import {
+  signInWithPopup,
+  signInWithCustomToken,
+  GoogleAuthProvider,
+} from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,6 +35,18 @@ function LoginForm() {
   const redirect = searchParams.get("redirect") || "/dashboard";
 
   const [loading, setLoading] = useState(false);
+  const showTestLogin = process.env.NEXT_PUBLIC_ENABLE_TEST_LOGIN === "true";
+
+  async function establishSession(idToken: string) {
+    const res = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+
+    if (!res.ok) throw new Error("Failed to create session");
+    router.push(redirect);
+  }
 
   async function handleGoogleSignIn() {
     setLoading(true);
@@ -39,21 +55,32 @@ function LoginForm() {
       const provider = new GoogleAuthProvider();
       const credential = await signInWithPopup(auth, provider);
       const idToken = await credential.user.getIdToken();
-
-      const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
-
-      if (!res.ok) throw new Error("Failed to create session");
-      router.push(redirect);
+      await establishSession(idToken);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sign-in failed";
       if (msg.includes("popup-closed-by-user") || msg.includes("cancelled")) {
         setLoading(false);
         return;
       }
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleTestLogin() {
+    setLoading(true);
+
+    try {
+      const tokenRes = await fetch("/api/auth/test-token", { method: "POST" });
+      if (!tokenRes.ok) throw new Error("Test login is not available");
+
+      const { customToken } = await tokenRes.json();
+      const credential = await signInWithCustomToken(auth, customToken);
+      const idToken = await credential.user.getIdToken();
+      await establishSession(idToken);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Test login failed";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -93,6 +120,24 @@ function LoginForm() {
                 </>
               )}
             </Button>
+
+            {showTestLogin && (
+              <Button
+                variant="secondary"
+                className="w-full bg-white/15 text-white hover:bg-white/25"
+                onClick={handleTestLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  "Test login"
+                )}
+              </Button>
+            )}
 
             <p className="text-left text-xs text-white/50">
               Access restricted to authorised admins only.
