@@ -64,6 +64,10 @@ Create a `.env.local` in the project root:
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase web app config |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | Firebase web app config |
 | `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification and Storage uploads. Without it, sign-in succeeds in the client but server sessions fail. |
+| `ENABLE_TEST_LOGIN` | No | Set to `true` to allow the server to mint Firebase custom tokens for temporary test login (UAT/demo). Must be paired with `NEXT_PUBLIC_ENABLE_TEST_LOGIN`. |
+| `NEXT_PUBLIC_ENABLE_TEST_LOGIN` | No | Set to `true` to show a **Test login** button on `/login`. Requires `ENABLE_TEST_LOGIN=true` on the server or the button will fail. |
+| `TEST_LOGIN_UID` | No | Firebase UID for the test user (default: `test-dev-admin`). |
+| `TEST_LOGIN_EMAIL` | No | Email shown in the admin session for the test user (default: `dev@test.local`). |
 | `DATABASE_URL` | Yes | Supabase Supavisor **transaction pooler** connection string, port `6543`. Used by the app at runtime — must keep `prepare=false` (already set in `lib/db/client.ts`). |
 | `DIRECT_URL` | Yes | Supabase **direct** Postgres connection string, port `5432`. Used only by `drizzle-kit` (migrations/introspection) and the backfill script. |
 
