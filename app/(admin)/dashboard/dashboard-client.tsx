@@ -86,7 +86,7 @@ export default function DashboardClient() {
         setIsStale(false);
         writeLocalCache(CACHE_KEY, fresh);
       } catch {
-        // Firestore is unavailable (e.g. quota exceeded) — fall back to
+        // Live dashboard fetch failed — fall back to
         // whatever we already had cached instead of showing an error page.
         if (cancelled) return;
         if (cached) setIsStale(true);
@@ -119,15 +119,23 @@ export default function DashboardClient() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Dashboard
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Overview across all events
           </p>
         </div>
 
-        <WatchDemoDialog variant="header" />
+        <div className="flex flex-wrap items-center gap-2">
+          {data.perEventStats.length === 0 && (
+            <Button asChild size="sm">
+              <Link href="/events/new">
+                Create event
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          )}
+          <WatchDemoDialog variant="header" />
+        </div>
       </div>
 
       {isStale && (
@@ -141,38 +149,63 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {/* Global stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      {/* Global stats — claim rate emphasized */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard
           icon={CalendarDays}
           label="Total events"
           value={data.perEventStats.length}
+          quiet
         />
-        <StatCard icon={Users} label="Total attendees" value={data.totalAttendees} />
-        <StatCard icon={Ticket} label="Total coupons" value={data.totalCoupons} />
-        <StatCard icon={Mail} label="Emails sent" value={data.totalEmailsSent} />
+        <StatCard
+          icon={Users}
+          label="Total attendees"
+          value={data.totalAttendees}
+          quiet
+        />
+        <StatCard
+          icon={Ticket}
+          label="Total coupons"
+          value={data.totalCoupons}
+          quiet
+        />
+        <StatCard
+          icon={Mail}
+          label="Emails sent"
+          value={data.totalEmailsSent}
+          quiet
+        />
         <StatCard
           icon={TrendingUp}
           label="Overall claim rate"
           value={`${data.overallClaimRate.toFixed(1)}%`}
           progress={data.overallClaimRate}
+          emphasize
         />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Per-event summary */}
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="text-sm font-semibold text-muted-foreground tracking-wide">
+          <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
             Events
           </h2>
           {data.perEventStats.length === 0 ? (
             <Card>
-              <CardContent className="flex items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-                <Layers className="h-5 w-5" />
-                No events yet.{" "}
-                <Link href="/events/new" className="text-primary underline">
-                  Create one
-                </Link>
+              <CardContent className="flex flex-col items-start gap-3 py-12 text-sm">
+                <Layers className="h-8 w-8 text-muted-foreground/50" />
+                <div>
+                  <p className="font-medium text-foreground">No events yet</p>
+                  <p className="mt-1 text-muted-foreground">
+                    Create your first event to start distributing partner offers.
+                  </p>
+                </div>
+                <Button asChild size="sm" className="mt-1">
+                  <Link href="/events/new">
+                    Create event
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           ) : (
@@ -279,22 +312,46 @@ function StatCard({
   label,
   value,
   progress,
+  quiet,
+  emphasize,
 }: {
   icon: React.ElementType;
   label: string;
   value: string | number;
   progress?: number;
+  quiet?: boolean;
+  emphasize?: boolean;
 }) {
   return (
-    <Card>
+    <Card
+      className={
+        emphasize ? "border-foreground/15 bg-card shadow-none" : "shadow-none"
+      }
+    >
       <CardHeader className="pb-2">
         <CardDescription className="flex items-center gap-2 text-xs">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-            <Icon className="h-3.5 w-3.5 text-primary-foreground" />
+          <span
+            className={
+              emphasize
+                ? "flex h-7 w-7 items-center justify-center rounded-md bg-primary"
+                : "flex h-7 w-7 items-center justify-center rounded-md bg-muted"
+            }
+          >
+            <Icon
+              className={
+                emphasize
+                  ? "h-3.5 w-3.5 text-primary-foreground"
+                  : "h-3.5 w-3.5 text-muted-foreground"
+              }
+            />
           </span>
           {label}
         </CardDescription>
-        <CardTitle className="text-2xl">{value}</CardTitle>
+        <CardTitle
+          className={quiet && !emphasize ? "text-xl font-semibold" : "text-2xl"}
+        >
+          {value}
+        </CardTitle>
       </CardHeader>
       {progress !== undefined && (
         <CardContent>

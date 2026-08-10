@@ -110,17 +110,17 @@ const EMPTY_FORM: FormData = {
 
 const kindConfig: Record<CouponKind, { label: string; icon: React.ElementType; description: string }> = {
   uniqueLink: {
-    label: "Unique Link",
+    label: "Unique link",
     icon: Link2,
     description: "Each attendee gets a distinct single-use URL from a pool.",
   },
   sharedCode: {
-    label: "Shared Code",
+    label: "Shared code",
     icon: Code,
     description: "One promo code displayed to all attendees for use at checkout.",
   },
   sharedLink: {
-    label: "Shared Link",
+    label: "Shared link",
     icon: ExternalLink,
     description: "One URL shared with all attendees.",
   },

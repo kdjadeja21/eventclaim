@@ -31,7 +31,7 @@ export default function NotFound() {
             </p>
           </div>
 
-          <Card className="border-white/15 bg-white/5 text-left text-white">
+          <Card className="border-white/10 text-left text-white shadow-none [background:hsl(var(--hero-to)/0.55)]">
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="text-lg text-white">Cursor Community</CardTitle>
               <CardDescription className="text-white/65">
@@ -41,15 +41,18 @@ export default function NotFound() {
             <CardContent className="flex flex-col gap-3 sm:flex-row">
               <Button
                 asChild
-                variant="outline"
-                className="w-full border-0 bg-white text-foreground hover:bg-white/90 sm:w-auto"
+                className="w-full bg-white text-foreground hover:bg-white/90 sm:w-auto"
               >
                 <Link href="/check-status">
                   <Search className="h-4 w-4" />
                   Check coupon status
                 </Link>
               </Button>
-              <Button asChild className="w-full sm:w-auto bg-white/15 text-white hover:bg-white/25">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full border-white/20 bg-transparent text-white hover:bg-white/10 sm:w-auto"
+              >
                 <Link href="/dashboard">
                   <Home className="h-4 w-4" />
                   Admin dashboard

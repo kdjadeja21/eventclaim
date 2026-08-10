@@ -16,7 +16,7 @@ export default async function AdminLayout({
     <AppSettingsProvider>
       <div className="flex h-screen overflow-hidden bg-background">
         <AdminNav userEmail={session.email} />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pt-12 md:pt-0">
           <div className="container mx-auto flex min-h-full max-w-7xl flex-col p-6">
             <div className="flex-1">{children}</div>
             <SiteCreditFooter tone="light" />
