@@ -196,6 +196,26 @@ There is no project-specific `vercel.json` or Docker configuration in this repos
 
 No automated test suite is configured in this repo. `scripts/sandbox-integration-test.ts` is a manual end-to-end sandbox script (not wired into CI) that exercises the full data-layer lifecycle — event/attendee/coupon creation, set-based grant assignment, pool exhaustion, concurrent-reservation rejection, claim idempotency, unassignment, stats, and cascade deletes — against a scratch Postgres database.
 
+## Branching & pull requests
+
+This repo uses two long-lived branches:
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Production |
+| `develop` | UAT and integration — default target for all work |
+
+**Open pull requests against `develop`, not `main`.** Feature and fix branches should be created from `develop` and merged back into `develop` for UAT. Changes reach production when `develop` is merged into `main`.
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b your-feature-branch
+# ... make changes ...
+git push -u origin your-feature-branch
+# Open a PR: your-feature-branch → develop
+```
+
 ## Project notes
 
 - This project uses a newer Next.js release; see `AGENTS.md` and `node_modules/next/dist/docs/` for framework-specific APIs and conventions.
