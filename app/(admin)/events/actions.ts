@@ -6,12 +6,13 @@ import { slugify } from "@/lib/utils";
 import { Event, EventStatus } from "@/lib/types";
 import {
   deleteEventCascade,
-  getEventById as getEventByIdRepo,
-  getEventBySlug as getEventBySlugRepo,
+  getEventByIdForUser,
+  getEventBySlugForUser,
   insertEvent,
-  listEvents,
+  listEventsForUser,
   updateEventFields,
 } from "@/lib/db/repos/events";
+import { ownerUidForNewEvent } from "@/lib/auth/data-scope";
 import { ensureDefaultCursorCreditsCoupon } from "@/lib/default-offers";
 import { deleteTempTestDataForEvent } from "@/lib/db/repos/test-data";
 import { nanoid } from "nanoid";
@@ -71,6 +72,7 @@ export async function createEvent(
     status: parsed.data.status,
     createdAt: now,
     updatedAt: now,
+    ownerUid: ownerUidForNewEvent(session.uid),
     ...(parsed.data.tagline ? { tagline: parsed.data.tagline } : {}),
     ...(parsed.data.description ? { description: parsed.data.description } : {}),
     ...(parsed.data.timeLabel ? { timeLabel: parsed.data.timeLabel } : {}),
@@ -134,7 +136,7 @@ export async function updateEventHero(
     };
   }
 
-  const event = await getEventByIdRepo(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false, error: "Event not found" };
 
   await updateEventFields(eventId, {
@@ -171,7 +173,7 @@ export async function updateEventSettings(
     };
   }
 
-  const event = await getEventByIdRepo(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false, error: "Event not found" };
 
   await updateEventFields(eventId, { notionGuideUrl: parsed.data.notionGuideUrl });
@@ -194,7 +196,7 @@ export async function setAutoSendEmail(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const event = await getEventByIdRepo(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false, error: "Event not found" };
 
   await updateEventFields(eventId, { autoSendEmail: enabled });
@@ -217,7 +219,7 @@ export async function updateEventStatus(
 ): Promise<{ success: boolean }> {
   const session = await requireSession();
 
-  const event = await getEventByIdRepo(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false };
 
   // Leaving draft always strips draft-only temp test attendees and fake links.
@@ -255,18 +257,18 @@ export async function updateEventStatus(
 }
 
 export async function getEvents(): Promise<Event[]> {
-  await requireSession();
-  return listEvents();
+  const session = await requireSession();
+  return listEventsForUser(session.uid);
 }
 
 export async function getEventBySlug(slug: string): Promise<Event | null> {
-  await requireSession();
-  return getEventBySlugRepo(slug);
+  const session = await requireSession();
+  return getEventBySlugForUser(slug, session.uid);
 }
 
 export async function getEventById(id: string): Promise<Event | null> {
-  await requireSession();
-  return getEventByIdRepo(id);
+  const session = await requireSession();
+  return getEventByIdForUser(id, session.uid);
 }
 
 export async function deleteEvent(
@@ -275,7 +277,7 @@ export async function deleteEvent(
   const session = await requireSession();
 
   try {
-    const event = await getEventByIdRepo(eventId);
+    const event = await getEventByIdForUser(eventId, session.uid);
     if (!event) {
       return { success: false, error: "Event not found." };
     }

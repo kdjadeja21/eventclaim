@@ -1,5 +1,6 @@
 import "server-only";
-import { and, desc, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { auditUserScopeSql } from "@/lib/auth/data-scope";
 import { db } from "@/lib/db/client";
 import { auditLogs } from "@/lib/db/schema";
 import { AuditAction, AuditLog } from "@/lib/types";
@@ -42,6 +43,19 @@ export async function listAuditLogs(limit: number): Promise<AuditLog[]> {
   const rows = await db
     .select()
     .from(auditLogs)
+    .orderBy(desc(auditLogs.timestamp))
+    .limit(limit);
+  return rows.map(toAuditLog);
+}
+
+export async function listAuditLogsForUser(
+  sessionUid: string,
+  limit: number
+): Promise<AuditLog[]> {
+  const rows = await db
+    .select()
+    .from(auditLogs)
+    .where(auditUserScopeSql(sessionUid))
     .orderBy(desc(auditLogs.timestamp))
     .limit(limit);
   return rows.map(toAuditLog);

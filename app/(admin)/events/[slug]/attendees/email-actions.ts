@@ -11,14 +11,18 @@ import {
   type EmailQuota,
 } from "@/lib/email";
 import { getAttendeeById, listAttendeesByIds } from "@/lib/db/repos/attendees";
-import { getEventById } from "@/lib/db/repos/events";
+import { getEventByIdForUser } from "@/lib/db/repos/events";
 import { Attendee } from "@/lib/types";
 import type { EmailConfig } from "@/lib/settings";
 import { revalidatePath } from "next/cache";
 
-async function getEventAndAttendee(eventId: string, attendeeId: string) {
+async function getEventAndAttendee(
+  sessionUid: string,
+  eventId: string,
+  attendeeId: string
+) {
   const [event, attendee] = await Promise.all([
-    getEventById(eventId),
+    getEventByIdForUser(eventId, sessionUid),
     getAttendeeById(eventId, attendeeId),
   ]);
   if (!event) throw new Error("Event not found");
@@ -36,8 +40,8 @@ export async function sendSingleEmail(
   attendeeId: string,
   config: EmailConfig
 ): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
-  await requireSession();
-  const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
+  const session = await requireSession();
+  const { event, attendee } = await getEventAndAttendee(session.uid, eventId, attendeeId);
   if (!attendee.grantCount) {
     const quota = await getEmailQuota(config);
     return { success: false, error: "No offers granted — cannot send email", quota };
@@ -57,8 +61,8 @@ export async function resendSingleEmail(
   attendeeId: string,
   config: EmailConfig
 ): Promise<{ success: boolean; error?: string; quota: EmailQuota }> {
-  await requireSession();
-  const { event, attendee } = await getEventAndAttendee(eventId, attendeeId);
+  const session = await requireSession();
+  const { event, attendee } = await getEventAndAttendee(session.uid, eventId, attendeeId);
   if (!attendee.grantCount) {
     const quota = await getEmailQuota(config);
     return { success: false, error: "No offers granted — cannot resend email", quota };
@@ -77,8 +81,8 @@ export async function bulkSendPending(
   eventId: string,
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
-  await requireSession();
-  const event = await getEventById(eventId);
+  const session = await requireSession();
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) throw new Error("Event not found");
   const result = await sendPendingEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
@@ -90,8 +94,8 @@ export async function bulkResendFailed(
   eventId: string,
   config: EmailConfig
 ): Promise<{ sent: number; failed: number; skipped: number; quota: EmailQuota }> {
-  await requireSession();
-  const event = await getEventById(eventId);
+  const session = await requireSession();
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) throw new Error("Event not found");
   const result = await resendFailedEmails(eventId, event.notionGuideUrl || "", config);
   revalidatePath(`/events`);
@@ -113,9 +117,9 @@ export async function bulkSendSelected(
 }> {
   // Validate the session and load the event a single time for the whole batch,
   // instead of once per attendee.
-  await requireSession();
+  const session = await requireSession();
 
-  const event = await getEventById(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) throw new Error("Event not found");
   const notionGuideUrl = event.notionGuideUrl || "";
 

@@ -6,7 +6,7 @@ import { assignPendingForEvent } from "@/lib/assignment";
 import { parseLumaAttendeeCsv, attendeeDocId } from "@/lib/import";
 import { AttendeeImportResult } from "@/lib/types";
 import { bulkInsertAttendees } from "@/lib/db/repos/attendees";
-import { resolveEventId } from "@/lib/db/repos/events";
+import { resolveEventIdForUser } from "@/lib/db/repos/events";
 import type { EmailConfig } from "@/lib/settings";
 
 export async function importAttendees(
@@ -16,7 +16,7 @@ export async function importAttendees(
   emailConfig?: EmailConfig
 ): Promise<AttendeeImportResult> {
   const session = await requireSession();
-  const eventId = await resolveEventId(slug);
+  const eventId = await resolveEventIdForUser(slug, session.uid);
 
   const { rows, invalidCount, errors } = parseLumaAttendeeCsv(csvText, checkedInOnly);
 

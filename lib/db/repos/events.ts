@@ -1,5 +1,6 @@
 import "server-only";
-import { desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
+import { eventOwnerScopeSql } from "@/lib/auth/data-scope";
 import { db } from "@/lib/db/client";
 import { events } from "@/lib/db/schema";
 import { Event, EventStatus } from "@/lib/types";
@@ -14,6 +15,7 @@ function toEvent(row: typeof events.$inferSelect): Event {
     status: row.status as EventStatus,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    ownerUid: row.ownerUid ?? null,
     lumaLastSyncedAt: row.lumaLastSyncedAt,
     autoSendEmail: row.autoSendEmail,
     tagline: row.tagline ?? undefined,
@@ -33,6 +35,7 @@ export async function insertEvent(event: Event): Promise<void> {
     status: event.status,
     createdAt: event.createdAt,
     updatedAt: event.updatedAt,
+    ownerUid: event.ownerUid,
     tagline: event.tagline,
     description: event.description,
     timeLabel: event.timeLabel,
@@ -42,6 +45,15 @@ export async function insertEvent(event: Event): Promise<void> {
 
 export async function listEvents(): Promise<Event[]> {
   const rows = await db.select().from(events).orderBy(desc(events.createdAt));
+  return rows.map(toEvent);
+}
+
+export async function listEventsForUser(sessionUid: string): Promise<Event[]> {
+  const rows = await db
+    .select()
+    .from(events)
+    .where(eventOwnerScopeSql(sessionUid))
+    .orderBy(desc(events.createdAt));
   return rows.map(toEvent);
 }
 
@@ -59,8 +71,32 @@ export async function getEventBySlug(slug: string): Promise<Event | null> {
   return rows[0] ? toEvent(rows[0]) : null;
 }
 
+export async function getEventBySlugForUser(
+  slug: string,
+  sessionUid: string
+): Promise<Event | null> {
+  const rows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.slug, slug), eventOwnerScopeSql(sessionUid)))
+    .limit(1);
+  return rows[0] ? toEvent(rows[0]) : null;
+}
+
 export async function getEventById(id: string): Promise<Event | null> {
   const rows = await db.select().from(events).where(eq(events.id, id)).limit(1);
+  return rows[0] ? toEvent(rows[0]) : null;
+}
+
+export async function getEventByIdForUser(
+  id: string,
+  sessionUid: string
+): Promise<Event | null> {
+  const rows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, id), eventOwnerScopeSql(sessionUid)))
+    .limit(1);
   return rows[0] ? toEvent(rows[0]) : null;
 }
 
@@ -69,6 +105,16 @@ export async function getEventById(id: string): Promise<Event | null> {
  * a copy-pasted `resolveEventId` in four separate action files. */
 export async function resolveEventId(slug: string): Promise<string> {
   const event = await getEventBySlug(slug);
+  if (!event) throw new Error(`Event not found: ${slug}`);
+  return event.id;
+}
+
+/** Like resolveEventId, but enforces the caller's ownership / isolation scope. */
+export async function resolveEventIdForUser(
+  slug: string,
+  sessionUid: string
+): Promise<string> {
+  const event = await getEventBySlugForUser(slug, sessionUid);
   if (!event) throw new Error(`Event not found: ${slug}`);
   return event.id;
 }
@@ -95,6 +141,19 @@ export async function updateEventFields(
 
 export async function listRecentEvents(limit: number): Promise<Event[]> {
   const rows = await db.select().from(events).orderBy(desc(events.createdAt)).limit(limit);
+  return rows.map(toEvent);
+}
+
+export async function listRecentEventsForUser(
+  sessionUid: string,
+  limit: number
+): Promise<Event[]> {
+  const rows = await db
+    .select()
+    .from(events)
+    .where(eventOwnerScopeSql(sessionUid))
+    .orderBy(desc(events.createdAt))
+    .limit(limit);
   return rows.map(toEvent);
 }
 

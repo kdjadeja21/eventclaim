@@ -19,14 +19,15 @@ import {
 import { listEmailLogsForAttendee } from "@/lib/db/repos/email-logs";
 import { listGrantsForAttendee } from "@/lib/db/repos/grants";
 import { getCouponById } from "@/lib/db/repos/coupons";
-import { getEventBySlug, updateEventFields } from "@/lib/db/repos/events";
+import { getEventBySlugForUser, updateEventFields } from "@/lib/db/repos/events";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import type { EmailConfig } from "@/lib/settings";
 import { revalidatePath } from "next/cache";
 
 export async function getAttendees(slug: string): Promise<{ attendees: Attendee[]; eventId: string }> {
-  await requireSession();
+  const session = await requireSession();
 
-  const event = await getEventBySlug(slug);
+  const event = await getEventBySlugForUser(slug, session.uid);
   if (!event) throw new Error("Event not found");
 
   const attendees = await listAttendeesForEvent(event.id);
@@ -46,7 +47,7 @@ export async function getAttendeeDetail(
     status: string;
   }>;
 }> {
-  await requireSession();
+  await requireAccessibleEventById(eventId);
 
   const attendee = await getAttendeeById(eventId, attendeeId);
   if (!attendee) throw new Error("Attendee not found");
@@ -107,6 +108,7 @@ export async function deleteAttendee(
   const session = await requireSession();
 
   try {
+    await requireAccessibleEventById(eventId);
     const attendee = await getAttendeeById(eventId, attendeeId);
     if (!attendee) {
       return { success: false, error: "Attendee not found." };
@@ -159,7 +161,7 @@ export async function syncLumaGuests(
 ): Promise<SyncLumaResult> {
   const session = await requireSession();
 
-  const event = await getEventBySlug(slug);
+  const event = await getEventBySlugForUser(slug, session.uid);
   if (!event) {
     return {
       addedCount: 0,
