@@ -31,14 +31,14 @@ Web app for distributing Cursor credit coupons to event attendees: import attend
 - A [Supabase](https://supabase.com/) project (or any Postgres 13+ instance) for data storage
 - An EmailJS account with a service, template, and API keys configured for HTML email (`message_html` template param)
 
-Restrict who can sign in via Firebase Authentication (e.g. authorized Google accounts). The app does not implement an in-code admin email allowlist beyond a valid Firebase session.
+Restrict who can sign in via Firebase Authentication (Google provider). The app **also** enforces an in-app approval roster in Postgres (`portal_users`): after Google sign-in, only accounts with status `approved` receive an admin session cookie. Unknown accounts automatically raise a pending access request. Denied and revoked accounts cannot raise a new request. Portal access is managed at `/access` by `kdjadeja209@gmail.com` only.
 
 ### Database setup (Supabase Postgres)
 
 For a full step-by-step walkthrough (create project, copy connection strings, run migrations, deploy), see **[docs/supabase-setup.md](docs/supabase-setup.md)**.
 
 1. Create a Supabase project. In **Project Settings → Database**, copy the transaction-pooler (Supavisor, port `6543`) connection string into `DATABASE_URL`, and the direct connection (port `5432`) into `DIRECT_URL`.
-2. Run the migrations: `npm run db:migrate` (uses `DIRECT_URL`). This creates all 7 tables, the counter-maintenance triggers, and locks the schema down with RLS (see `drizzle/0001_triggers_and_security.sql`).
+2. Run the migrations: `npm run db:migrate` (uses `DIRECT_URL`). This creates all tables (including `portal_users`), the counter-maintenance triggers, and locks the schema down with RLS (see `drizzle/0001_triggers_and_security.sql` and `drizzle/0003_portal_users.sql`). The access-admin email `kdjadeja209@gmail.com` is seeded as approved.
 3. In Supabase's **API settings**, you can leave the Data API (PostgREST) on or off — either way, every table has RLS enabled with zero policies and anon/authenticated grants revoked, so the REST API cannot read or write anything. The app talks to Postgres directly over `postgres.js`, bypassing PostgREST entirely.
 4. If migrating from an existing Firestore-backed deployment, run `npm run db:backfill` once (reads via the Firebase Admin SDK, writes to `DIRECT_URL`, idempotent — safe to re-run). Add `--verify-only` to compare row counts without writing.
 

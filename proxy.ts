@@ -2,8 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE_NAME = "eventclaim_session";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/events", "/audit", "/settings"];
-const PUBLIC_PATHS = ["/login", "/check-status", "/claim"];
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/events",
+  "/audit",
+  "/settings",
+  "/tools",
+  "/access",
+];
+const PUBLIC_PATHS = [
+  "/login",
+  "/check-status",
+  "/claim",
+  "/access-pending",
+  "/access-denied",
+];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -33,9 +46,9 @@ export async function proxy(request: NextRequest) {
     );
   }
 
-  // Cookie presence is checked here; full JWT verification happens in server
-  // actions / route handlers via requireSession() (avoids Edge runtime issues
-  // with firebase-admin).
+  // Cookie presence is checked here; full JWT verification + portal approval
+  // happen in server components / actions via requireSession() (avoids Edge
+  // runtime issues with firebase-admin / Postgres).
   return NextResponse.next();
 }
 

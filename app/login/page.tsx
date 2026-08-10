@@ -16,6 +16,12 @@ import {
 import { Loader2 } from "lucide-react";
 import SiteCreditFooter from "@/components/site-credit-footer";
 
+type SessionResponse = {
+  ok?: boolean;
+  status?: "approved" | "pending" | "denied" | "revoked";
+  error?: string;
+};
+
 export default function LoginPage() {
   return (
     <Suspense>
@@ -45,8 +51,24 @@ function LoginForm() {
         body: JSON.stringify({ idToken }),
       });
 
-      if (!res.ok) throw new Error("Failed to create session");
-      router.push(redirect);
+      const data = (await res.json().catch(() => ({}))) as SessionResponse;
+
+      if (res.ok && data.status === "approved") {
+        router.push(redirect);
+        return;
+      }
+
+      if (data.status === "pending") {
+        router.push("/access-pending");
+        return;
+      }
+
+      if (data.status === "denied" || data.status === "revoked") {
+        router.push("/access-denied");
+        return;
+      }
+
+      throw new Error(data.error || "Failed to create session");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Sign-in failed";
       if (msg.includes("popup-closed-by-user") || msg.includes("cancelled")) {
@@ -95,7 +117,8 @@ function LoginForm() {
             </Button>
 
             <p className="text-center text-xs text-white/50">
-              Access restricted to authorised admins only.
+              Access is granted by approval only. New Google accounts submit a
+              request automatically.
             </p>
           </CardContent>
         </Card>

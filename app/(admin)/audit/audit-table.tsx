@@ -58,6 +58,10 @@ const actionVariant: Record<
   email_resent: "warning",
   email_failed: "destructive",
   status_checked: "secondary",
+  portal_user_approved: "success",
+  portal_user_denied: "destructive",
+  portal_user_revoked: "warning",
+  portal_user_added: "success",
 };
 
 const actionLabels: Record<AuditAction, string> = {
@@ -87,6 +91,10 @@ const actionLabels: Record<AuditAction, string> = {
   email_resent: "Email Resent",
   email_failed: "Email Failed",
   status_checked: "Status Checked",
+  portal_user_approved: "Portal User Approved",
+  portal_user_denied: "Portal User Denied",
+  portal_user_revoked: "Portal User Revoked",
+  portal_user_added: "Portal User Added",
 };
 
 function stringifyMetadata(metadata: AuditLog["metadata"]): string {
@@ -262,6 +270,14 @@ function getAuditMessage(log: AuditLog): string {
     }
     case "status_checked":
       return `Claim status was checked${email ? ` for ${email}` : ""}.`;
+    case "portal_user_approved":
+      return `Portal access approved${email ? ` for ${email}` : ""}.`;
+    case "portal_user_denied":
+      return `Portal access denied${email ? ` for ${email}` : ""}.`;
+    case "portal_user_revoked":
+      return `Portal access revoked${email ? ` for ${email}` : ""}.`;
+    case "portal_user_added":
+      return `Portal user added${email ? `: ${email}` : ""}.`;
     default: {
       const _exhaustive: never = log.action;
       void _exhaustive;

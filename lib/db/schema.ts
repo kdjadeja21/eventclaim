@@ -209,3 +209,32 @@ export const auditLogs = pgTable(
     index("audit_logs_event_id_idx").on(table.eventId),
   ]
 );
+
+// ─── portal_users ────────────────────────────────────────────────────────────
+// Access-control roster for the admin portal. Google sign-in alone is not
+// enough — a row must exist with status = 'approved' before a session cookie
+// is issued. Denied/revoked users cannot self-serve a new request.
+
+export const portalUsers = pgTable(
+  "portal_users",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    firebaseUid: text("firebase_uid"),
+    displayName: text("display_name"),
+    status: text("status", {
+      enum: ["pending", "approved", "denied", "revoked"],
+    })
+      .notNull()
+      .default("pending"),
+    requestedAt: text("requested_at").notNull(),
+    reviewedAt: text("reviewed_at"),
+    reviewedBy: text("reviewed_by"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("portal_users_email_key").on(table.email),
+    index("portal_users_status_idx").on(table.status),
+  ]
+);
