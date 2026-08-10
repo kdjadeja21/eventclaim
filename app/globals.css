@@ -138,9 +138,6 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
-  a:not([class*="text-"]):hover {
-    color: hsl(var(--accent));
-  }
 }
 
 @layer utilities {
