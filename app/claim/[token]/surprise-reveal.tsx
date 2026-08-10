@@ -1,11 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { Gift } from "lucide-react";
 import confetti from "canvas-confetti";
+import { Button } from "@/components/ui/button";
+
+export const CLAIM_SURPRISE_STORAGE_PREFIX = "claim-surprise-revealed:";
+export const CLAIM_SURPRISE_EVENT = "claim-surprise-revealed";
 
 function storageKey(token: string) {
-  return `claim-surprise-revealed:${token}`;
+  return `${CLAIM_SURPRISE_STORAGE_PREFIX}${token}`;
+}
+
+/** Brand confetti: ink, warm paper, muted neutrals, sparse orange */
+const BRAND_CONFETTI_COLORS = [
+  "#26251E",
+  "#F7F7F4",
+  "#F54E00",
+  "#5A5852",
+  "#A09C92",
+  "#E6E5E0",
+];
+
+function subscribeSurprise(onStoreChange: () => void) {
+  window.addEventListener(CLAIM_SURPRISE_EVENT, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(CLAIM_SURPRISE_EVENT, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
+}
+
+function readRevealed(token: string): boolean {
+  try {
+    return localStorage.getItem(storageKey(token)) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export default function SurpriseReveal({
@@ -15,16 +46,9 @@ export default function SurpriseReveal({
   attendeeFirstName: string;
   token: string;
 }) {
-  // null = not yet hydrated from localStorage (avoid flash for returning visitors)
-  const [revealed, setRevealed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    try {
-      setRevealed(localStorage.getItem(storageKey(token)) === "1");
-    } catch {
-      setRevealed(false);
-    }
-  }, [token]);
+  const getSnapshot = useCallback(() => readRevealed(token), [token]);
+  // SSR / pre-hydration: treat as revealed so returning visitors don't flash the overlay
+  const revealed = useSyncExternalStore(subscribeSurprise, getSnapshot, () => true);
 
   function handleReveal() {
     try {
@@ -32,11 +56,19 @@ export default function SurpriseReveal({
     } catch {
       // ignore quota / private mode failures
     }
-    setRevealed(true);
+    window.dispatchEvent(
+      new CustomEvent(CLAIM_SURPRISE_EVENT, { detail: { token } })
+    );
 
     const duration = 3 * 1000;
     const animationEnd = Date.now() + duration;
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+    const defaults = {
+      startVelocity: 30,
+      spread: 360,
+      ticks: 60,
+      zIndex: 100,
+      colors: BRAND_CONFETTI_COLORS,
+    };
 
     const randomInRange = (min: number, max: number) =>
       Math.random() * (max - min) + min;
@@ -62,29 +94,32 @@ export default function SurpriseReveal({
     }, 250);
   }
 
-  if (revealed === null || revealed) return null;
+  if (revealed) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/60 backdrop-blur-xl transition-opacity">
-      <div className="animate-in fade-in zoom-in max-w-md p-8 text-center duration-700">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/70 backdrop-blur-xl">
+      <div className="claim-reveal-enter max-w-md p-8 text-center">
         <div className="mb-6 flex justify-center">
-          <div className="relative flex h-24 w-24 items-center justify-center rounded-[2rem] bg-zinc-950 shadow-2xl shadow-zinc-900/20">
-            <Gift className="animate-bounce h-10 w-10 text-white" />
+          <div className="relative flex h-24 w-24 items-center justify-center rounded-lg bg-primary shadow-lg shadow-foreground/10">
+            <Gift className="h-10 w-10 text-primary-foreground motion-safe:animate-bounce" />
           </div>
         </div>
-        <h2 className="mb-3 text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl">
+        <h2 className="mb-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Hi {attendeeFirstName},
         </h2>
-        <p className="mb-8 text-lg leading-relaxed text-zinc-500">
-          You have an exclusive surprise waiting for you. Open your gift to reveal your partner offers.
+        <p className="mb-8 text-lg leading-relaxed text-muted-foreground">
+          You have an exclusive surprise waiting for you. Open your gift to
+          reveal your partner offers.
         </p>
-        <button
+        <Button
+          type="button"
+          size="lg"
           onClick={handleReveal}
-          className="group relative inline-flex h-14 w-full items-center justify-center gap-3 rounded-full bg-zinc-950 px-8 text-base font-bold text-white shadow-xl shadow-zinc-900/10 transition-all hover:scale-105 hover:bg-zinc-800 active:scale-95"
+          className="group h-14 w-full gap-3 text-base"
         >
-          <Gift className="h-5 w-5 text-zinc-300 transition-transform group-hover:-rotate-12" />
-          Reveal My Surprise
-        </button>
+          <Gift className="h-5 w-5 text-primary-foreground/80 transition-transform duration-200 ease-[var(--ease-out-spring)] group-hover:-rotate-12" />
+          Reveal my surprise
+        </Button>
       </div>
     </div>
   );

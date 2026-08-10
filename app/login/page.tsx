@@ -63,12 +63,12 @@ function LoginForm() {
   return (
     <div className="gradient-hero flex min-h-screen flex-col">
       <div className="flex flex-1 items-center justify-center px-4 py-10">
-        <Card className="w-full max-w-sm border-white/15 bg-white/5 text-white">
+        <Card className="w-full max-w-sm border-white/10 text-white shadow-none [background:hsl(var(--hero-to)/0.55)]">
           <CardHeader className="space-y-1 text-left">
             <div className="mb-3">
               <BrandMarkIcon size="md" className="text-white" />
             </div>
-            <CardTitle className="text-2xl text-white tracking-tight">
+            <CardTitle className="text-2xl tracking-tight text-white">
               Cursor Community
             </CardTitle>
             <CardDescription className="text-white/65">
@@ -77,8 +77,7 @@ function LoginForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button
-              variant="outline"
-              className="w-full border-0 bg-white text-foreground hover:bg-white/90"
+              className="w-full bg-white text-foreground hover:bg-white/90"
               onClick={handleGoogleSignIn}
               disabled={loading}
             >

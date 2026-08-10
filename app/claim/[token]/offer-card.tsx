@@ -1,7 +1,11 @@
 "use client";
 
 import { CheckCircle2, Copy, ExternalLink, Gift } from "lucide-react";
+import type { CSSProperties } from "react";
 import { CouponKind } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import CopyCode from "./copy-code";
 import RedeemButton from "./redeem-button";
 import LogoImage from "./logo-image";
@@ -25,12 +29,16 @@ type LiveProps = {
   token: string;
   status: "assigned" | "claimed";
   offer: PartnerOfferCardData;
+  className?: string;
+  style?: CSSProperties;
 };
 
 type PreviewProps = {
   preview: true;
   offer: PartnerOfferCardData;
   status?: "assigned" | "claimed";
+  className?: string;
+  style?: CSSProperties;
 };
 
 export type PartnerOfferCardProps = LiveProps | PreviewProps;
@@ -45,48 +53,48 @@ export function PartnerOfferCard(props: PartnerOfferCardProps) {
     (offer.kind === "sharedCode" ? "SAMPLECODE" : "https://example.com/redeem");
 
   return (
-    <div className="group flex h-full flex-col rounded-[20px] border border-zinc-200 bg-white p-6 shadow-[0_2px_10px_rgba(0,0,0,0.02)] transition-all hover:-translate-y-1 hover:shadow-[0_8px_20px_rgba(0,0,0,0.06)]">
+    <div
+      className={cn(
+        "group flex h-full flex-col rounded-lg border border-border bg-card p-6 transition-[border-color,background-color,opacity,transform] duration-300 ease-[var(--ease-out-spring)] hover:border-foreground/15 hover:bg-muted/30",
+        props.className
+      )}
+      style={props.style}
+    >
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           {offer.logoUrl ? (
             <LogoImage src={offer.logoUrl} alt={offer.name || "Partner logo"} />
           ) : (
-            <span className="text-lg font-bold tracking-tight text-zinc-900">
+            <span className="text-lg font-semibold tracking-tight text-foreground">
               {offer.name || "Partner name"}
             </span>
           )}
         </div>
-        <span
-          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${
-            claimed
-              ? "bg-green-100 text-green-700"
-              : "bg-zinc-100 text-zinc-600"
-          }`}
-        >
+        <Badge variant={claimed ? "success" : "secondary"} className="shrink-0">
           {claimed ? "Claimed" : "Available"}
-        </span>
+        </Badge>
       </div>
 
       {offer.category && (
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400">
+        <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
           {offer.category}
         </p>
       )}
 
-      <div className="mb-4 flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50/80 px-4 py-3.5">
-        <Gift className="h-4 w-4 shrink-0 text-zinc-400" />
-        <span className="text-sm font-bold text-zinc-900">
+      <div className="mb-4 flex items-center gap-3 rounded-md border border-border bg-muted/50 px-4 py-3.5">
+        <Gift className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm font-semibold text-foreground">
           {offer.highlight || "Gift highlight"}
         </span>
       </div>
 
-      <p className="mb-6 flex-1 text-[16px] leading-relaxed text-zinc-800">
+      <p className="mb-6 flex-1 text-base leading-relaxed text-foreground/80">
         {offer.description || "Redemption instructions will appear here."}
       </p>
 
       {offer.note && (
-        <div className="mb-6 rounded-xl border border-amber-200/60 bg-amber-50 px-4 py-3.5 text-[14px] leading-relaxed text-amber-900">
-          <span className="font-bold">Note: </span>
+        <div className="mb-6 rounded-md border border-amber-200/60 bg-amber-50 px-4 py-3.5 text-sm leading-relaxed text-amber-900">
+          <span className="font-semibold">Note: </span>
           {offer.note}
         </div>
       )}
@@ -94,7 +102,7 @@ export function PartnerOfferCard(props: PartnerOfferCardProps) {
       {offer.redeemUrl && (
         <div className="mb-6">
           {preview ? (
-            <span className="inline-flex items-center text-[14px] font-bold text-zinc-600">
+            <span className="inline-flex items-center text-sm font-medium text-accent">
               How to redeem →
             </span>
           ) : (
@@ -102,7 +110,7 @@ export function PartnerOfferCard(props: PartnerOfferCardProps) {
               href={offer.redeemUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center text-[14px] font-bold text-zinc-600 hover:text-zinc-900 transition-colors"
+              className="inline-flex items-center text-sm font-medium text-accent transition-opacity duration-200 ease-[var(--ease-out-spring)] hover:opacity-80"
             >
               How to redeem →
             </a>
@@ -143,14 +151,14 @@ function PreviewCta({
   if (kind === "sharedCode") {
     return (
       <div>
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-400">
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
           Use code at checkout
         </p>
-        <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50/50 p-1.5">
-          <span className="flex-1 px-3 font-mono text-sm font-bold tracking-wider text-zinc-800">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-1.5">
+          <span className="flex-1 px-3 font-mono text-sm font-semibold tracking-wider text-foreground">
             {value}
           </span>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-400">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground">
             <Copy className="h-4 w-4" />
           </span>
         </div>
@@ -159,19 +167,19 @@ function PreviewCta({
   }
 
   return (
-    <div
-      className={
-        claimed
-          ? "flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-6 py-3.5 text-sm font-bold text-zinc-600 shadow-sm"
-          : "flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-3.5 text-sm font-bold text-white shadow-sm ring-1 ring-inset ring-zinc-900"
-      }
+    <Button
+      type="button"
+      variant={claimed ? "outline" : "default"}
+      className="h-auto w-full py-3.5"
+      disabled
+      tabIndex={-1}
     >
       {claimed ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600" />
+        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
       ) : (
         <ExternalLink className="h-4 w-4 opacity-70" />
       )}
       <span>{claimed ? "Offer redeemed" : "Redeem offer"}</span>
-    </div>
+    </Button>
   );
 }

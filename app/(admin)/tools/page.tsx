@@ -1,6 +1,5 @@
 import {
   ExternalLink,
-  Wrench,
   QrCode,
   Timer as TimerIcon,
   Image as ImageIcon,
@@ -40,19 +39,14 @@ const tools = [
 
 export default function ToolsPage() {
   return (
-    <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 rounded-md bg-primary flex items-center justify-center">
-          <Wrench className="h-4 w-4 text-primary-foreground" />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Community tools
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Internal tools for community events and content.
-          </p>
-        </div>
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Community tools
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Internal tools for community events and content.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-4">

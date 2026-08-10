@@ -53,13 +53,13 @@ export default function CheckStatusPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-white">
             Check your coupon status
           </h1>
-          <p className="text-white/65 mt-2 text-sm">
-            Enter the email address you registered with to check your Cursor
-            credits status.
+          <p className="mt-2 max-w-sm text-sm text-white/65">
+            Enter the email you registered with to see your Cursor credits
+            status.
           </p>
         </div>
 
-        <Card className="border-border bg-card">
+        <Card className="border-border bg-card shadow-none">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">

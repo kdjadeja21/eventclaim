@@ -464,8 +464,9 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
 
       <Card>
         <CardContent className="p-0">
+          <div className="max-h-[min(70vh,720px)] overflow-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <SortableHead
                   label="Action"
@@ -508,7 +509,7 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
                   >
                     {logs.length === 0
                       ? "No audit logs yet."
-                      : "No audit logs match this filter."}
+                      : "No results for this search or filter. Try clearing filters."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -539,6 +540,7 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

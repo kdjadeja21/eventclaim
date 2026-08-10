@@ -1,4 +1,5 @@
 import { ExternalLink, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function RedeemButton({
   href,
@@ -10,22 +11,19 @@ export default function RedeemButton({
   isClaimed?: boolean;
 }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={
-        isClaimed
-          ? "group flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-6 py-3.5 text-sm font-bold text-zinc-600 shadow-sm transition-all hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98]"
-          : "group flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-900 px-6 py-3.5 text-sm font-bold text-white shadow-sm ring-1 ring-inset ring-zinc-900 transition-all hover:bg-zinc-800 hover:shadow-md active:scale-[0.98]"
-      }
+    <Button
+      asChild
+      variant={isClaimed ? "outline" : "default"}
+      className="h-auto w-full py-3.5"
     >
-      {isClaimed ? (
-        <CheckCircle2 className="h-4 w-4 text-green-600 transition-colors" />
-      ) : (
-        <ExternalLink className="h-4 w-4 opacity-70 transition-opacity group-hover:opacity-100" />
-      )}
-      <span>{label}</span>
-    </a>
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {isClaimed ? (
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+        ) : (
+          <ExternalLink className="h-4 w-4 opacity-70" />
+        )}
+        <span>{label}</span>
+      </a>
+    </Button>
   );
 }
