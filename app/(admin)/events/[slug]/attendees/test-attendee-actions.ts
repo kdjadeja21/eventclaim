@@ -5,8 +5,9 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { normalizeEmail } from "@/lib/utils";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { ensureDefaultCursorCreditsCoupon } from "@/lib/default-offers";
-import { getEventById } from "@/lib/db/repos/events";
+import { getEventByIdForUser } from "@/lib/db/repos/events";
 import { countTestAttendees, findAttendeeByEmailInEvent } from "@/lib/db/repos/attendees";
 import {
   createTempTestAttendeesWithLinks,
@@ -38,7 +39,7 @@ function withTestNamePrefix(name: string): string {
 }
 
 export async function hasTempTestAttendees(eventId: string): Promise<boolean> {
-  await requireSession();
+  await requireAccessibleEventById(eventId);
   return (await countTestAttendees(eventId)) > 0;
 }
 
@@ -49,7 +50,7 @@ export async function createTempAttendees(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
-  const event = await getEventById(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false, error: "Event not found." };
   if (event.status !== "draft") {
     return { success: false, error: "Temp attendees can only be created while the event is in draft." };
@@ -128,7 +129,7 @@ export async function deleteTempTestData(
 ): Promise<{ success: boolean; error?: string; deletedAttendees?: number; deletedLinks?: number }> {
   const session = await requireSession();
 
-  const event = await getEventById(eventId);
+  const event = await getEventByIdForUser(eventId, session.uid);
   if (!event) return { success: false, error: "Event not found." };
 
   try {

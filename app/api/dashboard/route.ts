@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getEventCountStats } from "@/lib/event-stats";
 import { requireSession } from "@/lib/session";
-import { listRecentEvents } from "@/lib/db/repos/events";
-import { listAuditLogs } from "@/lib/db/repos/audit";
+import { listRecentEventsForUser } from "@/lib/db/repos/events";
+import { listAuditLogsForUser } from "@/lib/db/repos/audit";
 import { Event } from "@/lib/types";
 
 export interface DashboardData {
@@ -29,8 +29,8 @@ export interface DashboardData {
   }[];
 }
 
-async function fetchDashboardData(): Promise<DashboardData> {
-  const events = await listRecentEvents(10);
+async function fetchDashboardData(sessionUid: string): Promise<DashboardData> {
+  const events = await listRecentEventsForUser(sessionUid, 10);
 
   const eventStatsResults = await Promise.all(
     events.map(async (event) => {
@@ -62,7 +62,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     };
   });
 
-  const auditLogs = await listAuditLogs(5);
+  const auditLogs = await listAuditLogsForUser(sessionUid, 5);
   const recentActivity = auditLogs.map((l) => ({
     id: l.id,
     action: l.action,
@@ -93,14 +93,16 @@ async function fetchDashboardData(): Promise<DashboardData> {
  * last cached in `localStorage` and shows that instead of a hard error.
  */
 export async function GET() {
+  let sessionUid: string;
   try {
-    await requireSession();
+    const session = await requireSession();
+    sessionUid = session.uid;
   } catch {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
-    const data = await fetchDashboardData();
+    const data = await fetchDashboardData(sessionUid);
     return NextResponse.json(data);
   } catch (error) {
     console.error("[api/dashboard] Failed to load dashboard data:", error);

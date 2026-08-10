@@ -1,7 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/session";
-import { resolveEventId } from "@/lib/db/repos/events";
+import { resolveEventIdForUser } from "@/lib/db/repos/events";
 import { listAttendeesForEvent } from "@/lib/db/repos/attendees";
 import { listEnabledCouponsForEvent } from "@/lib/db/repos/coupons";
 import { getEmailQuota, type EmailQuota } from "@/lib/email";
@@ -24,9 +24,9 @@ export async function getPreviewStats(
   slug: string,
   emailConfig: EmailConfig
 ): Promise<PreviewStats> {
-  await requireSession();
+  const session = await requireSession();
 
-  const eventId = await resolveEventId(slug);
+  const eventId = await resolveEventIdForUser(slug, session.uid);
 
   const [attendees, enabledCoupons, quota] = await Promise.all([
     listAttendeesForEvent(eventId),

@@ -66,8 +66,7 @@ Create a `.env.local` in the project root:
 | `FIREBASE_SERVICE_ACCOUNT` | Yes (local admin) | Full service account JSON as a **single-line** string. Required for session cookie creation/verification and Storage uploads. Without it, sign-in succeeds in the client but server sessions fail. |
 | `ENABLE_TEST_LOGIN` | No | Set to `true` to allow the server to mint Firebase custom tokens for temporary test login (UAT/demo). Must be paired with `NEXT_PUBLIC_ENABLE_TEST_LOGIN`. |
 | `NEXT_PUBLIC_ENABLE_TEST_LOGIN` | No | Set to `true` to show a **Test login** button on `/login`. Requires `ENABLE_TEST_LOGIN=true` on the server or the button will fail. |
-| `TEST_LOGIN_UID` | No | Firebase UID for the test user (default: `test-dev-admin`). |
-| `TEST_LOGIN_EMAIL` | No | Email shown in the admin session for the test user (default: `dev@test.local`). |
+| `TEST_LOGIN_EMAIL` | No | Email shown for the dedicated test user (default: `dev@test.local`). The test login UID is fixed as `eventclaim-test-login` and cannot be overridden. |
 | `DATABASE_URL` | Yes | Supabase Supavisor **transaction pooler** connection string, port `6543`. Used by the app at runtime — must keep `prepare=false` (already set in `lib/db/client.ts`). |
 | `DIRECT_URL` | Yes | Supabase **direct** Postgres connection string, port `5432`. Used only by `drizzle-kit` (migrations/introspection) and the backfill script. |
 
@@ -78,6 +77,15 @@ read from environment variables. Instead, sign in and open **Settings**
 browser's `localStorage`, and are supplied to server actions at the moment
 each button is clicked (Luma sync, send/resend email, import, coupon
 create/enable). See [Settings](#settings) below.
+
+### Test login data isolation
+
+When test login is enabled, the user signs in as the dedicated Firebase UID
+`eventclaim-test-login`. Every event they create is owned by that UID.
+Admin list/read/write paths only return that user's events and audit logs —
+they cannot see or mutate other admins' data. Real Google admins likewise
+never see events owned by the test login UID. Run `npm run db:migrate` after
+pulling so the `events.owner_uid` column exists.
 
 ## Scripts
 
