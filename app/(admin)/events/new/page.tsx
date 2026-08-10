@@ -55,7 +55,7 @@ export default function NewEventPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">New Event</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">New event</h1>
           <p className="text-sm text-muted-foreground">
             Create a new coupon distribution event
           </p>
@@ -185,7 +185,7 @@ export default function NewEventPage() {
                     Creating…
                   </>
                 ) : (
-                  "Create Event"
+                  "Create event"
                 )}
               </Button>
               <Button variant="outline" asChild>

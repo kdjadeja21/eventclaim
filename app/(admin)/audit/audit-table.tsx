@@ -61,32 +61,32 @@ const actionVariant: Record<
 };
 
 const actionLabels: Record<AuditAction, string> = {
-  event_created: "Event Created",
-  event_updated: "Event Updated",
-  event_deleted: "Event Deleted",
-  event_hero_updated: "Hero Updated",
-  attendee_imported: "Attendees Imported",
-  attendee_deleted: "Attendee Deleted",
-  attendee_luma_synced: "Luma Sync",
-  attendee_blacklisted: "Attendee Blacklisted",
-  attendee_unblacklisted: "Attendee Unblacklisted",
-  test_attendees_created: "Temp Attendees Created",
-  test_data_deleted: "Test Data Deleted",
-  coupon_created: "Coupon Created",
-  coupon_updated: "Coupon Updated",
-  coupon_deleted: "Coupon Deleted",
-  coupon_disabled: "Coupon Disabled",
-  coupon_enabled: "Coupon Enabled",
-  coupon_reordered: "Coupons Reordered",
-  coupon_links_added: "Links Added",
-  coupon_granted: "Grants Issued",
-  coupon_unassigned: "Link Unassigned",
-  coupon_link_deleted: "Link Deleted",
-  grant_claimed: "Grant Claimed",
-  email_sent: "Email Sent",
-  email_resent: "Email Resent",
-  email_failed: "Email Failed",
-  status_checked: "Status Checked",
+  event_created: "Event created",
+  event_updated: "Event updated",
+  event_deleted: "Event deleted",
+  event_hero_updated: "Hero updated",
+  attendee_imported: "Attendees imported",
+  attendee_deleted: "Attendee deleted",
+  attendee_luma_synced: "Luma sync",
+  attendee_blacklisted: "Attendee blacklisted",
+  attendee_unblacklisted: "Attendee unblacklisted",
+  test_attendees_created: "Temp attendees created",
+  test_data_deleted: "Test data deleted",
+  coupon_created: "Coupon created",
+  coupon_updated: "Coupon updated",
+  coupon_deleted: "Coupon deleted",
+  coupon_disabled: "Coupon disabled",
+  coupon_enabled: "Coupon enabled",
+  coupon_reordered: "Coupons reordered",
+  coupon_links_added: "Links added",
+  coupon_granted: "Grants issued",
+  coupon_unassigned: "Link unassigned",
+  coupon_link_deleted: "Link deleted",
+  grant_claimed: "Grant claimed",
+  email_sent: "Email sent",
+  email_resent: "Email resent",
+  email_failed: "Email failed",
+  status_checked: "Status checked",
 };
 
 function stringifyMetadata(metadata: AuditLog["metadata"]): string {
@@ -464,8 +464,9 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
 
       <Card>
         <CardContent className="p-0">
+          <div className="max-h-[min(70vh,720px)] overflow-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
                 <SortableHead
                   label="Action"
@@ -508,7 +509,7 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
                   >
                     {logs.length === 0
                       ? "No audit logs yet."
-                      : "No audit logs match this filter."}
+                      : "No results for this search or filter. Try clearing filters."}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -539,6 +540,7 @@ export function AuditTable({ logs }: { logs: AuditLog[] }) {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

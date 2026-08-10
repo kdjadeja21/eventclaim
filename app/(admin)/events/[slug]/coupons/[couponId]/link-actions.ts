@@ -1,6 +1,7 @@
 "use server";
 
 import { requireSession } from "@/lib/session";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { writeAuditLog } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import { ensureClaimToken } from "@/lib/assignment-helpers";
@@ -27,6 +28,8 @@ export async function autoAssignLink(
   eventSlug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   const existingGrant = await getGrant(eventId, attendeeId, couponId);
   if (existingGrant) {
@@ -70,6 +73,8 @@ export async function assignSpecificLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  await requireAccessibleEventById(eventId);
+
   const existingGrant = await getGrant(eventId, attendeeId, couponId);
   if (existingGrant) {
     return { success: false, error: "Attendee already has a grant for this coupon." };
@@ -105,6 +110,8 @@ export async function unassignLink(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  await requireAccessibleEventById(eventId);
+
   const link = await getLink(eventId, couponId, linkId);
   if (!link) return { success: false, error: "Link not found." };
   if (link.status === "claimed") {
@@ -133,6 +140,8 @@ export async function deleteLink(
   eventSlug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   const link = await getLink(eventId, couponId, linkId);
   if (!link) return { success: false, error: "Link not found." };
@@ -165,6 +174,8 @@ export async function toggleLinkDisabled(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  await requireAccessibleEventById(eventId);
+
   const updated = await setLinkDisabled(eventId, couponId, linkId, disabled);
   if (!updated) return { success: false, error: "Link not found." };
 
@@ -187,6 +198,8 @@ export async function bulkAutoAssignLinks(
   eventSlug: string
 ): Promise<{ success: boolean; assigned: number; error?: string }> {
   await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   const unassigned = await getUnassignedAttendees(eventId, couponId);
   if (unassigned.length === 0) {
@@ -216,6 +229,8 @@ export async function getUnassignedAttendees(
   couponId: string
 ): Promise<Array<{ id: string; name: string; email: string }>> {
   await requireSession();
+  await requireAccessibleEventById(eventId);
+
   return listUnassignedAttendees(eventId, couponId);
 }
 
@@ -224,5 +239,7 @@ export async function getAvailableLinks(
   couponId: string
 ): Promise<Array<{ id: string; url: string }>> {
   await requireSession();
+  await requireAccessibleEventById(eventId);
+
   return listAvailableLinks(eventId, couponId);
 }

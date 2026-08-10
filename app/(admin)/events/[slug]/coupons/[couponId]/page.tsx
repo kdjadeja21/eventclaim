@@ -25,9 +25,9 @@ import { EditCouponDialog } from "./edit-coupon-dialog";
 type Props = { params: Promise<{ slug: string; couponId: string }> };
 
 const kindConfig = {
-  uniqueLink: { label: "Unique Link", icon: Link2, color: "text-blue-600" },
-  sharedCode: { label: "Shared Code", icon: Code, color: "text-purple-600" },
-  sharedLink: { label: "Shared Link", icon: ExternalLink, color: "text-green-600" },
+  uniqueLink: { label: "Unique link", icon: Link2, color: "text-muted-foreground" },
+  sharedCode: { label: "Shared code", icon: Code, color: "text-muted-foreground" },
+  sharedLink: { label: "Shared link", icon: ExternalLink, color: "text-muted-foreground" },
 } as const;
 
 export default async function CouponDetailPage({ params }: Props) {

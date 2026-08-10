@@ -33,6 +33,8 @@ export const events = pgTable(
       .default("draft"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    /** Firebase UID of the creating admin. Null = legacy shared/pre-isolation rows. */
+    ownerUid: text("owner_uid"),
     lumaLastSyncedAt: text("luma_last_synced_at"),
     autoSendEmail: boolean("auto_send_email").notNull().default(false),
     tagline: text("tagline"),
@@ -40,7 +42,10 @@ export const events = pgTable(
     timeLabel: text("time_label"),
     venue: text("venue"),
   },
-  (table) => [uniqueIndex("events_slug_key").on(table.slug)]
+  (table) => [
+    uniqueIndex("events_slug_key").on(table.slug),
+    index("events_owner_uid_idx").on(table.ownerUid),
+  ]
 );
 
 // ─── attendees ───────────────────────────────────────────────────────────────

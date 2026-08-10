@@ -9,50 +9,50 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import SiteCreditFooter from "@/components/site-credit-footer";
+import { BrandMarkIcon } from "@/components/brand-mark";
 
 export default function NotFound() {
   return (
     <div className="gradient-hero flex min-h-screen flex-col">
       <div className="flex flex-1 items-center justify-center px-4 py-16">
-        <div className="w-full max-w-md space-y-8 text-center">
-          <div className="flex justify-center">
-            <div className="gradient-brand flex h-12 w-12 items-center justify-center rounded-full shadow-lg">
-              <span className="text-xl font-bold text-white">C</span>
-            </div>
-          </div>
+        <div className="w-full max-w-md space-y-8 text-left">
+          <BrandMarkIcon size="md" className="text-white" />
 
           <div className="space-y-2">
-            <p className="gradient-text text-7xl font-bold tracking-tighter sm:text-8xl">
+            <p className="text-7xl font-bold tracking-tighter text-white/90 sm:text-8xl">
               404
             </p>
             <h1 className="text-2xl font-semibold tracking-tight text-white">
               Page not found
             </h1>
-            <p className="mx-auto max-w-sm text-sm text-white/70">
+            <p className="max-w-sm text-sm text-white/65">
               The page you&apos;re looking for doesn&apos;t exist or may have been
               moved. Check the URL or head back to a known destination.
             </p>
           </div>
 
-          <Card className="border-white/20 bg-white/10 text-left text-white shadow-2xl backdrop-blur-md">
+          <Card className="border-white/10 text-left text-white shadow-none [background:hsl(var(--hero-to)/0.55)]">
             <CardHeader className="space-y-1 pb-2">
               <CardTitle className="text-lg text-white">Cursor Community</CardTitle>
-              <CardDescription className="text-white/70">
-                Event Coupon Distribution Platform
+              <CardDescription className="text-white/65">
+                Event coupon distribution
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <CardContent className="flex flex-col gap-3 sm:flex-row">
               <Button
                 asChild
-                variant="outline"
-                className="w-full border-0 bg-white text-primary shadow-md hover:bg-white/90 sm:w-auto"
+                className="w-full bg-white text-foreground hover:bg-white/90 sm:w-auto"
               >
                 <Link href="/check-status">
                   <Search className="h-4 w-4" />
                   Check coupon status
                 </Link>
               </Button>
-              <Button asChild className="w-full sm:w-auto">
+              <Button
+                asChild
+                variant="outline"
+                className="w-full border-white/20 bg-transparent text-white hover:bg-white/10 sm:w-auto"
+              >
                 <Link href="/dashboard">
                   <Home className="h-4 w-4" />
                   Admin dashboard

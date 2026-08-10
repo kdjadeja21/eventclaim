@@ -38,9 +38,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cursor Community | Event Coupon Distribution Platform",
+  title: "Cursor Community | Event coupon distribution",
   description:
     "Distribute Cursor credits to event attendees securely and track claims.",
+  icons: {
+    icon: [
+      {
+        url: "/brand/favicon-light.svg",
+        media: "(prefers-color-scheme: light)",
+        type: "image/svg+xml",
+      },
+      {
+        url: "/brand/favicon-dark.svg",
+        media: "(prefers-color-scheme: dark)",
+        type: "image/svg+xml",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({

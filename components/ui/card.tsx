@@ -8,7 +8,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-lg border-0 bg-card text-card-foreground shadow-md ring-1 ring-black/5 transition-shadow hover:shadow-lg",
+      "rounded-lg border border-border bg-card text-card-foreground shadow-none transition-colors duration-200 ease-[var(--ease-out-spring)]",
       className
     )}
     {...props}

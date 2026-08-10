@@ -92,12 +92,12 @@ async function applyDemoFocus(page, selector) {
         position: relative !important;
         z-index: 2147483000 !important;
         border-radius: 12px !important;
-        /* White ring + thick purple border + soft page dim (no zoom). */
+        /* White ring + thick ink border + soft page dim (no zoom). */
         box-shadow:
           0 0 0 3px rgba(255, 255, 255, 0.98),
-          0 0 0 8px rgba(124, 58, 237, 1),
-          0 0 0 9999px rgba(12, 8, 22, 0.42) !important;
-        transition: box-shadow 280ms ease;
+          0 0 0 8px rgba(38, 37, 30, 1),
+          0 0 0 9999px rgba(38, 37, 30, 0.42) !important;
+        transition: box-shadow 280ms cubic-bezier(0.25, 1, 0.5, 1);
       }
     `;
     document.head.appendChild(style);
@@ -224,12 +224,12 @@ function renderTitleCardWithLogo(
       .replace(/:/g, "\\:")
       .replace(/'/g, "\\'");
 
-  // Logo ~480px wide, centered above title (1920x1080)
+  // Logo ~480px wide, top-left-ish with cozy margins (brand: top-left default)
   const filter = [
-    `[1:v]scale=480:-1:flags=lanczos,format=rgba[logo]`,
-    `[0:v][logo]overlay=(W-w)/2:280,` +
-      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${escape(title)}':fontcolor=white:fontsize=72:x=(w-text_w)/2:y=520,` +
-      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xC4B5FD:fontsize=32:x=(w-text_w)/2:y=620`,
+    `[1:v]scale=420:-1:flags=lanczos,format=rgba[logo]`,
+    `[0:v][logo]overlay=77:120,` +
+      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(title)}':fontcolor=0xF7F7F4:fontsize=64:x=77:y=420,` +
+      `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xA09C92:fontsize=28:x=77:y=510`,
   ].join(";");
 
   sh("ffmpeg", [
@@ -237,7 +237,7 @@ function renderTitleCardWithLogo(
     "-f",
     "lavfi",
     "-i",
-    `color=c=0x1E1033:s=${VW}x${VH}:d=${duration.toFixed(3)}:r=25`,
+    `color=c=0x26251E:s=${VW}x${VH}:d=${duration.toFixed(3)}:r=25`,
     "-i",
     logoPng,
     "-filter_complex",

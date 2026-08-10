@@ -85,7 +85,7 @@ const REQUIRED_MAIN_TEXT = {
   attendees: ["Alex Rivera"],
   coupons: ["Cursor Credits"],
   "coupon-detail": ["Cursor Credits"],
-  audit: ["Audit Logs", "Event Created"],
+  audit: ["Audit logs", "Event created"],
 };
 
 const SECTIONS = [
@@ -209,7 +209,7 @@ const SECTIONS = [
     id: "16-audit",
     route: "/audit",
     wait: "audit",
-    text: "Audit Logs keep a short history of imports, emails, and claims.",
+    text: "Audit logs keep a short history of imports, emails, and claims.",
   },
   {
     id: "17-close",
@@ -570,8 +570,8 @@ function renderTitleCard(outPath, title, subtitle, duration, logoPng) {
       .replace(/:/g, "\\:")
       .replace(/'/g, "\\'");
   const filter = [
-    `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='${escape(title)}':fontcolor=white:fontsize=64:x=(w-text_w)/2:y=(h/2)-60`,
-    `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xC4B5FD:fontsize=28:x=(w-text_w)/2:y=(h/2)+20`,
+    `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(title)}':fontcolor=0xF7F7F4:fontsize=64:x=77:y=(h/2)-40`,
+    `drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:text='${escape(subtitle)}':fontcolor=0xA09C92:fontsize=28:x=77:y=(h/2)+40`,
   ].join(",");
 
   sh("ffmpeg", [
@@ -579,7 +579,7 @@ function renderTitleCard(outPath, title, subtitle, duration, logoPng) {
     "-f",
     "lavfi",
     "-i",
-    `color=c=0x1E1033:s=1920x1080:d=${duration.toFixed(3)}:r=25`,
+    `color=c=0x26251E:s=1920x1080:d=${duration.toFixed(3)}:r=25`,
     "-vf",
     filter,
     ...VIDEO_ENCODE,

@@ -89,7 +89,7 @@ What the builder does:
 
 Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
 
-1. Playwright **border** (white ring + thick purple stroke + soft page dim, radius ~12) with ~0.4s fade-in — one target only
+1. Playwright **border** (white ring + thick ink stroke + soft page dim, radius ~12) with ~0.4s fade-in — one target only
 2. **No zoom / Ken Burns** — keep full frame so header/footer stay visible
 3. Encode at **30 fps**; static focused stills via `encodeFocusBorder` (full-frame hold)
 4. Skip focus on Settings, Setup guide, and other full-page overview beats
@@ -99,15 +99,23 @@ Focused beats use `scripts/portal-demo/focus-zoom.cjs`:
 
 When secrets are missing, rebuild from
 `public/demo/draft/eventclaim-portal-demo-archive-2026-08-07-2.mp4`
-(logo titles, pre focus-zoom, 1280×800):
+(logo titles, pre focus-zoom, 1280×800) **or** refresh title/end cards only:
+
+```bash
+node scripts/portal-demo/rebrand-title-cards.cjs
+```
+
+That swaps purple title cards for Cursor ink (`#26251E`) + lockup without re-recording UI.
+
+Older scale+pad path:
 
 1. Scale+pad to 1920×1080 (never crop):
-   `scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x1E1033`
-2. Timed purple **rounded** border + soft page dim (no zoompan) on:
+   `scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x26251E`
+2. Timed ink **rounded** border + soft page dim (no zoompan) on:
    - Auto-send `63.048–73.392` — src `290,558,940,155`
    - Actions `86.592–95.688` — src `1005,348,255,310` (actions column only)
    - Temp-users `95.688–103.464` — src `350,75,580,620`
-   Overlay PNGs: white ring + ~5px purple stroke + ~42% dim outside hole.
+   Overlay PNGs: white ring + ~5px ink stroke + ~42% dim outside hole.
 3. Remux source audio; keep existing VTT; archive previous live file under `public/demo/draft/`
 
 ### Wait keys already supported

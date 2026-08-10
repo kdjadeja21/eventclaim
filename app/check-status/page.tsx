@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/utils";
 import SiteCreditFooter from "@/components/site-credit-footer";
+import { BrandMarkIcon } from "@/components/brand-mark";
 
 type StatusResult = Awaited<ReturnType<typeof checkAttendeeStatus>>;
 
@@ -45,28 +46,24 @@ export default function CheckStatusPage() {
   return (
     <div className="gradient-hero flex min-h-screen flex-col items-center px-4 pt-16">
       <div className="w-full max-w-md flex-1 space-y-6">
-        {/* Header */}
-        <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full gradient-brand flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-xl">C</span>
-            </div>
+        <div className="text-left">
+          <div className="mb-4">
+            <BrandMarkIcon size="lg" className="text-white" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">
-            Check Your Coupon Status
+            Check your coupon status
           </h1>
-          <p className="text-white/70 mt-2 text-sm">
-            Enter the email address you registered with to check your Cursor
-            credits status.
+          <p className="mt-2 max-w-sm text-sm text-white/65">
+            Enter the email you registered with to see your Cursor credits
+            status.
           </p>
         </div>
 
-        {/* Search form */}
-        <Card className="border-white/20 bg-white/95 backdrop-blur-sm shadow-xl">
+        <Card className="border-border bg-card shadow-none">
           <CardContent className="pt-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="email">Email address</Label>
                 <Input
                   id="email"
                   type="email"
@@ -85,7 +82,7 @@ export default function CheckStatusPage() {
                 ) : (
                   <>
                     <Search className="h-4 w-4" />
-                    Check Status
+                    Check status
                   </>
                 )}
               </Button>
@@ -102,7 +99,7 @@ export default function CheckStatusPage() {
         )}
 
         {result && result.found && (
-          <Card className="border-white/20 bg-white/95 backdrop-blur-sm shadow-xl">
+          <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <CalendarDays className="h-4 w-4" />
@@ -115,15 +112,15 @@ export default function CheckStatusPage() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <Ban className="h-3.5 w-3.5" />
-                    Attendance Status
+                    Attendance status
                   </span>
-                  <Badge variant="destructive">Not Checked In</Badge>
+                  <Badge variant="destructive">Not checked in</Badge>
                 </div>
               )}
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <Mail className="h-3.5 w-3.5" />
-                  Email Status
+                  Email status
                 </span>
                 <Badge
                   variant={
@@ -137,14 +134,14 @@ export default function CheckStatusPage() {
               </div>
               {result.emailSentAt && (
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Email Sent At</span>
+                  <span className="text-muted-foreground">Email sent at</span>
                   <span className="text-xs">{formatDateTime(result.emailSentAt)}</span>
                 </div>
               )}
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Offers Granted
+                  Offers granted
                 </span>
                 <Badge variant={(result.grantCount ?? 0) > 0 ? "success" : "secondary"}>
                   {result.grantCount ?? 0}
@@ -153,10 +150,10 @@ export default function CheckStatusPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-1.5 text-muted-foreground">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  Claim Status
+                  Claim status
                 </span>
                 <Badge variant={result.claimed ? "success" : "secondary"}>
-                  {result.claimed ? "Claimed" : "Not Yet Claimed"}
+                  {result.claimed ? "Claimed" : "Not yet claimed"}
                 </Badge>
               </div>
             </CardContent>
@@ -164,9 +161,9 @@ export default function CheckStatusPage() {
         )}
 
         {result && !result.found && (
-          <Card className="border-white/20 bg-white/95 backdrop-blur-sm shadow-xl">
-            <CardContent className="pt-6 text-center text-sm text-muted-foreground space-y-2">
-              <Clock className="h-8 w-8 mx-auto text-muted-foreground/50" />
+          <Card className="border-border bg-card">
+            <CardContent className="pt-6 text-left text-sm text-muted-foreground space-y-2">
+              <Clock className="h-8 w-8 text-muted-foreground/50" />
               <p>
                 No record found for <strong>{email}</strong>.
               </p>

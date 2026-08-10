@@ -38,6 +38,7 @@ async function main() {
     status: "active",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    ownerUid: null,
   });
   const fetchedEvent = await getEventBySlug("sandbox-test-event");
   assert.ok(fetchedEvent, "event should be findable by slug");

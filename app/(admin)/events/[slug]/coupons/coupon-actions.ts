@@ -5,6 +5,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseCouponCsv } from "@/lib/import";
 import { Coupon, CouponKind } from "@/lib/types";
+import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { bulkInsertCouponLinks } from "@/lib/db/repos/links";
 import {
   deleteCouponCascade,
@@ -50,6 +51,7 @@ export async function createCoupon(
   emailConfig?: EmailConfig
 ): Promise<{ success: boolean; couponId?: string; error?: string }> {
   const session = await requireSession();
+  await requireAccessibleEventById(eventId);
 
   if (!data.name.trim()) return { success: false, error: "Name is required." };
   if (data.kind === "sharedCode" || data.kind === "sharedLink") {
@@ -116,6 +118,8 @@ export async function updateCoupon(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  await requireAccessibleEventById(eventId);
+
   const existing = await getCouponById(eventId, couponId);
   if (!existing) return { success: false, error: "Coupon not found." };
 
@@ -151,6 +155,8 @@ export async function reorderCoupons(
   slug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   if (orderedIds.length === 0) {
     return { success: false, error: "No coupons to reorder." };
@@ -219,6 +225,8 @@ export async function toggleCouponDisabled(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
+  await requireAccessibleEventById(eventId);
+
   const existing = await getCouponById(eventId, couponId);
   if (!existing) return { success: false, error: "Coupon not found." };
 
@@ -248,6 +256,8 @@ export async function deleteCoupon(
   slug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   const coupon = await getCouponById(eventId, couponId);
   if (!coupon) return { success: false, error: "Coupon not found." };
@@ -285,6 +295,8 @@ export async function addCouponLinks(
   error?: string;
 }> {
   const session = await requireSession();
+
+  await requireAccessibleEventById(eventId);
 
   const coupon = await getCouponById(eventId, couponId);
   if (!coupon) {

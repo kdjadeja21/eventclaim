@@ -1,11 +1,11 @@
 import { requireSession } from "@/lib/session";
-import { listAuditLogs } from "@/lib/db/repos/audit";
+import { listAuditLogsForUser } from "@/lib/db/repos/audit";
 import { AuditLog } from "@/lib/types";
 import { AuditTable } from "./audit-table";
 
 async function getAuditLogs(): Promise<AuditLog[]> {
-  await requireSession();
-  return listAuditLogs(200);
+  const session = await requireSession();
+  return listAuditLogsForUser(session.uid, 200);
 }
 
 export default async function AuditPage() {
@@ -14,7 +14,7 @@ export default async function AuditPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit Logs</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Audit logs</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Every important action recorded — last 200 entries
         </p>
