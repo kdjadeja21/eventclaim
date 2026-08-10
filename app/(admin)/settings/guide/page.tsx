@@ -139,7 +139,7 @@ export default function SettingsGuidePage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Integration Setup Guide
+                Integration setup guide
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Clear step-by-step instructions to quickly configure Luma API
@@ -300,7 +300,7 @@ export default function SettingsGuidePage() {
                         Settings
                       </Link>{" "}
                       in this app, paste it into <strong>Luma API Key</strong>,
-                      and click <strong>Save Settings</strong>.
+                      and click <strong>Save settings</strong>.
                     </p>
                   </StepItem>
 
@@ -497,7 +497,7 @@ export default function SettingsGuidePage() {
                       and fill in Service ID, Template ID, Public Key, and
                       Private Key. Adjust your{" "}
                       <strong>Monthly Send Quota</strong> (e.g. 200 for free
-                      plan) and click <strong>Save Settings</strong>.
+                      plan) and click <strong>Save settings</strong>.
                     </p>
                   </StepItem>
                 </div>

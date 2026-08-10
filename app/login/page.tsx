@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import SiteCreditFooter from "@/components/site-credit-footer";
+import { BrandMarkIcon } from "@/components/brand-mark";
 
 export default function LoginPage() {
   return (
@@ -89,22 +90,21 @@ function LoginForm() {
   return (
     <div className="gradient-hero flex min-h-screen flex-col">
       <div className="flex flex-1 items-center justify-center px-4 py-10">
-        <Card className="w-full max-w-sm border-white/20 bg-white/10 backdrop-blur-md text-white shadow-2xl">
-          <CardHeader className="space-y-1 text-center">
-            <div className="mb-2 flex justify-center">
-              <div className="gradient-brand flex h-10 w-10 items-center justify-center rounded-full shadow-lg">
-                <span className="text-lg font-bold text-white">C</span>
-              </div>
+        <Card className="w-full max-w-sm border-white/10 text-white shadow-none [background:hsl(var(--hero-to)/0.55)]">
+          <CardHeader className="space-y-1 text-left">
+            <div className="mb-3">
+              <BrandMarkIcon size="md" className="text-white" />
             </div>
-            <CardTitle className="text-2xl text-white">Cursor Community</CardTitle>
-            <CardDescription className="text-white/70">
-              Event Coupon Distribution Platform
+            <CardTitle className="text-2xl tracking-tight text-white">
+              Cursor Community
+            </CardTitle>
+            <CardDescription className="text-white/65">
+              Event coupon distribution
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Button
-              variant="outline"
-              className="w-full border-0 bg-white text-primary shadow-md hover:bg-white/90"
+              className="w-full bg-white text-foreground hover:bg-white/90"
               onClick={handleGoogleSignIn}
               disabled={loading}
             >
@@ -139,7 +139,7 @@ function LoginForm() {
               </Button>
             )}
 
-            <p className="text-center text-xs text-white/50">
+            <p className="text-left text-xs text-white/50">
               Access restricted to authorised admins only.
             </p>
           </CardContent>

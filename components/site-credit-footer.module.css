@@ -52,7 +52,7 @@
 
 .link {
   text-decoration: none;
-  transition: color 0.15s ease;
+  transition: color 0.2s var(--ease-out-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .link:hover,

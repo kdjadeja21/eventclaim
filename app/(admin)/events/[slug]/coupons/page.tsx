@@ -28,7 +28,7 @@ export default async function CouponsPage({ params }: Props) {
         </Button>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Partner Offers
+            Partner offers
           </h1>
           <p className="text-sm text-muted-foreground">
             {event.name} &middot; {coupons.length} offer
