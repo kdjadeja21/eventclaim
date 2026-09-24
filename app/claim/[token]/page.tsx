@@ -31,16 +31,16 @@ export default async function ClaimPage({ params }: Props) {
         {/* Header / Hero — brand, headline, support, quiet meta */}
         <div className="mb-14 max-w-3xl">
           <a
-            href="https://cursor.com"
+            href="https://www.spacex.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="mb-10 inline-flex items-center transition-opacity duration-200 ease-[var(--ease-out-spring)] hover:opacity-80"
-            aria-label="Cursor"
+            aria-label="SpaceX"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/partner-logos/cursor_logo.svg"
-              alt="Cursor"
+              src="/brand/spacex-wordmark.png"
+              alt="SpaceX"
               className="h-10 w-auto sm:h-12 [filter:brightness(0)]"
             />
           </a>
