@@ -125,6 +125,7 @@ export async function updateCouponFields(
   couponId: string,
   fields: Partial<{
     name: string;
+    kind: "uniqueLink" | "sharedCode" | "sharedLink";
     category: string;
     logoUrl: string;
     highlight: string;
