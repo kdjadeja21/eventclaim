@@ -31,11 +31,11 @@ export default async function ClaimPage({ params }: Props) {
         {/* Header / Hero — brand, headline, support, quiet meta */}
         <div className="mb-14 max-w-3xl">
           <a
-            href="https://www.spacex.com/"
+            href="https://x.ai/"
             target="_blank"
             rel="noopener noreferrer"
             className="mb-10 inline-flex items-center transition-opacity duration-200 ease-[var(--ease-out-spring)] hover:opacity-80"
-            aria-label="SpaceX"
+            aria-label="xAI"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
