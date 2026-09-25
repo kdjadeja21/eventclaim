@@ -224,13 +224,7 @@ export default function CouponList({
         toast.error(res.error ?? "Failed to create coupon.");
       }
     } else if (dialog?.type === "edit") {
-      const res = await updateCoupon(
-        eventId,
-        dialog.coupon.id,
-        form,
-        eventSlug,
-        emailConfig
-      );
+      const res = await updateCoupon(eventId, dialog.coupon.id, form, eventSlug);
       setSaving(false);
       if (res.success) {
         toast.success("Coupon updated.");
@@ -429,13 +423,6 @@ export default function CouponList({
                       {coupon.highlight && (
                         <p className="text-xs text-muted-foreground mt-0.5">{coupon.highlight}</p>
                       )}
-                      {coupon.name === "Cursor Credits" &&
-                        coupon.kind === "sharedLink" &&
-                        !coupon.sharedValue && (
-                          <p className="text-xs text-amber-800 mt-1">
-                            Add the shared Cursor Credits link so attendees can redeem it.
-                          </p>
-                        )}
                     </div>
 
                     {/* Actions */}

@@ -779,7 +779,7 @@ export default function AttendeeTable({
         toast.error(result.error ?? "Failed to delete test data");
         return;
       }
-      toast.success("Temp attendees deleted");
+      toast.success("Temp attendees and fake Cursor Credits links deleted");
       setDeleteTestConfirmOpen(false);
       router.refresh();
     } finally {
@@ -885,8 +885,8 @@ export default function AttendeeTable({
               {!emailConfigured
                 ? "Configure EmailJS on the Settings page before creating temp users and sending test emails."
                 : hasTestAttendees
-                  ? "Temp attendees are ready for email testing with the shared Cursor Credits link. EmailJS must stay configured to send."
-                  : "Create two temp attendees to test claim emails. They receive the shared Cursor Credits link. EmailJS is required to send."}
+                  ? "Temp attendees and fake Cursor Credits links are ready for email testing. EmailJS must stay configured to send."
+                  : "Create two temp attendees with fake Cursor Credits links to test claim emails. EmailJS is required to send."}
             </p>
           </div>
           {hasTestAttendees ? (
@@ -1638,8 +1638,8 @@ export default function AttendeeTable({
           <DialogHeader>
             <DialogTitle>Delete test data?</DialogTitle>
             <DialogDescription>
-              This removes the two temp attendees and their test grants. You can
-              create them again while the event stays in draft.
+              This removes the two temp attendees and their fake Cursor Credits
+              links. You can create them again while the event stays in draft.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">

@@ -123,8 +123,8 @@ export default function EventStatusButton({
           <DialogHeader>
             <DialogTitle>Leave draft and delete test data?</DialogTitle>
             <DialogDescription>
-              This event has temp test attendees. Changing status will
-              permanently delete that test data.
+              This event has temp test attendees and fake Cursor Credits links.
+              Changing status will permanently delete that test data.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">

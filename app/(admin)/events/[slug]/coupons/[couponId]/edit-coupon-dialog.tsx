@@ -18,7 +18,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateCoupon } from "../coupon-actions";
-import { useAppSettings } from "@/lib/use-app-settings";
 import { LogoField } from "../logo-field";
 import {
   OfferPreviewDialog,
@@ -43,7 +42,6 @@ export function EditCouponDialog({
     null
   );
   const router = useRouter();
-  const { emailConfig } = useAppSettings();
 
   const [form, setForm] = useState({
     name: coupon.name,
@@ -64,7 +62,7 @@ export function EditCouponDialog({
     }
     setSaving(true);
 
-    const res = await updateCoupon(eventId, couponId, form, eventSlug, emailConfig);
+    const res = await updateCoupon(eventId, couponId, form, eventSlug);
     setSaving(false);
     
     if (res.success) {

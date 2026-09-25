@@ -4,10 +4,6 @@ import { requireSession } from "@/lib/session";
 import { writeAuditLog } from "@/lib/audit";
 import { assignPendingForEvent } from "@/lib/assignment";
 import { parseCouponCsv } from "@/lib/import";
-import {
-  CURSOR_CREDITS_OFFER_NAME,
-  retargetCursorCreditsToSharedLink,
-} from "@/lib/default-offers";
 import { Coupon, CouponKind } from "@/lib/types";
 import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { bulkInsertCouponLinks } from "@/lib/db/repos/links";
@@ -118,8 +114,7 @@ export async function updateCoupon(
     redeemUrl: string;
     sortOrder: number;
   }>,
-  slug: string,
-  emailConfig?: EmailConfig
+  slug: string
 ): Promise<{ success: boolean; error?: string }> {
   const session = await requireSession();
 
@@ -139,26 +134,7 @@ export async function updateCoupon(
   if (data.redeemUrl !== undefined) update.redeemUrl = data.redeemUrl.trim() || null;
   if (data.sortOrder !== undefined) update.sortOrder = data.sortOrder;
 
-  const isCursorCredits =
-    existing.name === CURSOR_CREDITS_OFFER_NAME ||
-    (typeof update.name === "string" && update.name === CURSOR_CREDITS_OFFER_NAME);
-  const nextSharedValue =
-    typeof update.sharedValue === "string" ? update.sharedValue.trim() : "";
-  const sharedValueChanged =
-    isCursorCredits &&
-    nextSharedValue.length > 0 &&
-    nextSharedValue !== (existing.sharedValue ?? "");
-
-  if (isCursorCredits && (existing.kind === "uniqueLink" || sharedValueChanged)) {
-    update.kind = "sharedLink";
-  }
-
   await updateCouponFields(eventId, couponId, update);
-
-  if (sharedValueChanged) {
-    await retargetCursorCreditsToSharedLink(eventId, couponId, nextSharedValue);
-    await assignPendingForEvent(eventId, emailConfig);
-  }
 
   await writeAuditLog({
     eventId,

@@ -250,7 +250,7 @@ function getAuditMessage(log: AuditLog): string {
     case "test_attendees_created": {
       const emails = metadata?.emails;
       const count = Array.isArray(emails) ? emails.length : 2;
-      return `${count} temp test attendees were created with the shared Cursor Credits link.`;
+      return `${count} temp test attendees were created with fake Cursor Credits links.`;
     }
     case "test_data_deleted": {
       const deletedAttendees = getMetadataNumber(metadata, "deletedAttendees");
