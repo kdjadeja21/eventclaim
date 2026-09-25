@@ -144,12 +144,15 @@ export async function updateCoupon(
     (typeof update.name === "string" && update.name === CURSOR_CREDITS_OFFER_NAME);
   const nextSharedValue =
     typeof update.sharedValue === "string" ? update.sharedValue.trim() : "";
+  // Unique-link Cursor Credits keep their pool. Only a shared offer whose URL
+  // changed should be retargeted onto that URL.
   const sharedValueChanged =
     isCursorCredits &&
+    existing.kind !== "uniqueLink" &&
     nextSharedValue.length > 0 &&
     nextSharedValue !== (existing.sharedValue ?? "");
 
-  if (isCursorCredits && (existing.kind === "uniqueLink" || sharedValueChanged)) {
+  if (sharedValueChanged) {
     update.kind = "sharedLink";
   }
 

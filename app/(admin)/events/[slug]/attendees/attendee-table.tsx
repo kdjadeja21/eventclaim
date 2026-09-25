@@ -885,8 +885,8 @@ export default function AttendeeTable({
               {!emailConfigured
                 ? "Configure EmailJS on the Settings page before creating temp users and sending test emails."
                 : hasTestAttendees
-                  ? "Temp attendees are ready for email testing with the shared Cursor Credits link. EmailJS must stay configured to send."
-                  : "Create two temp attendees to test claim emails. They receive the shared Cursor Credits link. EmailJS is required to send."}
+                  ? "Temp attendees are ready for email testing with the Cursor Credits offer. EmailJS must stay configured to send."
+                  : "Create two temp attendees to test claim emails. They receive the Cursor Credits offer. EmailJS is required to send."}
             </p>
           </div>
           {hasTestAttendees ? (

@@ -293,7 +293,7 @@ export default async function CouponDetailPage({ params }: Props) {
               value={coupon.sharedValue}
               mono={coupon.kind === "sharedCode"}
             />
-          ) : coupon.name === CURSOR_CREDITS_OFFER_NAME ? (
+          ) : coupon.kind === "sharedLink" && coupon.name === CURSOR_CREDITS_OFFER_NAME ? (
             <Detail
               label="Shared URL"
               value="Add the shared Cursor Credits link so attendees can redeem it."

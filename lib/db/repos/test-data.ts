@@ -15,7 +15,7 @@ export async function createTempTestAttendees(params: {
   const { eventId, coupon, people } = params;
   const now = new Date().toISOString();
 
-  if (coupon.kind === "uniqueLink" || !coupon.sharedValue?.trim()) {
+  if (coupon.kind !== "uniqueLink" && !coupon.sharedValue?.trim()) {
     throw new Error("Cursor Credits needs a shared link before temp attendees can be created.");
   }
 
@@ -36,7 +36,11 @@ export async function createTempTestAttendees(params: {
   for (const attendee of attendeeRows) {
     const ok = await grantOneCoupon(eventId, attendee.id, coupon);
     if (!ok) {
-      throw new Error("Failed to grant the shared Cursor Credits link to a temp attendee.");
+      throw new Error(
+        coupon.kind === "uniqueLink"
+          ? "Add unique Cursor Credits links to the pool before creating temp attendees."
+          : "Failed to grant the shared Cursor Credits link to a temp attendee."
+      );
     }
   }
 

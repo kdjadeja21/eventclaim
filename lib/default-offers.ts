@@ -16,9 +16,10 @@ export const CURSOR_CREDITS_DESCRIPTION =
   "Open the shared claim link and redeem your Cursor credits.";
 
 /**
- * One URL granted to every attendee. Unique per-person referral links are no
- * longer required for Cursor Credits. Set CURSOR_CREDITS_SHARED_URL to bake
- * the ambassador link into new events; otherwise paste it on the offer.
+ * Optional URL for the default shared-link Cursor Credits offer. Cursor Credits
+ * can also be a unique-link pool. Set CURSOR_CREDITS_SHARED_URL to bake the
+ * ambassador link into new events; otherwise paste it on the shared offer.
+ * Existing unique-link offers are left alone.
  */
 export function cursorCreditsSharedUrl(): string {
   return process.env.CURSOR_CREDITS_SHARED_URL?.trim() ?? "";
@@ -89,8 +90,8 @@ export async function retargetCursorCreditsToSharedLink(
 }
 
 /**
- * Returns the event's Cursor Credits coupon, creating it if missing.
- * Older unique-link Cursor Credits offers are converted to a shared link.
+ * Returns the event's Cursor Credits coupon, creating a shared-link offer if
+ * missing. Unique-link Cursor Credits offers are kept as a per-person pool.
  * Safe to call for older events that predate auto-create.
  */
 export async function ensureDefaultCursorCreditsCoupon(eventId: string): Promise<Coupon> {
@@ -111,28 +112,32 @@ export async function ensureDefaultCursorCreditsCoupon(eventId: string): Promise
   }
 
   const row = existing[0];
+  // A unique-link (or shared-code) Cursor Credits offer is intentional.
+  // Do not rewrite it into the default shared link.
+  if (row.kind !== "sharedLink") {
+    return toCoupon(row);
+  }
+
   const envUrl = cursorCreditsSharedUrl();
-  const sharedValue = row.sharedValue?.trim() || envUrl || "";
-  const needsKind = row.kind !== "sharedLink";
   const needsValue = !row.sharedValue?.trim() && Boolean(envUrl);
   const needsDescription = row.description === LEGACY_UNIQUE_LINK_DESCRIPTION;
 
-  if (!needsKind && !needsValue && !needsDescription) {
+  if (!needsValue && !needsDescription) {
     return toCoupon(row);
   }
 
   const description = needsDescription ? CURSOR_CREDITS_DESCRIPTION : row.description;
+  const sharedValue = row.sharedValue?.trim() || envUrl;
 
   await db
     .update(coupons)
     .set({
-      kind: "sharedLink",
       description,
-      ...(sharedValue ? { sharedValue } : {}),
+      ...(needsValue ? { sharedValue } : {}),
     })
     .where(and(eq(coupons.eventId, eventId), eq(coupons.id, row.id)));
 
-  if (sharedValue) {
+  if (needsValue && sharedValue) {
     await retargetCursorCreditsToSharedLink(eventId, row.id, sharedValue);
     await assignPendingGrants(eventId);
   }
@@ -143,5 +148,11 @@ export async function ensureDefaultCursorCreditsCoupon(eventId: string): Promise
     .where(and(eq(coupons.eventId, eventId), eq(coupons.id, row.id)))
     .limit(1);
 
-  return toCoupon(updated[0] ?? { ...row, kind: "sharedLink", description, sharedValue: sharedValue || null });
+  return toCoupon(
+    updated[0] ?? {
+      ...row,
+      description,
+      sharedValue: needsValue ? sharedValue : row.sharedValue,
+    }
+  );
 }

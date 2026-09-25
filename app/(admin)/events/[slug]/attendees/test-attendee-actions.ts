@@ -86,7 +86,14 @@ export async function createTempAttendees(
 
   try {
     const coupon = await ensureDefaultCursorCreditsCoupon(eventId);
-    if (!coupon.sharedValue?.trim()) {
+    if (coupon.kind === "uniqueLink") {
+      if ((coupon.linkAvailable ?? 0) < normalized.length) {
+        return {
+          success: false,
+          error: "Add at least two unique Cursor Credits links before creating temp attendees.",
+        };
+      }
+    } else if (!coupon.sharedValue?.trim()) {
       return {
         success: false,
         error: "Add the Cursor Credits shared link on the offer before creating temp attendees.",
@@ -106,7 +113,7 @@ export async function createTempAttendees(
         attendeeIds: created.map((a) => a.id),
         emails: created.map((a) => a.email),
         couponId: coupon.id,
-        sharedLink: true,
+        sharedLink: coupon.kind !== "uniqueLink",
       },
       userId: session.uid,
     });

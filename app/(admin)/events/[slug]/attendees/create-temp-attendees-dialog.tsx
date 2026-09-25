@@ -57,7 +57,7 @@ export default function CreateTempAttendeesDialog({
         toast.error(result.error ?? "Failed to create temp attendees");
         return;
       }
-      toast.success("Temp attendees created with the shared Cursor Credits link");
+      toast.success("Temp attendees created with the Cursor Credits offer");
       reset();
       onOpenChange(false);
       onCreated();
@@ -70,8 +70,8 @@ export default function CreateTempAttendeesDialog({
         <DialogHeader>
           <DialogTitle>Create temp users</DialogTitle>
           <DialogDescription>
-            Create two draft-only test attendees with the shared Cursor Credits
-            link so you can send and verify claim emails. EmailJS must be configured
+            Create two draft-only test attendees and grant them the Cursor Credits
+            offer so you can send and verify claim emails. EmailJS must be configured
             on Settings before you can send. Names are stored with a{" "}
             <code className="rounded bg-muted px-1 py-0.5 text-xs">test_</code>{" "}
             prefix.

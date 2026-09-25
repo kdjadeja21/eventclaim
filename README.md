@@ -69,7 +69,7 @@ Create a `.env.local` in the project root:
 | `TEST_LOGIN_EMAIL` | No | Email shown for the dedicated test user (default: `dev@test.local`). The test login UID is fixed as `eventclaim-test-login` and cannot be overridden. |
 | `DATABASE_URL` | Yes | Supabase Supavisor **transaction pooler** connection string, port `6543`. Used by the app at runtime — must keep `prepare=false` (already set in `lib/db/client.ts`). |
 | `DIRECT_URL` | Yes | Supabase **direct** Postgres connection string, port `5432`. Used only by `drizzle-kit` (migrations/introspection) and the backfill script. |
-| `CURSOR_CREDITS_SHARED_URL` | No | Shared Cursor Credits URL granted to every attendee. When set, new events (and older unique-link Cursor Credits offers) use this link instead of a per-person pool. Leave unset to paste the link on the offer. |
+| `CURSOR_CREDITS_SHARED_URL` | No | Shared Cursor Credits URL granted to every attendee on the default shared-link offer. When set, new events use this link. Unique-link Cursor Credits offers keep their own pool. Leave unset to paste the link on the shared offer. |
 
 The Luma API key and all EmailJS configuration (service ID, template ID,
 public/private keys, monthly quota, and the claim-link base URL) are **not**
