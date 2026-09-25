@@ -179,14 +179,14 @@ function buildEmailHtml(params: {
               <table cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="vertical-align:middle;padding-right:10px;">
-                    <img src="https://www.cursor.com/favicon.ico"
-                         alt="Cursor"
+                    <img src="https://spacexai-welcome.vercel.app/brand/spacexai/favicon.svg"
+                         alt="SpaceXAI"
                          width="32"
                          height="32"
                          style="display:block;width:32px;height:32px;" />
                   </td>
                   <td style="vertical-align:middle;">
-                    <span style="color:#f7f7f4;font-size:18px;font-weight:600;letter-spacing:-0.02em;">Cursor Community</span>
+                    <span style="color:#f7f7f4;font-size:18px;font-weight:600;letter-spacing:-0.02em;">SpaceXAI Community</span>
                   </td>
                 </tr>
               </table>
@@ -252,7 +252,7 @@ function buildEmailHtml(params: {
           <tr>
             <td style="padding:24px 40px;border-top:1px solid #e6e5e0;">
               <p style="margin:0;font-size:13px;color:#a09c92;text-align:left;line-height:1.5;">
-                Sent by Cursor Community · This email was intended for ${attendeeName}
+                Sent by SpaceXAI Community · This email was intended for ${attendeeName}
               </p>
             </td>
           </tr>
