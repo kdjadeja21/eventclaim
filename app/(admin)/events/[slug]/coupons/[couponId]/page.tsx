@@ -18,10 +18,6 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  CURSOR_CREDITS_OFFER_NAME,
-  ensureDefaultCursorCreditsCoupon,
-} from "@/lib/default-offers";
 import { Grant } from "@/lib/types";
 import CouponDetailTables, { LinkRow } from "./coupon-detail-tables";
 import { EditCouponDialog } from "./edit-coupon-dialog";
@@ -41,7 +37,6 @@ export default async function CouponDetailPage({ params }: Props) {
   const event = await getEventBySlug(slug);
   if (!event) notFound();
 
-  await ensureDefaultCursorCreditsCoupon(event.id);
   const coupon = await getCouponById(event.id, couponId);
   if (!coupon) notFound();
 
@@ -287,18 +282,13 @@ export default async function CouponDetailPage({ params }: Props) {
           <Detail label="Highlight" value={coupon.highlight} />
           <Detail label="Description" value={coupon.description} />
           {coupon.note && <Detail label="Note" value={coupon.note} />}
-          {coupon.sharedValue ? (
+          {coupon.sharedValue && (
             <Detail
               label={coupon.kind === "sharedCode" ? "Promo Code" : "Shared URL"}
               value={coupon.sharedValue}
               mono={coupon.kind === "sharedCode"}
             />
-          ) : coupon.name === CURSOR_CREDITS_OFFER_NAME ? (
-            <Detail
-              label="Shared URL"
-              value="Add the shared Cursor Credits link so attendees can redeem it."
-            />
-          ) : null}
+          )}
           {coupon.redeemUrl && (
             <Detail label="Redeem Guide">
               <a

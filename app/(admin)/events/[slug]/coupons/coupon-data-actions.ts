@@ -6,7 +6,6 @@ import { resolveEventIdForUser } from "@/lib/db/repos/events";
 import { requireAccessibleEventById } from "@/lib/auth/event-access";
 import { listCouponsWithStats, listGrantsForCouponWithAttendee } from "@/lib/db/repos/coupons";
 import { listLinksForCouponOrdered } from "@/lib/db/repos/links";
-import { ensureDefaultCursorCreditsCoupon } from "@/lib/default-offers";
 
 export async function getCoupons(slug: string): Promise<{
   coupons: CouponWithStats[];
@@ -14,7 +13,6 @@ export async function getCoupons(slug: string): Promise<{
 }> {
   const session = await requireSession();
   const eventId = await resolveEventIdForUser(slug, session.uid);
-  await ensureDefaultCursorCreditsCoupon(eventId);
   const coupons = await listCouponsWithStats(eventId);
   return { coupons, eventId };
 }

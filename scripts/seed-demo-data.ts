@@ -38,23 +38,20 @@ async function main() {
     )
   `;
 
-  const sharedLink = "https://cursor.com/dashboard";
-
   await sql`
     INSERT INTO coupons (
       id, event_id, name, kind, category, logo_url, highlight, description,
-      note, shared_value, link_total, link_available, sort_order, is_disabled, created_at
+      note, link_total, link_available, sort_order, is_disabled, created_at
     ) VALUES (
       ${couponId},
       ${eventId},
       ${"Cursor Credits"},
-      ${"sharedLink"},
+      ${"uniqueLink"},
       ${"Partner"},
       ${""},
       ${"$20 Cursor Credits"},
-      ${"Open the shared claim link and redeem your Cursor credits."},
-      ${"One link for every attendee"},
-      ${sharedLink},
+      ${"Unique referral link for each attendee"},
+      ${"One link per person"},
       ${0},
       ${0},
       ${0},
@@ -74,6 +71,9 @@ async function main() {
   for (const person of people) {
     const attendeeId = `${eventId}_${person.email}`;
     const claimToken = nanoid(32);
+    const linkId = nanoid();
+    const code = nanoid(12).toUpperCase().replace(/[^A-Z0-9]/g, "A").slice(0, 12);
+    const linkUrl = `https://cursor.com/referral?code=${code}`;
 
     await sql`
       INSERT INTO attendees (
@@ -100,13 +100,32 @@ async function main() {
     `;
 
     await sql`
+      INSERT INTO coupon_links (
+        id, coupon_id, event_id, url, status, assigned_to, assigned_at,
+        claimed_at, is_disabled, is_test
+      ) VALUES (
+        ${linkId},
+        ${couponId},
+        ${eventId},
+        ${linkUrl},
+        ${person.claimed ? "claimed" : "assigned"},
+        ${attendeeId},
+        ${now},
+        ${person.claimed ? now : null},
+        ${false},
+        ${false}
+      )
+    `;
+
+    await sql`
       INSERT INTO grants (
-        coupon_id, event_id, attendee_id, value, status, assigned_at, claimed_at
+        coupon_id, event_id, attendee_id, value, link_id, status, assigned_at, claimed_at
       ) VALUES (
         ${couponId},
         ${eventId},
         ${attendeeId},
-        ${sharedLink},
+        ${linkUrl},
+        ${linkId},
         ${person.claimed ? "claimed" : "assigned"},
         ${now},
         ${person.claimed ? now : null}

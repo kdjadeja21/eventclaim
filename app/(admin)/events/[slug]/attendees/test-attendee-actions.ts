@@ -10,7 +10,7 @@ import { ensureDefaultCursorCreditsCoupon } from "@/lib/default-offers";
 import { getEventByIdForUser } from "@/lib/db/repos/events";
 import { countTestAttendees, findAttendeeByEmailInEvent } from "@/lib/db/repos/attendees";
 import {
-  createTempTestAttendees,
+  createTempTestAttendeesWithLinks,
   deleteTempTestDataForEvent,
 } from "@/lib/db/repos/test-data";
 
@@ -86,16 +86,16 @@ export async function createTempAttendees(
 
   try {
     const coupon = await ensureDefaultCursorCreditsCoupon(eventId);
-    if (!coupon.sharedValue?.trim()) {
+    if (coupon.kind !== "uniqueLink") {
       return {
         success: false,
-        error: "Add the Cursor Credits shared link on the offer before creating temp attendees.",
+        error: "Cursor Credits offer must be a unique-link coupon.",
       };
     }
 
-    const { attendees: created } = await createTempTestAttendees({
+    const { attendees: created, linkIds } = await createTempTestAttendeesWithLinks({
       eventId,
-      coupon,
+      couponId: coupon.id,
       people: normalized,
     });
 
@@ -105,8 +105,8 @@ export async function createTempAttendees(
       metadata: {
         attendeeIds: created.map((a) => a.id),
         emails: created.map((a) => a.email),
+        linkIds,
         couponId: coupon.id,
-        sharedLink: true,
       },
       userId: session.uid,
     });
